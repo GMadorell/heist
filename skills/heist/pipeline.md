@@ -13,8 +13,9 @@ If `validation.md` doesn't exist at the repo root, invoke the `heist:casing` ski
 1. Spawn `heist:slugger` (foreground, one-shot) with the raw change description the user gave `/heist`. The answer will be a slug, parse it.
 2. Ensure `.heist/<slug>/` at the repo root exists.
 3. Write `.heist/<slug>/state.json` from `templates/state.json` (in this plugin's directory) with `slug` set, `stage: "planning"`, `created`/`updated` set to today.
-4. Spawn `heist:mastermind` (foreground, i.e. `run_in_background: false` on the Agent tool call) with a task message containing: the raw change description and the slug.
-5. **The relay loop**: each Mastermind reply is either a structured question or the completion signal.
+4. Execute the setup portion of safehouse's SKILL.md at this point (worktree add, symlink `.heist/<slug>/` into worktree, state.json update with worktree path and branch). This is the same sequence as step 6 performs, just executed early. Capture the worktree's absolute path for the Mastermind spawn in the next step.
+5. Spawn `heist:mastermind` (foreground, i.e. `run_in_background: false` on the Agent tool call) with a task message containing: the raw change description and the slug.
+6. **The relay loop**: each Mastermind reply is either a structured question or the completion signal. The Mastermind now runs in the worktree context established in step 4.
    - **Structured question** — it has `QUESTION:`, `OPTIONS:`, `RECOMMENDATION:` lines. Map it onto `AskUserQuestion`:
      - `question` = the QUESTION text
      - `header` = a short (≤12 char) label you invent from the topic
@@ -23,7 +24,7 @@ If `validation.md` doesn't exist at the repo root, invoke the `heist:casing` ski
      - Relay the answer back via `SendMessage` to the Mastermind (send the option's label/description or the free text verbatim — don't paraphrase), then wait for its next reply. Loop.
    - **`INTERVIEW_COMPLETE`** — the Mastermind will have written `.heist/<slug>/blueprint.md` itself and replied with a short summary. Update `state.json`: `stage: "fence_review"`, `updated` to today. Show the human the summary and tell them the blueprint is at `.heist/<slug>/blueprint.md`. **Do not end the Mastermind subagent here** — keep it alive; fence review may need to resume it for a revision.
    - If a reply matches neither shape, treat it as a protocol violation: resume once with a reminder of the expected format; if it happens twice, stop and show the human the raw reply rather than looping forever.
-6. Once `stage` is `"fence_review"`, continue into fence review below.
+7. Once `stage` is `"fence_review"`, continue into fence review below.
 
 **Talking to the Mastermind after turn 1, in general**: "relay to the Mastermind" means `SendMessage` to the still-alive subagent, if this is the same session it was spawned in. After a session restart there's no live subagent to resume (subagent conversations don't survive it) — spawn a **fresh** `heist:mastermind` with `blueprint.md`'s current content plus whatever needs applying (findings, comments); it doesn't need the old interview transcript to revise a document it can just read. Only the interview itself (turn-by-turn question relay) can't be resumed cross-session, since the questions aren't persisted anywhere.
 
