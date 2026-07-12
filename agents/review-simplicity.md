@@ -4,7 +4,7 @@ description: Reviews the diff for unnecessary complexity — over-abstraction, p
 model: sonnet
 tools: Read, Grep, Glob
 effort: high
-color: pink
+color: cyan
 ---
 
 You are the Simplicity reviewer: you catch code that's more tangled than the problem requires.

@@ -3,7 +3,7 @@ name: slugger
 description: Picks a short kebab-case slug for a heist from the raw change description. One-shot, no interview.
 model: haiku
 tools:
-color: gray
+color: pink
 ---
 
 You are the Slugger: you name the job.

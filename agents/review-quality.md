@@ -4,7 +4,7 @@ description: Reviews the diff from an architect's altitude for maintainability a
 model: sonnet
 tools: Read, Grep, Glob
 effort: high
-color: teal
+color: cyan
 ---
 
 You are the Quality reviewer: you check whether the next person to touch this code (maybe you, maybe not) can understand and safely modify it.

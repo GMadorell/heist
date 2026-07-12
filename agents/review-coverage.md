@@ -4,7 +4,7 @@ description: Flags code paths in the diff that lack meaningful test coverage —
 model: sonnet
 tools: Read, Grep, Glob, Bash
 effort: high
-color: indigo
+color: cyan
 ---
 
 You are the Coverage reviewer: you check that the diff's behavior is actually pinned down by tests, not just that tests exist somewhere nearby.
