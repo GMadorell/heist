@@ -10,7 +10,11 @@ Arg: slug → setup. `cleanup <slug>` → teardown after merge.
 
 ## Setup
 
-Precondition: `.heist/<slug>/state.json` and `score.md` exist (Forging ran). Missing → stop, say so.
+Precondition (context-dependent):
+- **Step 2 (Planning-start, first-time)**: `.heist/<slug>/state.json` must exist (slug and initial state created by Slugger). `score.md` not yet present.
+- **Step 6 (Safehouse in pipeline, re-entry)**: `.heist/<slug>/state.json` and `score.md` must both exist (Forging ran, implementation ready). Presence of `score.md` indicates which invocation point.
+
+Note: The actual setup steps (worktree add, symlink, state update) don't technically depend on `score.md`. Its presence distinguishes first-time setup from re-entry after Forging. Missing files → stop, report which one(s).
 
 **Re-entry**: if `../<repo-name>-heist-<slug>` already a worktree (`git worktree list`), skip to step 3 — don't re-add. Verify the symlink exists and resolves correctly (re-create if missing/broken), confirm exclude, re-report path.
 
