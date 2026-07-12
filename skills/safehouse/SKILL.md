@@ -17,9 +17,8 @@ Precondition: `.heist/<slug>/state.json` and `score.md` exist (Forging ran). Mis
 1. Main branch name from `validation.md` (`## PR conventions`), else `git remote show origin`.
 2. `git worktree add ../<repo-name>-heist-<slug> -b heist/<slug> origin/<main>`. `<repo-name>` = current dir basename.
 3. Symlink `.heist/<slug>/` into the worktree at the same relative path, pointing at the main repo's absolute path: `ln -s <main-repo-abs>/.heist/<slug> <worktree-abs>/.heist/<slug>` (create the worktree's `.heist/` dir first if needed). One file, read/written from either location — no copy, no drift.
-4. Ensure `.heist/` excluded: check `.git/info/exclude` or `.gitignore` (shared across worktrees, check once). Missing → append to `.git/info/exclude`.
-5. Update `state.json` (single file, via either path): `stage: "implementing"`, `worktree: <abs path>`, `branch: "heist/<slug>"`, `updated: <today>`.
-6. Report worktree's absolute path (Wheelman's working dir).
+4. Update `state.json` (single file, via either path): `stage: "implementing"`, `worktree: <abs path>`, `branch: "heist/<slug>"`, `updated: <today>`.
+5. Report worktree's absolute path (Wheelman's working dir).
 
 ## Cleanup
 
