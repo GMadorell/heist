@@ -5,7 +5,7 @@
 | `stage` | What to do on resume |
 |---|---|
 | `casing` | Nothing heist-specific was written yet. Re-enter step 1 (casing gate). |
-| `planning` | Worktree was created in step 2 and should exist. If Mastermind subagent is still alive in this session, continue the relay loop where it left off. Otherwise, read slug from `state.json`, run safehouse setup logic **with re-entry check**: run `git worktree list` and check for `<repo-name>-heist-<slug>`. If worktree exists, verify symlink is correct and repair if missing/broken. If worktree doesn't exist, re-create from scratch. Then spawn fresh Mastermind with worktree path (explicit cd instruction). |
+| `planning` | If Mastermind subagent is still alive in this session, continue the relay loop where it left off. Otherwise, read slug from `state.json`, then spawn fresh Mastermind with worktree path and slug. Abort if worktree does not exist, requires human intervention. |
 | `fence_review` | `blueprint.md` exists. Re-enter step 3 from the top — re-running Fence is cheap and one-shot. |
 | `human_review` | `blueprint.md` exists, possibly mid-round. Re-enter step 4 from the top: `crit .heist/<slug>/blueprint.md` reconnects to the review file's persisted state (crit tracks rounds/comments there, not in heist's `state.json`), so this works whether a round was mid-flight or already finished. |
 | `forging` | `blueprint.md` is approved. Re-enter step 5 — re-running the Forger just overwrites `score.md` with a fresh transformation (a refresh, same as `heist:casing` re-running). |
