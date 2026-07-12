@@ -30,7 +30,7 @@ If `validation.md` doesn't exist at the repo root, invoke the `heist:casing` ski
 
 ### 3. Fence review
 
-1. Spawn `heist:fence` (foreground, one-shot — no relay loop for Fence itself) with the path to `.heist/<slug>/blueprint.md` plus `validation.md`. Read its findings.
+1. Spawn `heist:fence` (foreground, one-shot — no relay loop for Fence itself) with the worktree's absolute path and an explicit `cd <worktree-path>` instruction in the task message, so Fence reads `blueprint.md` and `validation.md` from the worktree (both tracked files already present, `blueprint.md` via symlink from `.heist/<slug>/`). Read its findings.
 2. **No findings above `low`, or Fence explicitly says the blueprint holds up**: stage → `"human_review"`, `updated` to today. Tell the human the blueprint passed contrarian review clean, then continue into human review below.
 3. **Findings exist**: relay them to the Mastermind (see "Talking to the Mastermind after turn 1" above) and ask it to revise `blueprint.md`. Increment `fence_rounds` in `state.json`.
 4. The Mastermind revises and replies with a short summary of what changed, plus any finding it explicitly disagreed with and why.
