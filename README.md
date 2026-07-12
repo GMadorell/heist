@@ -26,16 +26,16 @@ flowchart TD
     A["/heist <slug>"] --> B{validation.md exists?}
     B -- no --> C["/heist:casing → validation.md"]
     B -- yes --> S[Slugger: pick slug]
-    S --> D[Mastermind: relay interview → blueprint.md]
     C --> S
+    S --> I["/heist:safehouse → worktree + branch"]
+    I --> D[Mastermind: relay interview → blueprint.md]
     D --> E[Fence: contrarian review]
     E --> F{findings?}
     F -- yes --> D2[Mastermind revises blueprint] --> G
     F -- no --> G[Human review: crit, line comments + rounds]
     G -- changes --> D2
     G -- approved --> H[Forger: blueprint.md → score.md]
-    H --> I["/heist:safehouse → worktree + branch"]
-    I --> J[Wheelman in worktree]
+    H --> J[Wheelman in worktree]
     J --> K[Muscle × N: red-green TDD micro-steps]
     K --> J
     J --> L[Cleaner: mergeable → parallel review crew → triage auto-fix/ask-user → build/lint/test → docs → push → PR + risk label]
