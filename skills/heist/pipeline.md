@@ -14,8 +14,8 @@ If `validation.md` doesn't exist at the repo root, invoke the `heist:casing` ski
 2. Ensure `.heist/<slug>/` at the repo root exists.
 3. Write `.heist/<slug>/state.json` from `templates/state.json` (in this plugin's directory) with `slug` set, `stage: "planning"`, `created`/`updated` set to today.
 4. Execute the setup portion of safehouse's SKILL.md at this point (worktree add, symlink `.heist/<slug>/` into worktree, state.json update with worktree path and branch). This is the same sequence as step 6 performs, just executed early. Capture the worktree's absolute path for the Mastermind spawn in the next step.
-5. Spawn `heist:mastermind` (foreground, i.e. `run_in_background: false` on the Agent tool call) with a task message containing: the raw change description and the slug.
-6. **The relay loop**: each Mastermind reply is either a structured question or the completion signal. The Mastermind now runs in the worktree context established in step 4.
+5. Spawn `heist:mastermind` (foreground, i.e. `run_in_background: false` on the Agent tool call) with a task message containing: the raw change description, the slug, the worktree's absolute path, and an explicit `cd <worktree-path>` instruction.
+6. **The relay loop**: each Mastermind reply is either a structured question or the completion signal. The Mastermind runs in the worktree context via the explicit cd instruction from step 5.
    - **Structured question** — it has `QUESTION:`, `OPTIONS:`, `RECOMMENDATION:` lines. Map it onto `AskUserQuestion`:
      - `question` = the QUESTION text
      - `header` = a short (≤12 char) label you invent from the topic
