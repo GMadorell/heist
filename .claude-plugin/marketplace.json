@@ -1,0 +1,15 @@
+{
+  "name": "heist-marketplace",
+  "description": "Local marketplace for the heist plugin (agentic dev workflow: plan, review, TDD, implement, validate, PR).",
+  "owner": {
+    "name": "GMadorell",
+    "email": "gmadorell@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "heist",
+      "source": ".",
+      "description": "Agentic dev workflow: design, adversarial review, human review, TDD work doc, isolated implementation, validation, PR — heist-themed."
+    }
+  ]
+}

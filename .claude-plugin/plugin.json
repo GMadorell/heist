@@ -1,0 +1,12 @@
+{
+  "name": "heist",
+  "displayName": "Heist",
+  "description": "Agentic dev workflow: design, adversarial review, human review, TDD work doc, isolated implementation, validation, PR — heist-themed.",
+  "version": "0.1.0",
+  "author": {
+    "name": "GMadorell",
+    "email": "gmadorell@gmail.com"
+  },
+  "license": "MIT",
+  "keywords": ["workflow", "planning", "tdd", "agents"]
+}
