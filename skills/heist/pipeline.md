@@ -65,7 +65,13 @@ The Mastermind's job ends at approval — forging is a fresh, one-shot transform
 
 ### 6. Safehouse (in pipeline)
 
-Run the setup half of the `heist:safehouse` skill's instructions for `<slug>` (same logic as invoking `/heist:safehouse <slug>` directly — worktree + branch, symlink `.heist/<slug>/` into it, confirm exclude, update `state.json` to `stage: "implementing"`). Get the worktree's absolute path back. Continue into implementing below.
+Run the setup half of the `heist:safehouse` skill's instructions for `<slug>` (same logic as invoking `/heist:safehouse <slug>` directly). Safehouse setup at this point is idempotent:
+
+- If a worktree for this slug already exists from step 2 (planning), re-entry check via `git worktree list` skips worktree add but re-verifies the symlink from `.heist/<slug>/` into the worktree.
+- If the worktree doesn't exist (e.g., removed between steps), safehouse re-creates it from scratch.
+- This idempotency ensures resumption safety at step 6 and later if the pipeline restarts.
+
+Proceed with: worktree + branch setup, symlink `.heist/<slug>/` into it, confirm exclude, and update `state.json` to `stage: "implementing"`. Get the worktree's absolute path back. Continue into implementing below.
 
 ### 7. Implementing (Wheelman + Muscle)
 
