@@ -10,7 +10,7 @@ It ships as a single Claude Code plugin: one entry point, a crew of specialized 
 
 You type `/heist:heist add rate limiting to the public API` and the crew gets to work:
 
-1. **Mastermind** interviews you with multiple-choice questions like a detective who already knows the answer but wants to hear you say it, then writes `blueprint.md`.
+1. **Slugger** picks a short slug for the job, then **Mastermind** interviews you with multiple-choice questions like a detective, then writes `blueprint.md`.
 2. **Fence** reads it and immediately starts talking about everything wrong with the plan, because that's the job. Mastermind fixes what actually lands.
 3. You take a pass yourself in [crit](https://crit.md), leaving comments until you're out of things to nitpick. Silence is approval.
 4. **Forger** breaks the blueprint into `score.md`, a checklist so granular a Muscle can't screw it up.
@@ -25,8 +25,9 @@ You come back to an open PR and a heat report: what got built, what got flagged,
 flowchart TD
     A["/heist <slug>"] --> B{validation.md exists?}
     B -- no --> C["/heist:casing → validation.md"]
-    B -- yes --> D[Mastermind: relay interview → blueprint.md]
-    C --> D
+    B -- yes --> S[Slugger: pick slug]
+    S --> D[Mastermind: relay interview → blueprint.md]
+    C --> S
     D --> E[Fence: contrarian review]
     E --> F{findings?}
     F -- yes --> D2[Mastermind revises blueprint] --> G
@@ -46,6 +47,7 @@ flowchart TD
 
 | Heist term | Real concept |
 |---|---|
+| Slugger | Names the job: picks the short slug it's tracked under |
 | Mastermind | Plans the job: interviews you and writes the blueprint before anyone lifts a finger |
 | Fence | Fences the plan before you fence the goods: reads the blueprint and tries to poke holes in it |
 | Forger | Forges the paperwork: turns the approved blueprint into the score, step by step |
@@ -81,6 +83,7 @@ Note: plugin skills are always namespaced (`/heist:heist`, `/heist:safehouse`, `
 
 | Crew member | Model | Why |
 |---|---|---|
+| Slugger | Haiku | Picking a slug from a description is trivial, no design reasoning needed |
 | Mastermind | Opus | Design quality matters most here, it's the one doc everything downstream depends on |
 | Fence | Sonnet | Adversarial review is bounded and structured; doesn't need Opus-level reasoning |
 | Forger | Sonnet | Mechanical transformation of an already-approved design |

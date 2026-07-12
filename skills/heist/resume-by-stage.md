@@ -5,7 +5,7 @@
 | `stage` | What to do on resume |
 |---|---|
 | `casing` | Nothing heist-specific was written yet. Re-enter step 1 (casing gate). |
-| `planning` | If the Mastermind subagent is still alive in *this* session, continue the relay loop where it left off. Otherwise the interview can't be resumed (see `pipeline.md`) — tell the human it's restarting, and re-enter step 2 from the top with the same slug (don't generate a new one; ask the Mastermind to reuse `<slug>` from `state.json`). |
+| `planning` | If the Mastermind subagent is still alive in *this* session, continue the relay loop where it left off. Otherwise the interview can't be resumed  — tell the human it's restarting, and re-enter step 2 with the same slug: skip the Slugger, read slug from the `state.json`.|
 | `fence_review` | `blueprint.md` exists. Re-enter step 3 from the top — re-running Fence is cheap and one-shot. |
 | `human_review` | `blueprint.md` exists, possibly mid-round. Re-enter step 4 from the top: `crit .heist/<slug>/blueprint.md` reconnects to the review file's persisted state (crit tracks rounds/comments there, not in heist's `state.json`), so this works whether a round was mid-flight or already finished. |
 | `forging` | `blueprint.md` is approved. Re-enter step 5 — re-running the Forger just overwrites `score.md` with a fresh transformation (a refresh, same as `heist:casing` re-running). |
