@@ -43,7 +43,7 @@ Crit (https://crit.md) is a separate installed plugin (`crit@crit`) that runs a 
 
 Drive this stage using crit's own `/crit` skill protocol (read `crit`'s installed skill for the authoritative step-by-step — this summarizes it for the heist context):
 
-1. Launch `crit .heist/<slug>/blueprint.md` **in the background** (`run_in_background: true`). It prints a review URL on startup (or connects to an already-running daemon from earlier in this session).
+1. Launch `crit <worktree-path>/.heist/<slug>/blueprint.md` **in the background** (`run_in_background: true`). It prints a review URL on startup (or connects to an already-running daemon from earlier in this session). The blueprint is accessible in the worktree via symlink from the main repo.
 2. Relay the URL to the human verbatim: *"Crit is open at \<url\>. Leave inline comments, then click Finish Review."* Then wait for the background task to finish — don't ask the human to type anything, don't read the review file early, don't poll.
 3. When it completes, read stdout for the review comments (same schema as `crit comments --json`) and check stderr for `approved: true`/`false`.
 4. **Zero comments (`approved: true`)**: this is approval. Stage → `"forging"`, `updated` to today. Tell the human the blueprint is approved, then continue into forging below.
