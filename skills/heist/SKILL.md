@@ -14,7 +14,7 @@ Check for `.heist/` at the project root.
 
 - If it contains a heist directory with a `state.json` whose `stage` isn't `done`: read `state.json` for the stage and slug, report those to the human, then read `resume-by-stage.md` (in this skill's directory) for what to do, and `pipeline.md` (same directory) for the step it points you to.
 - If there's no active heist, tell the human there's nothing in progress and remind them to start one with `/heist:heist <description of the change>`. Stop there — don't start anything without a description, and don't read `pipeline.md` or `resume-by-stage.md` for this case.
-- If more than one heist directory under `.heist/` has a non-`done` stage, that's outside v1's design (one active heist per repo) — tell the human which slugs are in progress and ask which to resume, rather than guessing.
+- If more than one heist directory under `.heist/` has a non-`done` stage, list all active slugs and ask the human which one to resume in this session. Note that only one heist runs per orchestrator session, even if multiple are active in the repository.
 
 ## With a description
 
