@@ -19,7 +19,7 @@ Note: The actual setup steps (worktree add, symlink, state update) don't technic
 **Re-entry**: if `../<repo-name>-heist-<slug>` already a worktree (`git worktree list`), skip to step 3 — don't re-add. Verify the symlink exists and resolves correctly (re-create if missing/broken), confirm exclude, re-report path.
 
 1. Main branch name from `validation.md` (`## PR conventions`), else `git remote show origin`.
-2. `git worktree add ../<repo-name>-heist-<slug> -b heist/<slug> origin/<main>`. `<repo-name>` = current dir basename.
+2. `git worktree add ../<repo-name>-heist-<slug> -b heist/<slug> origin/<main>`. `<repo-name>` = current dir basename. If this fails (permission denied, branch already exists, origin/<main> unreachable), stop and report the git error to the human — don't proceed or guess at a workaround (e.g., force-deleting an existing branch).
 3. Symlink `.heist/<slug>/` into the worktree at the same relative path, pointing at the main repo's absolute path: `ln -s <main-repo-abs>/.heist/<slug> <worktree-abs>/.heist/<slug>` (create the worktree's `.heist/` dir first if needed). One file, read/written from either location — no copy, no drift.
 4. Update `state.json` (single file, via either path): `stage: "implementing"`, `worktree: <abs path>`, `branch: "heist/<slug>"`, `updated: <today>`.
 5. Report worktree's absolute path (Wheelman's working dir).
