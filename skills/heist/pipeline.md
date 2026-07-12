@@ -58,7 +58,7 @@ Note: `crit` also supports `crit share <file>` for a shareable URL/QR code if th
 
 The Mastermind's job ends at approval — forging is a fresh, one-shot transformation, not a continuation of its conversation.
 
-1. Spawn `heist:forger` (foreground, one-shot) with `.heist/<slug>/blueprint.md` and `validation.md`. It writes `.heist/<slug>/score.md` directly and replies with a summary: step count, and anything it had to make an implicit call on.
+1. Spawn `heist:forger` (foreground, one-shot) with the worktree's absolute path and an explicit `cd <worktree-path>` instruction in the task message, so Forger reads `blueprint.md` and `validation.md` from the worktree (both tracked files already present, `blueprint.md` via symlink from `.heist/<slug>/`) and writes `score.md` there.
 2. Update `state.json`: `stage: "safehouse"`, `score_steps_total` set to the step count the Forger reported, `updated` to today.
 3. Report to the human: `score.md` path, step count, and any implicit calls the Forger flagged — worth a quick skim before implementation starts.
 4. Continue into safehouse below.
