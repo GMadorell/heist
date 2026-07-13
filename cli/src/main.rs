@@ -346,8 +346,21 @@ fn handle_worktree(command: WorktreeCommands) {
                     .expect("failed to run git worktree add");
 
                 if !output.status.success() {
-                    eprintln!("failed to create worktree");
-                    std::process::exit(exitcode::INTERNAL);
+                    let git_stderr = String::from_utf8_lossy(&output.stderr);
+
+                    // Classify the git error
+                    let subtype = if git_stderr.contains("already exists") {
+                        "already-exists"
+                    } else if git_stderr.contains("cannot find remote ref") {
+                        "origin-unreachable"
+                    } else if git_stderr.contains("Permission denied") {
+                        "permission-denied"
+                    } else {
+                        "unknown"
+                    };
+
+                    eprintln!("{}: {}", subtype, git_stderr.trim());
+                    std::process::exit(exitcode::GIT);
                 }
             }
 

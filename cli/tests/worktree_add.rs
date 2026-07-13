@@ -331,4 +331,67 @@ mod worktree_add {
             "symlink should point to main repo's .heist/my-slug after recreation"
         );
     }
+
+    #[test]
+    fn branch_conflict_exits_git_error_code() {
+        // Create temp directories for main repo and bare remote
+        let main_temp = TempDir::new().expect("failed to create main temp dir");
+        let main_repo = main_temp.path();
+
+        let bare_temp = TempDir::new().expect("failed to create bare temp dir");
+        let bare_repo = bare_temp.path();
+
+        // Initialize bare remote repo
+        run_git(bare_repo, &["init", "-q", "--bare"]);
+
+        // Initialize main repo
+        run_git(main_repo, &["init", "-q", "-b", "main"]);
+        run_git(main_repo, &["config", "user.email", "test@example.com"]);
+        run_git(main_repo, &["config", "user.name", "Test"]);
+
+        // Add remote and make initial commit
+        let bare_repo_str = bare_repo.to_string_lossy();
+        run_git(main_repo, &["remote", "add", "origin", &bare_repo_str]);
+        fs::write(main_repo.join("README.md"), "hello").expect("failed to write README");
+        run_git(main_repo, &["add", "."]);
+        run_git(main_repo, &["commit", "-q", "-m", "init"]);
+
+        // Push to remote
+        run_git(main_repo, &["push", "-u", "origin", "main"]);
+
+        // Pre-create a branch named heist/my-slug (not as a worktree, just a branch)
+        run_git(main_repo, &["branch", "heist/my-slug"]);
+
+        // Initialize state for my-slug
+        let mut init_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        init_cmd.current_dir(main_repo);
+        init_cmd.arg("state").arg("init").arg("my-slug");
+        init_cmd.assert().success();
+
+        // Run heist-cli worktree add my-slug (should fail because branch already exists)
+        let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output = cmd
+            .current_dir(main_repo)
+            .arg("worktree")
+            .arg("add")
+            .arg("my-slug")
+            .output()
+            .expect("failed to run worktree add");
+
+        // Check exit code is 3 (GIT error)
+        assert_eq!(
+            output.status.code(),
+            Some(3),
+            "should exit with code 3 (GIT), got {:?}",
+            output.status.code()
+        );
+
+        // Check stderr contains "already-exists"
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("already-exists"),
+            "stderr should contain 'already-exists', got: {}",
+            stderr
+        );
+    }
 }
