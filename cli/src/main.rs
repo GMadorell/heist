@@ -114,6 +114,13 @@ fn handle_state(command: StateCommands) {
         StateCommands::Get { slug, field } => {
             // Read state.json file
             let state_file = Path::new(".heist").join(&slug).join("state.json");
+
+            // Check if the file exists before parsing
+            if !state_file.exists() {
+                eprintln!("state file not found for slug: {}", slug);
+                std::process::exit(exitcode::PRECONDITION);
+            }
+
             let content = match fs::read_to_string(&state_file) {
                 Ok(c) => c,
                 Err(e) => {

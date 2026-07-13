@@ -45,4 +45,38 @@ mod state_get {
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert_eq!(stdout, "forging\n", "stdout should be exactly 'forging\\n', got: {:?}", stdout);
     }
+
+    #[test]
+    fn missing_state_file_exits_precondition() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        // Empty tempdir - no .heist/ directory at all
+        // Run heist-cli state get my-slug stage
+        let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output = cmd
+            .current_dir(temp_path)
+            .arg("state")
+            .arg("get")
+            .arg("my-slug")
+            .arg("stage")
+            .output()
+            .expect("failed to run command");
+
+        // Assert exit code is 2 (PRECONDITION)
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "expected exit code 2, got {:?}",
+            output.status.code()
+        );
+
+        // Assert stderr contains "my-slug"
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("my-slug"),
+            "stderr should contain 'my-slug', got: {:?}",
+            stderr
+        );
+    }
 }
