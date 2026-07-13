@@ -143,4 +143,53 @@ mod resume {
             stderr
         );
     }
+
+    #[test]
+    fn missing_stage_field_exits_precondition_instead_of_guessing() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        fs::create_dir_all(temp_path.join(".heist/my-slug"))
+            .expect("failed to create .heist/my-slug directory");
+
+        // Valid JSON, valid schema_version, but no "stage" key at all.
+        let state_json = r#"{
+  "schema_version": 1,
+  "slug": "my-slug",
+  "worktree": null,
+  "branch": null,
+  "score_step": 0,
+  "score_steps_total": 0,
+  "fence_rounds": 0,
+  "created": "2024-01-01",
+  "updated": "2024-01-01"
+}"#;
+        fs::write(temp_path.join(".heist/my-slug/state.json"), state_json)
+            .expect("failed to write state.json");
+
+        let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output = cmd
+            .current_dir(temp_path)
+            .arg("resume")
+            .arg("my-slug")
+            .output()
+            .expect("failed to run resume command");
+
+        // Must not silently default to "casing" — a missing stage is corruption,
+        // not a fresh-start state.
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "command should exit with code 2, got {:?}, stdout: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout)
+        );
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("my-slug") && stderr.contains("stage"),
+            "stderr should mention 'my-slug' and 'stage', got: {}",
+            stderr
+        );
+    }
 }

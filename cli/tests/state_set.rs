@@ -99,6 +99,60 @@ mod state_set {
     }
 
     #[test]
+    fn numeric_field_is_stored_as_a_number() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        fs::create_dir_all(temp_path.join(".heist/my-slug"))
+            .expect("failed to create state directory");
+
+        let state_json = r#"{
+  "schema_version": 1,
+  "slug": "my-slug",
+  "stage": "implementing",
+  "worktree": null,
+  "branch": null,
+  "score_step": 0,
+  "score_steps_total": 0,
+  "fence_rounds": 0,
+  "created": "2026-07-13",
+  "updated": "2026-07-13"
+}"#;
+        fs::write(temp_path.join(".heist/my-slug/state.json"), state_json)
+            .expect("failed to write state.json");
+
+        let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output = cmd
+            .current_dir(temp_path)
+            .arg("state")
+            .arg("set")
+            .arg("my-slug")
+            .arg("score_step")
+            .arg("5")
+            .output()
+            .expect("failed to run command");
+
+        assert!(
+            output.status.success(),
+            "expected success, got {:?}, stderr: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let content = fs::read_to_string(temp_path.join(".heist/my-slug/state.json"))
+            .expect("failed to read state.json");
+        let state: serde_json::Value =
+            serde_json::from_str(&content).expect("failed to parse state.json");
+
+        assert_eq!(
+            state["score_step"],
+            serde_json::Value::Number(5.into()),
+            "score_step should be stored as a JSON number, got: {}",
+            state["score_step"]
+        );
+    }
+
+    #[test]
     fn rejects_unknown_field() {
         let temp_dir = TempDir::new().expect("failed to create temp directory");
         let temp_path = temp_dir.path();

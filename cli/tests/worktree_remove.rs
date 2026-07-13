@@ -120,16 +120,18 @@ mod worktree_remove {
             "worktree list should not contain .worktrees/my-slug after removal"
         );
 
-        // Verify heist/my-slug branch no longer exists
+        // Verify the local heist/my-slug branch no longer exists. Remote branch
+        // deletion is out of scope (see succeeds_when_branch_was_never_pushed_to_origin),
+        // so this only checks local branches, not `-a`.
         let branch_output = StdCommand::new("git")
-            .args(["branch", "-a"])
+            .args(["branch"])
             .current_dir(main_repo)
             .output()
-            .expect("failed to run git branch -a");
+            .expect("failed to run git branch");
         let branch_str = String::from_utf8_lossy(&branch_output.stdout);
         assert!(
             !branch_str.contains("heist/my-slug"),
-            "branch list should not contain heist/my-slug after removal"
+            "local branch list should not contain heist/my-slug after removal"
         );
 
         // Verify .heist/my-slug/ in main repo still exists untouched
@@ -149,6 +151,100 @@ mod worktree_remove {
             stage, "done",
             "stage should be 'done' after worktree removal, got: {}",
             stage
+        );
+    }
+
+    #[test]
+    fn succeeds_when_branch_was_never_pushed_to_origin() {
+        // Reproduces the common case (and GitHub's "auto-delete head branches on
+        // merge" setting): heist/<slug> is merged locally into main but was never
+        // pushed to origin, so origin has no matching ref. worktree remove must
+        // not attempt (or fail on) any remote branch deletion — that's out of
+        // scope per blueprint.md/score.md step 23, which only calls for
+        // `git worktree remove` + `git branch -d`.
+        let main_temp = TempDir::new().expect("failed to create main temp dir");
+        let main_repo = main_temp.path();
+
+        let bare_temp = TempDir::new().expect("failed to create bare temp dir");
+        let bare_repo = bare_temp.path();
+
+        run_git(bare_repo, &["init", "-q", "--bare"]);
+
+        run_git(main_repo, &["init", "-q", "-b", "main"]);
+        run_git(main_repo, &["config", "user.email", "test@example.com"]);
+        run_git(main_repo, &["config", "user.name", "Test"]);
+
+        let bare_repo_str = bare_repo.to_string_lossy();
+        run_git(main_repo, &["remote", "add", "origin", &bare_repo_str]);
+        fs::write(main_repo.join("README.md"), "hello").expect("failed to write README");
+        run_git(main_repo, &["add", "."]);
+        run_git(main_repo, &["commit", "-q", "-m", "init"]);
+        run_git(main_repo, &["push", "-u", "origin", "main"]);
+
+        let mut init_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        init_cmd.current_dir(main_repo);
+        init_cmd.arg("state").arg("init").arg("my-slug");
+        init_cmd.assert().success();
+
+        let state_file = main_repo.join(".heist/my-slug/state.json");
+
+        let mut add_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output = add_cmd
+            .current_dir(main_repo)
+            .arg("worktree")
+            .arg("add")
+            .arg("my-slug")
+            .output()
+            .expect("failed to run worktree add");
+        assert!(output.status.success(), "worktree add should succeed");
+
+        let worktree_path = main_repo.join(".worktrees/my-slug");
+
+        fs::write(worktree_path.join("feature.txt"), "feature work")
+            .expect("failed to write feature.txt");
+        run_git(&worktree_path, &["add", "."]);
+        run_git(&worktree_path, &["commit", "-q", "-m", "add feature"]);
+
+        // Note: heist/my-slug is NEVER pushed to origin here (unlike the happy-path
+        // test), so origin has no ref for it.
+
+        // Fast-forward merge heist/my-slug into main in the main repo.
+        run_git(main_repo, &["checkout", "main"]);
+        run_git(main_repo, &["merge", "--ff-only", "heist/my-slug"]);
+
+        // Push main back to origin (so the merged-branch check passes), but
+        // heist/my-slug itself is still never pushed.
+        run_git(main_repo, &["push", "origin", "main"]);
+
+        let mut remove_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output = remove_cmd
+            .current_dir(main_repo)
+            .arg("worktree")
+            .arg("remove")
+            .arg("my-slug")
+            .output()
+            .expect("failed to run worktree remove");
+
+        assert!(
+            output.status.success(),
+            "worktree remove should succeed even though heist/my-slug was never pushed \
+             to origin, got exit code {:?}, stderr: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        assert!(
+            !worktree_path.exists(),
+            ".worktrees/my-slug should be removed"
+        );
+
+        let state_content = fs::read_to_string(&state_file).expect("failed to read state.json");
+        let state_json: serde_json::Value =
+            serde_json::from_str(&state_content).expect("failed to parse state.json");
+        assert_eq!(
+            state_json["stage"].as_str(),
+            Some("done"),
+            "stage should be 'done' after worktree removal"
         );
     }
 

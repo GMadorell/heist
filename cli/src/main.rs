@@ -260,8 +260,23 @@ fn handle_state(command: StateCommands) {
                 std::process::exit(exitcode::INTERNAL);
             }
 
-            // Update the field with the new value
-            state_json[&field] = serde_json::json!(value);
+            // Update the field with the new value, coercing known numeric
+            // fields to JSON numbers instead of storing them as strings.
+            const NUMERIC_FIELDS: &[&str] = &["score_step", "score_steps_total", "fence_rounds"];
+            if NUMERIC_FIELDS.contains(&field.as_str()) {
+                match value.parse::<u64>() {
+                    Ok(n) => state_json[&field] = serde_json::json!(n),
+                    Err(_) => {
+                        eprintln!(
+                            "invalid value for numeric field '{}': {} (expected an integer)",
+                            field, value
+                        );
+                        std::process::exit(exitcode::PRECONDITION);
+                    }
+                }
+            } else {
+                state_json[&field] = serde_json::json!(value);
+            }
 
             // Update the updated field to today's date
             let today = get_today_date();
@@ -496,17 +511,12 @@ fn handle_worktree(command: WorktreeCommands) {
                 std::process::exit(exitcode::GIT);
             }
 
-            // Also delete the remote branch
-            let remote_branch_delete_output = std::process::Command::new("git")
-                .args(["push", "origin", "--delete", &format!("heist/{}", slug)])
-                .output()
-                .expect("failed to run git push origin --delete");
-
-            if !remote_branch_delete_output.status.success() {
-                let git_stderr = String::from_utf8_lossy(&remote_branch_delete_output.stderr);
-                eprintln!("remote-branch-deletion-failed: {}", git_stderr.trim());
-                std::process::exit(exitcode::GIT);
-            }
+            // Note: remote branch deletion is intentionally out of scope here —
+            // it's not in blueprint.md/score.md step 23, and attempting it broke
+            // the common case (branch never pushed, or GitHub's "auto-delete head
+            // branches on merge" already handled it): local teardown would already
+            // have succeeded but the command still exited 3 on the remote-delete
+            // failure, and state.json would never reach stage "done".
 
             // Update state.json's stage to "done" if not already
             let state_file = repo_root.join(".heist").join(&slug).join("state.json");
@@ -634,11 +644,15 @@ fn handle_resume(slug: String) {
         .unwrap_or(&slug)
         .to_string();
 
-    // Extract stage and calculate next_step
-    let stage = state_json
-        .get("stage")
-        .and_then(|v| v.as_str())
-        .unwrap_or("casing");
+    // Extract stage and calculate next_step. A missing or non-string "stage"
+    // is corrupt state, not a fresh-start signal — never guess "casing".
+    let stage = match state_json.get("stage").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => {
+            eprintln!("state file for slug {} is missing a valid stage", slug);
+            std::process::exit(exitcode::PRECONDITION);
+        }
+    };
 
     // Parse stage string to Stage enum
     let parsed_stage: state::Stage = match stage {
