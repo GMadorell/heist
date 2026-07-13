@@ -75,7 +75,7 @@ enum WorktreeCommands {
     /// Add a worktree
     Add { slug: String },
     /// Remove a worktree
-    Remove,
+    Remove { slug: String },
 }
 
 #[derive(Subcommand)]
@@ -429,9 +429,94 @@ fn handle_worktree(command: WorktreeCommands) {
 
             std::process::exit(exitcode::SUCCESS);
         }
-        WorktreeCommands::Remove => {
-            eprintln!("not implemented");
-            std::process::exit(1);
+        WorktreeCommands::Remove { slug } => {
+            let repo_root = Path::new(".");
+
+            // Detect the main branch
+            let main_branch = worktree::detect_main_branch(repo_root);
+
+            // Confirm heist/<slug> is merged into main
+            let merged_output = std::process::Command::new("git")
+                .args(&["branch", "--merged", &format!("origin/{}", main_branch)])
+                .current_dir(repo_root)
+                .output()
+                .expect("failed to check merged branches");
+
+            if !merged_output.status.success() {
+                eprintln!("failed to check merged branches");
+                std::process::exit(exitcode::GIT);
+            }
+
+            let merged_str = String::from_utf8_lossy(&merged_output.stdout);
+            let branch_name = format!("heist/{}", slug);
+
+            if !merged_str.contains(&branch_name) {
+                eprintln!("branch {} is not merged into {}", branch_name, main_branch);
+                std::process::exit(exitcode::PRECONDITION);
+            }
+
+            // Run git worktree remove .worktrees/<slug>
+            let worktree_path = repo_root.join(".worktrees").join(&slug);
+            let worktree_remove_output = std::process::Command::new("git")
+                .args(&["worktree", "remove", worktree_path.to_string_lossy().as_ref()])
+                .output()
+                .expect("failed to run git worktree remove");
+
+            if !worktree_remove_output.status.success() {
+                let git_stderr = String::from_utf8_lossy(&worktree_remove_output.stderr);
+                eprintln!("worktree-removal-failed: {}", git_stderr.trim());
+                std::process::exit(exitcode::GIT);
+            }
+
+            // Run git branch -d heist/<slug>
+            let branch_delete_output = std::process::Command::new("git")
+                .args(&["branch", "-d", &format!("heist/{}", slug)])
+                .output()
+                .expect("failed to run git branch -d");
+
+            if !branch_delete_output.status.success() {
+                let git_stderr = String::from_utf8_lossy(&branch_delete_output.stderr);
+                eprintln!("branch-deletion-failed: {}", git_stderr.trim());
+                std::process::exit(exitcode::GIT);
+            }
+
+            // Also delete the remote branch
+            let remote_branch_delete_output = std::process::Command::new("git")
+                .args(&["push", "origin", "--delete", &format!("heist/{}", slug)])
+                .output()
+                .expect("failed to run git push origin --delete");
+
+            if !remote_branch_delete_output.status.success() {
+                let git_stderr = String::from_utf8_lossy(&remote_branch_delete_output.stderr);
+                eprintln!("remote-branch-deletion-failed: {}", git_stderr.trim());
+                std::process::exit(exitcode::GIT);
+            }
+
+            // Update state.json's stage to "done" if not already
+            let state_file = repo_root.join(".heist").join(&slug).join("state.json");
+
+            let content = fs::read_to_string(&state_file)
+                .expect("failed to read state.json");
+
+            let mut state_json: serde_json::Value = serde_json::from_str(&content)
+                .expect("failed to parse state.json");
+
+            // Set stage to "done"
+            state_json["stage"] = serde_json::json!("done");
+
+            // Update the updated field to today's date
+            let today = get_today_date();
+            state_json["updated"] = serde_json::json!(today);
+
+            // Serialize back to JSON with pretty printing
+            let updated_json = serde_json::to_string_pretty(&state_json)
+                .expect("failed to serialize state");
+
+            // Write state.json back
+            fs::write(&state_file, updated_json)
+                .expect("failed to write state.json");
+
+            std::process::exit(exitcode::SUCCESS);
         }
     }
 }
