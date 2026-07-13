@@ -82,7 +82,7 @@ enum WorktreeCommands {
 #[derive(Subcommand)]
 enum ValidationCommands {
     /// Resolve validation
-    Resolve { path: std::path::PathBuf },
+    Resolve { paths: Vec<std::path::PathBuf> },
     /// Check validation
     Check,
 }
@@ -524,15 +524,34 @@ fn handle_worktree(command: WorktreeCommands) {
 
 fn handle_validation(command: ValidationCommands) {
     match command {
-        ValidationCommands::Resolve { path } => {
-            match validation::resolve_validation(&path) {
-                Ok(output) => {
-                    print!("{}", output);
-                    std::process::exit(exitcode::SUCCESS);
+        ValidationCommands::Resolve { paths } => {
+            if paths.is_empty() {
+                eprintln!("at least one path is required");
+                std::process::exit(exitcode::PRECONDITION);
+            }
+
+            // If only one path, use the single-path resolver for backwards compatibility
+            if paths.len() == 1 {
+                match validation::resolve_validation(&paths[0]) {
+                    Ok(output) => {
+                        print!("{}", output);
+                        std::process::exit(exitcode::SUCCESS);
+                    }
+                    Err(e) => {
+                        eprintln!("failed to resolve validation: {}", e);
+                        std::process::exit(exitcode::INTERNAL);
+                    }
                 }
-                Err(e) => {
-                    eprintln!("failed to resolve validation: {}", e);
-                    std::process::exit(exitcode::INTERNAL);
+            } else {
+                match validation::resolve_validations(&paths) {
+                    Ok(output) => {
+                        print!("{}", output);
+                        std::process::exit(exitcode::SUCCESS);
+                    }
+                    Err(e) => {
+                        eprintln!("failed to resolve validation: {}", e);
+                        std::process::exit(exitcode::INTERNAL);
+                    }
                 }
             }
         }

@@ -142,14 +142,15 @@ pub(crate) fn find_repo_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(PathBuf::from(root_path))
 }
 
-/// Resolve validation for a given path.
+/// Resolve validation for a given path, returning the merged sections and the scope directory.
 ///
 /// Walks from repo root down to the directory containing the path,
 /// collecting and merging all validation.md files found along the way.
-/// Returns the merged sections in fixed order: Build, Lint, Test, Docs, PR conventions, Notes.
-pub(crate) fn resolve_validation(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
-    let repo_root = find_repo_root()?;
-
+/// Returns (merged_sections, scope_dir_relative_to_repo_root).
+fn resolve_validation_with_scope(
+    path: &Path,
+    repo_root: &Path,
+) -> Result<(BTreeMap<String, String>, PathBuf), Box<dyn std::error::Error>> {
     // Canonicalize the path relative to repo root
     let target_path = if path.is_absolute() {
         path.to_path_buf()
@@ -162,9 +163,10 @@ pub(crate) fn resolve_validation(path: &Path) -> Result<String, Box<dyn std::err
 
     // Collect all validation.md files from repo root down to target_dir
     let mut validation_files = Vec::new();
+    let mut scope_dir = PathBuf::from(".");
 
     // Start from repo root and walk down to target_dir
-    let mut current = repo_root.clone();
+    let mut current = repo_root.to_path_buf();
     validation_files.push(current.join("validation.md"));
 
     // Walk down the directory tree
@@ -175,13 +177,20 @@ pub(crate) fn resolve_validation(path: &Path) -> Result<String, Box<dyn std::err
         }
     }
 
-    // Parse each validation.md that exists
+    // Parse each validation.md that exists and track the deepest one found
     let mut layers = Vec::new();
-    for validation_file in validation_files {
+    for validation_file in &validation_files {
         if validation_file.exists() {
             let text = std::fs::read_to_string(&validation_file)?;
             let sections = parse_sections(&text)?;
             layers.push(sections);
+
+            // Track the deepest directory that has a validation.md
+            if let Some(parent) = validation_file.parent() {
+                if let Ok(rel) = parent.strip_prefix(repo_root) {
+                    scope_dir = rel.to_path_buf();
+                }
+            }
         }
     }
 
@@ -191,6 +200,18 @@ pub(crate) fn resolve_validation(path: &Path) -> Result<String, Box<dyn std::err
 
     // Merge all layers
     let merged = merge(&layers);
+
+    Ok((merged, scope_dir))
+}
+
+/// Resolve validation for a given path.
+///
+/// Walks from repo root down to the directory containing the path,
+/// collecting and merging all validation.md files found along the way.
+/// Returns the merged sections in fixed order: Build, Lint, Test, Docs, PR conventions, Notes.
+pub(crate) fn resolve_validation(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let repo_root = find_repo_root()?;
+    let (merged, _scope_dir) = resolve_validation_with_scope(path, &repo_root)?;
 
     // Print in fixed order: Build, Lint, Test, Docs, PR conventions, Notes
     let mut output = String::new();
@@ -207,6 +228,56 @@ pub(crate) fn resolve_validation(path: &Path) -> Result<String, Box<dyn std::err
         output.pop();
     }
     output.push('\n');
+
+    Ok(output)
+}
+
+/// Resolve validation for multiple paths, deduping by scope.
+///
+/// For each path, resolves validation and tracks the scope directory.
+/// Paths that resolve to the same scope have their sections deduplicated.
+/// Returns output with labeled blocks for each distinct scope.
+pub(crate) fn resolve_validations(paths: &[PathBuf]) -> Result<String, Box<dyn std::error::Error>> {
+    let repo_root = find_repo_root()?;
+
+    // Resolve each path and group by scope
+    let mut scope_to_sections: std::collections::BTreeMap<PathBuf, BTreeMap<String, String>> =
+        std::collections::BTreeMap::new();
+
+    for path in paths {
+        let (merged, scope_dir) = resolve_validation_with_scope(path, &repo_root)?;
+        scope_to_sections.insert(scope_dir, merged);
+    }
+
+    // Generate output for each unique scope
+    let mut output = String::new();
+    let order = vec!["Build", "Lint", "Test", "Docs", "PR conventions", "Notes"];
+
+    for (scope_dir, merged) in scope_to_sections {
+        // Format scope label (use "." for repo root)
+        let scope_label = if scope_dir.as_os_str().is_empty() || scope_dir == PathBuf::from(".") {
+            ".".to_string()
+        } else {
+            scope_dir.to_string_lossy().to_string()
+        };
+
+        // Add scope label comment
+        output.push_str(&format!("### {}\n\n", scope_label));
+
+        for section_name in &order {
+            if let Some(body) = merged.get(*section_name) {
+                output.push_str(&format!("## {}\n{}\n\n", section_name, body));
+            }
+        }
+    }
+
+    // Clean up trailing whitespace
+    while output.ends_with("\n\n\n") {
+        output.pop();
+    }
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
 
     Ok(output)
 }
