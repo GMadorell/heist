@@ -3,12 +3,14 @@ use std::fs;
 use std::path::Path;
 
 mod exitcode;
+mod git_repository;
 mod state;
 mod state_repository;
 mod validation;
 mod worktree;
 
 use exitcode::ExitCode;
+use git_repository::{GitRepository, RealGit};
 use state::{today, State};
 use state_repository::{FileStateRepository, StateRepository};
 
@@ -73,11 +75,12 @@ fn main() {
 
     // Wire the real dependencies once; handlers depend only on the traits.
     let state_repo = FileStateRepository;
+    let git = RealGit;
     let repo_root = Path::new(".");
 
     let code = match cli.command {
         Commands::State { command } => handle_state(command, &state_repo),
-        Commands::Worktree { command } => handle_worktree(command, repo_root, &state_repo),
+        Commands::Worktree { command } => handle_worktree(command, repo_root, &state_repo, &git),
         Commands::Validation { command } => handle_validation(command),
         Commands::Resume { slug } => handle_resume(&slug, &state_repo),
     };
@@ -174,51 +177,34 @@ fn handle_worktree(
     command: WorktreeCommands,
     repo_root: &Path,
     state_repo: &dyn StateRepository,
+    git: &dyn GitRepository,
 ) -> ExitCode {
-    either(run_worktree(command, repo_root, state_repo))
+    either(run_worktree(command, repo_root, state_repo, git))
 }
 
 fn run_worktree(
     command: WorktreeCommands,
     repo_root: &Path,
     state_repo: &dyn StateRepository,
+    git: &dyn GitRepository,
 ) -> Result<ExitCode, ExitCode> {
     match command {
         WorktreeCommands::Add { slug } => {
-            let main_branch = worktree::detect_main_branch(repo_root);
+            let main_branch = git.default_branch(repo_root);
             worktree::ensure_worktrees_ignored(repo_root);
 
             let worktree_path = repo_root.join(".worktrees").join(&slug);
+            let branch_name = format!("heist/{}", slug);
 
-            if !worktree::worktree_exists(repo_root, &slug) {
-                // `git worktree add` is a mutating porcelain command; git2's
-                // worktree API is more manual and less battle-tested here, so
-                // shelling out stays the pragmatic choice.
-                let output = std::process::Command::new("git")
-                    .args([
-                        "worktree",
-                        "add",
-                        worktree_path.to_string_lossy().as_ref(),
-                        "-b",
-                        &format!("heist/{}", slug),
-                        &format!("origin/{}", main_branch),
-                    ])
-                    .output()
-                    .expect("failed to run git worktree add");
-
-                if !output.status.success() {
-                    let git_stderr = String::from_utf8_lossy(&output.stderr);
-                    let subtype = if git_stderr.contains("already exists") {
-                        "already-exists"
-                    } else if git_stderr.contains("cannot find remote ref") {
-                        "origin-unreachable"
-                    } else if git_stderr.contains("Permission denied") {
-                        "permission-denied"
-                    } else {
-                        "unknown"
-                    };
-                    eprintln!("{}: {}", subtype, git_stderr.trim());
-                    return Err(ExitCode::Git);
+            if !git.worktree_exists(repo_root, &slug) {
+                if let Err(e) = git.add_worktree(
+                    repo_root,
+                    &worktree_path,
+                    &branch_name,
+                    &format!("origin/{}", main_branch),
+                ) {
+                    eprintln!("{}", e);
+                    return Err(e.exit_code());
                 }
             }
 
@@ -230,7 +216,7 @@ fn run_worktree(
 
             let mut state = load_state(state_repo, &slug)?;
             state.worktree = Some(worktree_absolute.to_string_lossy().to_string());
-            state.branch = Some(format!("heist/{}", slug));
+            state.branch = Some(branch_name);
             state.updated = today();
             save_state(state_repo, &slug, &state)?;
 
@@ -238,46 +224,29 @@ fn run_worktree(
             Ok(ExitCode::Success)
         }
         WorktreeCommands::Remove { slug } => {
-            let main_branch = worktree::detect_main_branch(repo_root);
+            let main_branch = git.default_branch(repo_root);
             let branch_name = format!("heist/{}", slug);
 
-            match worktree::branch_merged_into_main(repo_root, &branch_name, &main_branch) {
+            match git.is_branch_merged(repo_root, &branch_name, &main_branch) {
                 Ok(true) => {}
                 Ok(false) => {
                     eprintln!("branch {} is not merged into {}", branch_name, main_branch);
                     return Ok(ExitCode::Precondition);
                 }
                 Err(e) => {
-                    eprintln!("failed to check merged branches: {}", e);
-                    return Err(ExitCode::Git);
+                    eprintln!("{}", e);
+                    return Err(e.exit_code());
                 }
             }
 
-            // `git worktree remove` / `git branch -d` are mutating porcelain
-            // commands; shelling out is more robust than git2's worktree API.
             let worktree_path = repo_root.join(".worktrees").join(&slug);
-            let remove_output = std::process::Command::new("git")
-                .args([
-                    "worktree",
-                    "remove",
-                    worktree_path.to_string_lossy().as_ref(),
-                ])
-                .output()
-                .expect("failed to run git worktree remove");
-            if !remove_output.status.success() {
-                let git_stderr = String::from_utf8_lossy(&remove_output.stderr);
-                eprintln!("worktree-removal-failed: {}", git_stderr.trim());
-                return Err(ExitCode::Git);
+            if let Err(e) = git.remove_worktree(repo_root, &worktree_path) {
+                eprintln!("{}", e);
+                return Err(e.exit_code());
             }
-
-            let branch_output = std::process::Command::new("git")
-                .args(["branch", "-d", &branch_name])
-                .output()
-                .expect("failed to run git branch -d");
-            if !branch_output.status.success() {
-                let git_stderr = String::from_utf8_lossy(&branch_output.stderr);
-                eprintln!("branch-deletion-failed: {}", git_stderr.trim());
-                return Err(ExitCode::Git);
+            if let Err(e) = git.delete_branch(repo_root, &branch_name) {
+                eprintln!("{}", e);
+                return Err(e.exit_code());
             }
 
             // Remote branch deletion is intentionally out of scope: the branch
@@ -393,15 +362,18 @@ fn handle_resume(slug: &str, repo: &dyn StateRepository) -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    //! In-process decision-logic tests for the state command handlers.
+    //! In-process decision-logic tests for the command handlers.
     //!
-    //! These exercise `handle_state`'s branching against the in-memory
-    //! `InMemoryStateRepository`, with no subprocess and no real state file, so
-    //! preconditions like "slug already exists" are cheap to arrange and assert.
+    //! These exercise `handle_state`/`handle_worktree`'s branching against the
+    //! in-memory `InMemoryStateRepository` and `FakeGit`, with no subprocess and
+    //! no real git repo, so preconditions like "branch not merged" or "origin
+    //! unreachable" are cheap to arrange and assert.
 
     use super::*;
+    use git_repository::{FakeGit, GitError};
     use state::Stage;
     use state_repository::InMemoryStateRepository;
+    use tempfile::TempDir;
 
     #[test]
     fn state_init_succeeds_for_new_slug() {
@@ -463,5 +435,115 @@ mod tests {
         );
         assert_eq!(code, ExitCode::Precondition);
         assert_eq!(repo.get("foo").expect("state should exist").score_step, 0);
+    }
+
+    #[test]
+    fn worktree_remove_refuses_when_branch_not_merged() {
+        let repo = InMemoryStateRepository::new().with_state("foo", State::new("foo"));
+        // No merged branch configured, so heist/foo is treated as unmerged.
+        let git = FakeGit::new().with_default_branch("main");
+
+        let code = handle_worktree(
+            WorktreeCommands::Remove { slug: "foo".into() },
+            Path::new("."),
+            &repo,
+            &git,
+        );
+
+        assert_eq!(code, ExitCode::Precondition);
+        // State must NOT advance to Done when the precondition fails.
+        assert_eq!(
+            repo.get("foo").expect("state should exist").stage,
+            Stage::Casing
+        );
+    }
+
+    #[test]
+    fn worktree_remove_marks_done_when_merged() {
+        let repo = InMemoryStateRepository::new().with_state("foo", State::new("foo"));
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_merged_branch("heist/foo");
+
+        let code = handle_worktree(
+            WorktreeCommands::Remove { slug: "foo".into() },
+            Path::new("."),
+            &repo,
+            &git,
+        );
+
+        assert_eq!(code, ExitCode::Success);
+        assert_eq!(
+            repo.get("foo").expect("state should exist").stage,
+            Stage::Done
+        );
+    }
+
+    #[test]
+    fn worktree_remove_surfaces_worktree_removal_failure() {
+        let repo = InMemoryStateRepository::new().with_state("foo", State::new("foo"));
+        let git = FakeGit::new()
+            .with_merged_branch("heist/foo")
+            .failing_remove(GitError::WorktreeRemove {
+                message: "worktree is dirty".into(),
+            });
+
+        let code = handle_worktree(
+            WorktreeCommands::Remove { slug: "foo".into() },
+            Path::new("."),
+            &repo,
+            &git,
+        );
+
+        assert_eq!(code, ExitCode::Git);
+        // Failing mid-teardown must not strand the state at Done.
+        assert_eq!(
+            repo.get("foo").expect("state should exist").stage,
+            Stage::Casing
+        );
+    }
+
+    #[test]
+    fn worktree_remove_surfaces_branch_deletion_failure() {
+        let repo = InMemoryStateRepository::new().with_state("foo", State::new("foo"));
+        let git = FakeGit::new()
+            .with_merged_branch("heist/foo")
+            .failing_delete(GitError::BranchDelete {
+                message: "not fully merged".into(),
+            });
+
+        let code = handle_worktree(
+            WorktreeCommands::Remove { slug: "foo".into() },
+            Path::new("."),
+            &repo,
+            &git,
+        );
+
+        assert_eq!(code, ExitCode::Git);
+        assert_eq!(
+            repo.get("foo").expect("state should exist").stage,
+            Stage::Casing
+        );
+    }
+
+    #[test]
+    fn worktree_add_fails_when_origin_unreachable() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let repo = InMemoryStateRepository::new().with_state("foo", State::new("foo"));
+        let git = FakeGit::new().failing_add(GitError::WorktreeAdd {
+            subtype: "origin-unreachable".into(),
+            message: "cannot find remote ref".into(),
+        });
+
+        let code = handle_worktree(
+            WorktreeCommands::Add { slug: "foo".into() },
+            temp_dir.path(),
+            &repo,
+            &git,
+        );
+
+        assert_eq!(code, ExitCode::Git);
+        // State untouched: worktree/branch never populated.
+        assert_eq!(repo.get("foo").expect("state should exist").worktree, None);
     }
 }

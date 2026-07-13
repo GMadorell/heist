@@ -1,59 +1,12 @@
 use std::path::Path;
 
-/// Detect the repository's main branch, always via git.
-///
-/// Prefers origin's default branch (`refs/remotes/origin/HEAD`); falls back to
-/// the current branch when there's no remote. The `Main branch:` line in
-/// `validation.md` is for human-facing agents (Cleaner, etc.), not for the
-/// deterministic CLI, which shouldn't parse prose for something git knows.
-pub(crate) fn detect_main_branch(repo_root: &Path) -> String {
-    if let Ok(repo) = git2::Repository::open(repo_root) {
-        if let Ok(reference) = repo.find_reference("refs/remotes/origin/HEAD") {
-            if let Ok(Some(target)) = reference.symbolic_target() {
-                if let Some(name) = target.rsplit('/').next() {
-                    if !name.is_empty() {
-                        return name.to_string();
-                    }
-                }
-            }
-        }
-
-        // No remote default: fall back to the current branch.
-        if let Ok(head) = repo.head() {
-            if let Ok(name) = head.shorthand() {
-                return name.to_string();
-            }
-        }
-    }
-
-    String::new()
-}
-
-/// Whether `branch` is merged into `origin/<main_branch>`.
-///
-/// True when the branch tip equals the main tip (e.g. after a fast-forward
-/// merge) or is an ancestor of it.
-pub(crate) fn branch_merged_into_main(
-    repo_root: &Path,
-    branch: &str,
-    main_branch: &str,
-) -> Result<bool, git2::Error> {
-    let repo = git2::Repository::open(repo_root)?;
-    let branch_oid = repo.revparse_single(branch)?.id();
-    let main_oid = repo
-        .revparse_single(&format!("origin/{}", main_branch))?
-        .id();
-
-    if branch_oid == main_oid {
-        return Ok(true);
-    }
-    repo.graph_descendant_of(main_oid, branch_oid)
-}
-
 /// Ensure `.worktrees/` is ignored in the repository's `.gitignore`.
 ///
 /// Appends the entry (creating the file if absent) and returns `true`, or
 /// returns `false` when it was already ignored (no changes made).
+///
+/// This is filesystem housekeeping, not git access, so it stays a free function
+/// rather than a method on the [`crate::git_repository::GitRepository`] seam.
 pub(crate) fn ensure_worktrees_ignored(repo_root: &Path) -> bool {
     let gitignore_path = repo_root.join(".gitignore");
 
@@ -80,21 +33,6 @@ pub(crate) fn ensure_worktrees_ignored(repo_root: &Path) -> bool {
     true
 }
 
-/// Whether a worktree for `slug` is already registered (`.worktrees/<slug>`).
-pub(crate) fn worktree_exists(repo_root: &Path, slug: &str) -> bool {
-    if let Ok(repo) = git2::Repository::open(repo_root) {
-        if let Ok(worktrees) = repo.worktrees() {
-            // iter() yields Result<Option<&str>, _>; flatten twice to reach &str.
-            return worktrees
-                .iter()
-                .flatten()
-                .flatten()
-                .any(|name| name == slug);
-        }
-    }
-    false
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -114,23 +52,6 @@ mod tests {
             .status()
             .expect("failed to run git");
         assert!(status.success(), "git {:?} failed", args);
-    }
-
-    #[test]
-    fn detects_main_branch_via_git() {
-        let temp_dir = TempDir::new().expect("failed to create temp directory");
-        let repo_root = temp_dir.path();
-
-        run_git(repo_root, &["init", "-q", "-b", "main"]);
-        run_git(repo_root, &["config", "user.email", "test@example.com"]);
-        run_git(repo_root, &["config", "user.name", "Test"]);
-
-        fs::write(repo_root.join("README.md"), "hello").expect("failed to write file");
-        run_git(repo_root, &["add", "."]);
-        run_git(repo_root, &["commit", "-q", "-m", "init"]);
-
-        let branch = crate::worktree::detect_main_branch(repo_root);
-        assert_eq!(branch, "main");
     }
 
     #[test]
