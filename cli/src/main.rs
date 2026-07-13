@@ -4,11 +4,13 @@ use std::path::Path;
 
 mod exitcode;
 mod state;
+mod state_repository;
 mod validation;
 mod worktree;
 
 use exitcode::ExitCode;
-use state::{state_file_path, today, State};
+use state::{today, State};
+use state_repository::{FileStateRepository, StateRepository};
 
 #[derive(Parser)]
 #[command(name = "heist-cli")]
@@ -69,73 +71,77 @@ enum ValidationCommands {
 fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
-        Commands::State { command } => handle_state(command),
-        Commands::Worktree { command } => handle_worktree(command),
+    // Wire the real dependencies once; handlers depend only on the traits.
+    let state_repo = FileStateRepository;
+    let repo_root = Path::new(".");
+
+    let code = match cli.command {
+        Commands::State { command } => handle_state(command, &state_repo),
+        Commands::Worktree { command } => handle_worktree(command, repo_root, &state_repo),
         Commands::Validation { command } => handle_validation(command),
-        Commands::Resume { slug } => handle_resume(slug),
-    }
+        Commands::Resume { slug } => handle_resume(&slug, &state_repo),
+    };
+    code.exit();
 }
 
-/// Load a slug's state, or print the error and exit per the exit-code contract.
-fn load_state_or_exit(slug: &str) -> State {
-    match State::load(&state_file_path(slug)) {
-        Ok(state) => state,
-        Err(e) => {
-            eprintln!("failed to load state for slug {}: {}", slug, e);
-            e.exit_code().exit();
-        }
-    }
+/// Load a slug's state, or print the error and yield the matching exit code.
+fn load_state(repo: &dyn StateRepository, slug: &str) -> Result<State, ExitCode> {
+    repo.load(slug).map_err(|e| {
+        eprintln!("failed to load state for slug {}: {}", slug, e);
+        e.exit_code()
+    })
 }
 
-/// Persist a slug's state, or print the error and exit per the exit-code contract.
-fn save_state_or_exit(state: &State, slug: &str) {
-    if let Err(e) = state.save(&state_file_path(slug)) {
+/// Persist a slug's state, or print the error and yield the matching exit code.
+fn save_state(repo: &dyn StateRepository, slug: &str, state: &State) -> Result<(), ExitCode> {
+    repo.save(slug, state).map_err(|e| {
         eprintln!("failed to save state for slug {}: {}", slug, e);
-        e.exit_code().exit();
+        e.exit_code()
+    })
+}
+
+/// Collapse a `Result<ExitCode, ExitCode>` (success vs. handled error) into one.
+fn either(result: Result<ExitCode, ExitCode>) -> ExitCode {
+    match result {
+        Ok(code) | Err(code) => code,
     }
 }
 
-fn handle_state(command: StateCommands) {
+fn handle_state(command: StateCommands, repo: &dyn StateRepository) -> ExitCode {
+    either(run_state(command, repo))
+}
+
+fn run_state(command: StateCommands, repo: &dyn StateRepository) -> Result<ExitCode, ExitCode> {
     match command {
-        StateCommands::Init { slug } => {
-            let state_file = state_file_path(&slug);
-            let state_dir = state_file.parent().expect("state path has a parent");
-
-            if state_dir.exists() {
-                eprintln!("state directory already exists for slug: {}", slug);
-                ExitCode::Precondition.exit();
+        StateCommands::Init { slug } => match repo.init(&slug, &State::new(&slug)) {
+            Ok(()) => Ok(ExitCode::Success),
+            Err(e) => {
+                eprintln!("failed to init state for slug {}: {}", slug, e);
+                Err(e.exit_code())
             }
-            if let Err(e) = fs::create_dir_all(state_dir) {
-                eprintln!("failed to create state directory: {}", e);
-                ExitCode::Internal.exit();
-            }
-
-            save_state_or_exit(&State::new(&slug), &slug);
-            ExitCode::Success.exit();
-        }
+        },
         StateCommands::Get { slug, field } => {
-            let state = load_state_or_exit(&slug);
+            let state = load_state(repo, &slug)?;
             match state.get_field(&field) {
                 Ok(value) => {
                     println!("{}", value);
-                    ExitCode::Success.exit();
+                    Ok(ExitCode::Success)
                 }
                 Err(e) => {
                     eprintln!("{}", e);
-                    ExitCode::Precondition.exit();
+                    Ok(ExitCode::Precondition)
                 }
             }
         }
         StateCommands::Set { slug, field, value } => {
-            let mut state = load_state_or_exit(&slug);
+            let mut state = load_state(repo, &slug)?;
             if let Err(e) = state.set_field(&field, &value) {
                 eprintln!("{}", e);
-                ExitCode::Precondition.exit();
+                return Ok(ExitCode::Precondition);
             }
             state.updated = today();
-            save_state_or_exit(&state, &slug);
-            ExitCode::Success.exit();
+            save_state(repo, &slug, &state)?;
+            Ok(ExitCode::Success)
         }
         StateCommands::Schema => {
             let field_list = "schema_version: u32\n\
@@ -154,18 +160,29 @@ updated: string";
                 Ok(json) => json,
                 Err(e) => {
                     eprintln!("failed to serialize state: {}", e);
-                    ExitCode::Internal.exit();
+                    return Err(ExitCode::Internal);
                 }
             };
 
             println!("{}\n\n{}", field_list, json);
-            ExitCode::Success.exit();
+            Ok(ExitCode::Success)
         }
     }
 }
 
-fn handle_worktree(command: WorktreeCommands) {
-    let repo_root = Path::new(".");
+fn handle_worktree(
+    command: WorktreeCommands,
+    repo_root: &Path,
+    state_repo: &dyn StateRepository,
+) -> ExitCode {
+    either(run_worktree(command, repo_root, state_repo))
+}
+
+fn run_worktree(
+    command: WorktreeCommands,
+    repo_root: &Path,
+    state_repo: &dyn StateRepository,
+) -> Result<ExitCode, ExitCode> {
     match command {
         WorktreeCommands::Add { slug } => {
             let main_branch = worktree::detect_main_branch(repo_root);
@@ -201,7 +218,7 @@ fn handle_worktree(command: WorktreeCommands) {
                         "unknown"
                     };
                     eprintln!("{}: {}", subtype, git_stderr.trim());
-                    ExitCode::Git.exit();
+                    return Err(ExitCode::Git);
                 }
             }
 
@@ -211,14 +228,14 @@ fn handle_worktree(command: WorktreeCommands) {
                 .canonicalize()
                 .expect("failed to canonicalize worktree path");
 
-            let mut state = load_state_or_exit(&slug);
+            let mut state = load_state(state_repo, &slug)?;
             state.worktree = Some(worktree_absolute.to_string_lossy().to_string());
             state.branch = Some(format!("heist/{}", slug));
             state.updated = today();
-            save_state_or_exit(&state, &slug);
+            save_state(state_repo, &slug, &state)?;
 
             println!("{}", worktree_absolute.display());
-            ExitCode::Success.exit();
+            Ok(ExitCode::Success)
         }
         WorktreeCommands::Remove { slug } => {
             let main_branch = worktree::detect_main_branch(repo_root);
@@ -228,11 +245,11 @@ fn handle_worktree(command: WorktreeCommands) {
                 Ok(true) => {}
                 Ok(false) => {
                     eprintln!("branch {} is not merged into {}", branch_name, main_branch);
-                    ExitCode::Precondition.exit();
+                    return Ok(ExitCode::Precondition);
                 }
                 Err(e) => {
                     eprintln!("failed to check merged branches: {}", e);
-                    ExitCode::Git.exit();
+                    return Err(ExitCode::Git);
                 }
             }
 
@@ -250,7 +267,7 @@ fn handle_worktree(command: WorktreeCommands) {
             if !remove_output.status.success() {
                 let git_stderr = String::from_utf8_lossy(&remove_output.stderr);
                 eprintln!("worktree-removal-failed: {}", git_stderr.trim());
-                ExitCode::Git.exit();
+                return Err(ExitCode::Git);
             }
 
             let branch_output = std::process::Command::new("git")
@@ -260,19 +277,19 @@ fn handle_worktree(command: WorktreeCommands) {
             if !branch_output.status.success() {
                 let git_stderr = String::from_utf8_lossy(&branch_output.stderr);
                 eprintln!("branch-deletion-failed: {}", git_stderr.trim());
-                ExitCode::Git.exit();
+                return Err(ExitCode::Git);
             }
 
             // Remote branch deletion is intentionally out of scope: the branch
             // is often never pushed, or GitHub's auto-delete-on-merge already
             // handled it, and failing there would strand state.json short of "done".
 
-            let mut state = load_state_or_exit(&slug);
+            let mut state = load_state(state_repo, &slug)?;
             state.stage = state::Stage::Done;
             state.updated = today();
-            save_state_or_exit(&state, &slug);
+            save_state(state_repo, &slug, &state)?;
 
-            ExitCode::Success.exit();
+            Ok(ExitCode::Success)
         }
     }
 }
@@ -312,12 +329,12 @@ fn create_worktree_symlink(repo_root: &Path, worktree_path: &Path, slug: &str) {
     }
 }
 
-fn handle_validation(command: ValidationCommands) {
+fn handle_validation(command: ValidationCommands) -> ExitCode {
     match command {
         ValidationCommands::Resolve { paths } => {
             if paths.is_empty() {
                 eprintln!("at least one path is required");
-                ExitCode::Precondition.exit();
+                return ExitCode::Precondition;
             }
 
             let result = if paths.len() == 1 {
@@ -329,33 +346,36 @@ fn handle_validation(command: ValidationCommands) {
             match result {
                 Ok(output) => {
                     print!("{}", output);
-                    ExitCode::Success.exit();
+                    ExitCode::Success
                 }
                 Err(e) => {
                     eprintln!("failed to resolve validation: {}", e);
-                    ExitCode::Internal.exit();
+                    ExitCode::Internal
                 }
             }
         }
         ValidationCommands::Check { path } => match validation::check_validation_exists(&path) {
             Ok(true) => {
                 println!("ok");
-                ExitCode::Success.exit();
+                ExitCode::Success
             }
             Ok(false) => {
                 println!("missing");
-                ExitCode::Precondition.exit();
+                ExitCode::Precondition
             }
             Err(e) => {
                 eprintln!("failed to check validation: {}", e);
-                ExitCode::Internal.exit();
+                ExitCode::Internal
             }
         },
     }
 }
 
-fn handle_resume(slug: String) {
-    let state = load_state_or_exit(&slug);
+fn handle_resume(slug: &str, repo: &dyn StateRepository) -> ExitCode {
+    let state = match load_state(repo, slug) {
+        Ok(state) => state,
+        Err(code) => return code,
+    };
 
     let next_step = match state.stage.next_step() {
         Some((number, name)) => format!("{} ({})", number, name),
@@ -368,5 +388,80 @@ fn handle_resume(slug: String) {
     println!("next_step: {}", next_step);
     println!("worktree: {}", worktree);
 
-    ExitCode::Success.exit();
+    ExitCode::Success
+}
+
+#[cfg(test)]
+mod tests {
+    //! In-process decision-logic tests for the state command handlers.
+    //!
+    //! These exercise `handle_state`'s branching against the in-memory
+    //! `InMemoryStateRepository`, with no subprocess and no real state file, so
+    //! preconditions like "slug already exists" are cheap to arrange and assert.
+
+    use super::*;
+    use state::Stage;
+    use state_repository::InMemoryStateRepository;
+
+    #[test]
+    fn state_init_succeeds_for_new_slug() {
+        let repo = InMemoryStateRepository::new();
+        let code = handle_state(StateCommands::Init { slug: "foo".into() }, &repo);
+        assert_eq!(code, ExitCode::Success);
+        assert_eq!(
+            repo.get("foo").expect("state should exist").stage,
+            Stage::Casing
+        );
+    }
+
+    #[test]
+    fn state_init_rejects_existing_slug() {
+        let repo = InMemoryStateRepository::new().with_state("foo", State::new("foo"));
+        let code = handle_state(StateCommands::Init { slug: "foo".into() }, &repo);
+        assert_eq!(code, ExitCode::Precondition);
+    }
+
+    #[test]
+    fn state_set_on_missing_slug_is_precondition() {
+        let repo = InMemoryStateRepository::new();
+        let code = handle_state(
+            StateCommands::Set {
+                slug: "ghost".into(),
+                field: "stage".into(),
+                value: "done".into(),
+            },
+            &repo,
+        );
+        assert_eq!(code, ExitCode::Precondition);
+    }
+
+    #[test]
+    fn state_set_persists_valid_field() {
+        let repo = InMemoryStateRepository::new().with_state("foo", State::new("foo"));
+        let code = handle_state(
+            StateCommands::Set {
+                slug: "foo".into(),
+                field: "score_step".into(),
+                value: "4".into(),
+            },
+            &repo,
+        );
+        assert_eq!(code, ExitCode::Success);
+        assert_eq!(repo.get("foo").expect("state should exist").score_step, 4);
+    }
+
+    #[test]
+    fn state_set_invalid_numeric_is_precondition_and_leaves_state() {
+        let repo = InMemoryStateRepository::new().with_state("foo", State::new("foo"));
+        let code = handle_state(
+            StateCommands::Set {
+                slug: "foo".into(),
+                field: "score_step".into(),
+                value: "not-a-number".into(),
+            },
+            &repo,
+        );
+        assert_eq!(code, ExitCode::Precondition);
+        assert_eq!(repo.get("foo").expect("state should exist").score_step, 0);
+    }
 }
