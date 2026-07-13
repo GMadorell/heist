@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct State {
     pub schema_version: u32,

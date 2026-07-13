@@ -5,7 +5,7 @@ use std::path::Path;
 mod exitcode;
 mod state;
 
-use state::{State, get_today_date};
+use state::{State, get_today_date, CURRENT_SCHEMA_VERSION};
 
 // Known fields in state.json
 const KNOWN_FIELDS: &[&str] = &[
@@ -162,6 +162,18 @@ fn handle_state(command: StateCommands) {
                 }
             };
 
+            // Check schema version
+            if let Some(version) = state_json.get("schema_version").and_then(|v| v.as_u64()) {
+                let version = version as u32;
+                if version != CURRENT_SCHEMA_VERSION {
+                    eprintln!("schema version mismatch: file has version {}, but CLI supports version {}", version, CURRENT_SCHEMA_VERSION);
+                    std::process::exit(exitcode::PRECONDITION);
+                }
+            } else {
+                eprintln!("schema version not found or invalid in state.json");
+                std::process::exit(exitcode::INTERNAL);
+            }
+
             // Get field value and print as plain text
             if let Some(value) = state_json.get(&field) {
                 match value {
@@ -219,6 +231,18 @@ fn handle_state(command: StateCommands) {
                     std::process::exit(exitcode::INTERNAL);
                 }
             };
+
+            // Check schema version
+            if let Some(version) = state_json.get("schema_version").and_then(|v| v.as_u64()) {
+                let version = version as u32;
+                if version != CURRENT_SCHEMA_VERSION {
+                    eprintln!("schema version mismatch: file has version {}, but CLI supports version {}", version, CURRENT_SCHEMA_VERSION);
+                    std::process::exit(exitcode::PRECONDITION);
+                }
+            } else {
+                eprintln!("schema version not found or invalid in state.json");
+                std::process::exit(exitcode::INTERNAL);
+            }
 
             // Update the field with the new value
             state_json[&field] = serde_json::json!(value);
