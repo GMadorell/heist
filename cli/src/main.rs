@@ -581,7 +581,7 @@ fn handle_resume(slug: String) {
 
     // Check if the file exists before parsing
     if !state_file.exists() {
-        eprintln!("state file not found for slug: {}", slug);
+        eprintln!("state file missing for slug: {}", slug);
         std::process::exit(exitcode::PRECONDITION);
     }
 
@@ -597,8 +597,8 @@ fn handle_resume(slug: String) {
     let state_json: serde_json::Value = match serde_json::from_str(&content) {
         Ok(json) => json,
         Err(e) => {
-            eprintln!("failed to parse state.json: {}", e);
-            std::process::exit(exitcode::INTERNAL);
+            eprintln!("state file unparseable for slug: {}: {}", slug, e);
+            std::process::exit(exitcode::PRECONDITION);
         }
     };
 

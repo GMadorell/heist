@@ -60,4 +60,89 @@ mod resume {
             stdout
         );
     }
+
+    #[test]
+    fn missing_state_file_exits_precondition() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        // Do NOT create .heist/my-slug directory at all
+
+        // Run heist-cli resume my-slug
+        let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output = cmd
+            .current_dir(temp_path)
+            .arg("resume")
+            .arg("my-slug")
+            .output()
+            .expect("failed to run resume command");
+
+        // Verify exit code is 2 (PRECONDITION)
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "command should exit with code 2, got {:?}",
+            output.status.code()
+        );
+
+        // Verify stderr mentions my-slug and missing
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("my-slug"),
+            "stderr should mention 'my-slug', got: {}",
+            stderr
+        );
+        assert!(
+            stderr.contains("missing"),
+            "stderr should mention 'missing', got: {}",
+            stderr
+        );
+    }
+
+    #[test]
+    fn unparseable_state_file_exits_precondition() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        // Create .heist/my-slug directory
+        fs::create_dir_all(temp_path.join(".heist/my-slug"))
+            .expect("failed to create .heist/my-slug directory");
+
+        // Create state.json with invalid JSON
+        fs::write(
+            temp_path.join(".heist/my-slug/state.json"),
+            "{ invalid json }",
+        )
+        .expect("failed to write state.json");
+
+        // Run heist-cli resume my-slug
+        let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output = cmd
+            .current_dir(temp_path)
+            .arg("resume")
+            .arg("my-slug")
+            .output()
+            .expect("failed to run resume command");
+
+        // Verify exit code is 2 (PRECONDITION)
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "command should exit with code 2, got {:?}",
+            output.status.code()
+        );
+
+        // Verify stderr mentions my-slug and unparseable
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("my-slug"),
+            "stderr should mention 'my-slug', got: {}",
+            stderr
+        );
+        assert!(
+            stderr.contains("unparseable"),
+            "stderr should mention 'unparseable', got: {}",
+            stderr
+        );
+    }
 }
