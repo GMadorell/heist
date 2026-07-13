@@ -80,6 +80,13 @@ fn handle_state(command: StateCommands) {
         StateCommands::Init { slug } => {
             // Create .heist/<slug>/ directory if it doesn't exist
             let state_dir = Path::new(".heist").join(&slug);
+
+            // Check if the state directory already exists
+            if state_dir.exists() {
+                eprintln!("state directory already exists for slug: {}", slug);
+                std::process::exit(exitcode::PRECONDITION);
+            }
+
             if let Err(e) = fs::create_dir_all(&state_dir) {
                 eprintln!("failed to create state directory: {}", e);
                 std::process::exit(exitcode::INTERNAL);

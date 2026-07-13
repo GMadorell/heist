@@ -59,4 +59,40 @@ mod state_init {
         // Restore original directory
         std::env::set_current_dir(&original_dir).expect("failed to restore directory");
     }
+
+    #[test]
+    fn rejects_existing_slug_directory() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        // Change to temp directory for the test
+        let original_dir = std::env::current_dir().expect("failed to get current dir");
+        std::env::set_current_dir(temp_path).expect("failed to change directory");
+
+        // Pre-create .heist/my-slug/ directory to simulate existing slug
+        fs::create_dir_all(temp_path.join(".heist/my-slug"))
+            .expect("failed to create existing slug directory");
+
+        // Run heist-cli state init my-slug
+        let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        cmd.arg("state").arg("init").arg("my-slug").assert().failure().code(2);
+
+        // Verify stderr contains the slug name
+        let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output = cmd
+            .arg("state")
+            .arg("init")
+            .arg("my-slug")
+            .output()
+            .expect("failed to run command");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("my-slug"),
+            "stderr should contain 'my-slug', got: {}",
+            stderr
+        );
+
+        // Restore original directory
+        std::env::set_current_dir(&original_dir).expect("failed to restore directory");
+    }
 }
