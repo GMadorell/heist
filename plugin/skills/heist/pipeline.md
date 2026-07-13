@@ -6,7 +6,7 @@ The pipeline runs stage-to-stage without stopping; the only stage that waits on 
 
 ## Preflight
 
-Defensive check first: if the `heist-cli` binary isn't on `PATH` (`command -v heist-cli`), print the install command (`cargo install --git https://github.com/GMadorell/heist heist-cli`) and halt — there's no fallback path to maintain here.
+If `heist-cli` isn't on `PATH`, halt and point the user to the README's install section. Otherwise proceed.
 
 ### 1. Casing gate
 
