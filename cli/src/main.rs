@@ -328,22 +328,27 @@ fn handle_worktree(command: WorktreeCommands) {
             // Create worktree directory
             let worktree_path = repo_root.join(".worktrees").join(&slug);
 
-            // Run git worktree add (suppress stdout)
-            let output = std::process::Command::new("git")
-                .args(&[
-                    "worktree",
-                    "add",
-                    worktree_path.to_string_lossy().as_ref(),
-                    "-b",
-                    &format!("heist/{}", slug),
-                    &format!("origin/{}", main_branch),
-                ])
-                .output()
-                .expect("failed to run git worktree add");
+            // Check if worktree already exists
+            let worktree_exists = worktree::worktree_exists(repo_root, &slug);
 
-            if !output.status.success() {
-                eprintln!("failed to create worktree");
-                std::process::exit(exitcode::INTERNAL);
+            if !worktree_exists {
+                // Run git worktree add (suppress stdout)
+                let output = std::process::Command::new("git")
+                    .args(&[
+                        "worktree",
+                        "add",
+                        worktree_path.to_string_lossy().as_ref(),
+                        "-b",
+                        &format!("heist/{}", slug),
+                        &format!("origin/{}", main_branch),
+                    ])
+                    .output()
+                    .expect("failed to run git worktree add");
+
+                if !output.status.success() {
+                    eprintln!("failed to create worktree");
+                    std::process::exit(exitcode::INTERNAL);
+                }
             }
 
             // Create .heist/<slug> symlink in the new worktree

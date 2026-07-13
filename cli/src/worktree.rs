@@ -219,3 +219,25 @@ pub(crate) fn ensure_worktrees_ignored(repo_root: &std::path::Path) -> bool {
 
     true // Changed
 }
+
+/// Check if a worktree for the given slug already exists.
+///
+/// Queries `git worktree list` to see if `.worktrees/<slug>` is registered.
+/// Returns `true` if the worktree exists, `false` otherwise.
+pub(crate) fn worktree_exists(repo_root: &std::path::Path, slug: &str) -> bool {
+    let worktree_path = format!(".worktrees/{}", slug);
+
+    let output = std::process::Command::new("git")
+        .args(["worktree", "list"])
+        .current_dir(repo_root)
+        .output();
+
+    if let Ok(output) = output {
+        if output.status.success() {
+            let list_str = String::from_utf8_lossy(&output.stdout);
+            return list_str.contains(&worktree_path);
+        }
+    }
+
+    false
+}

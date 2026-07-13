@@ -173,4 +173,162 @@ mod worktree_add {
             "stage should not change"
         );
     }
+
+    #[test]
+    fn is_idempotent_on_reentry() {
+        // Create temp directories for main repo and bare remote
+        let main_temp = TempDir::new().expect("failed to create main temp dir");
+        let main_repo = main_temp.path();
+
+        let bare_temp = TempDir::new().expect("failed to create bare temp dir");
+        let bare_repo = bare_temp.path();
+
+        // Initialize bare remote repo
+        run_git(bare_repo, &["init", "-q", "--bare"]);
+
+        // Initialize main repo
+        run_git(main_repo, &["init", "-q", "-b", "main"]);
+        run_git(main_repo, &["config", "user.email", "test@example.com"]);
+        run_git(main_repo, &["config", "user.name", "Test"]);
+
+        // Add remote and make initial commit
+        let bare_repo_str = bare_repo.to_string_lossy();
+        run_git(main_repo, &["remote", "add", "origin", &bare_repo_str]);
+        fs::write(main_repo.join("README.md"), "hello").expect("failed to write README");
+        run_git(main_repo, &["add", "."]);
+        run_git(main_repo, &["commit", "-q", "-m", "init"]);
+
+        // Push to remote
+        run_git(main_repo, &["push", "-u", "origin", "main"]);
+
+        // Initialize state for my-slug
+        let mut init_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        init_cmd.current_dir(main_repo);
+        init_cmd.arg("state").arg("init").arg("my-slug");
+        init_cmd.assert().success();
+
+        // Verify state.json was created
+        let state_file = main_repo.join(".heist/my-slug/state.json");
+        assert!(state_file.exists(), "state.json should exist");
+
+        // First call to worktree add
+        let mut cmd1 = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output1 = cmd1
+            .current_dir(main_repo)
+            .arg("worktree")
+            .arg("add")
+            .arg("my-slug")
+            .output()
+            .expect("failed to run worktree add");
+
+        assert!(
+            output1.status.success(),
+            "first worktree add should succeed, got exit code {:?}, stderr: {}",
+            output1.status.code(),
+            String::from_utf8_lossy(&output1.stderr)
+        );
+
+        let stdout1 = String::from_utf8_lossy(&output1.stdout);
+        let worktree_path = main_repo.join(".worktrees/my-slug");
+        let canonicalized_path = worktree_path.canonicalize()
+            .expect("failed to canonicalize worktree path");
+        let expected_output = format!("{}\n", canonicalized_path.display());
+
+        assert_eq!(
+            stdout1.to_string(),
+            expected_output,
+            "first call stdout should be worktree path followed by newline"
+        );
+
+        // Verify symlink exists and is correct
+        let symlink_path = worktree_path.join(".heist/my-slug");
+        assert!(
+            symlink_path.exists(),
+            ".worktrees/my-slug/.heist/my-slug should exist after first call"
+        );
+
+        let symlink_target = fs::read_link(&symlink_path)
+            .expect("failed to read symlink");
+        let expected_target = main_repo.join(".heist/my-slug").canonicalize()
+            .expect("failed to canonicalize expected target");
+        let actual_target = symlink_target.canonicalize()
+            .expect("failed to canonicalize actual target");
+        assert_eq!(
+            actual_target, expected_target,
+            "symlink should point to main repo's .heist/my-slug after first call"
+        );
+
+        // Second call to worktree add (should be idempotent)
+        let mut cmd2 = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output2 = cmd2
+            .current_dir(main_repo)
+            .arg("worktree")
+            .arg("add")
+            .arg("my-slug")
+            .output()
+            .expect("failed to run worktree add again");
+
+        assert!(
+            output2.status.success(),
+            "second worktree add should succeed (idempotent), got exit code {:?}, stderr: {}",
+            output2.status.code(),
+            String::from_utf8_lossy(&output2.stderr)
+        );
+
+        let stdout2 = String::from_utf8_lossy(&output2.stdout);
+        assert_eq!(
+            stdout2.to_string(),
+            expected_output,
+            "second call stdout should be same worktree path followed by newline"
+        );
+
+        // Verify symlink still exists and is still correct
+        let symlink_target2 = fs::read_link(&symlink_path)
+            .expect("failed to read symlink after second call");
+        let actual_target2 = symlink_target2.canonicalize()
+            .expect("failed to canonicalize actual target after second call");
+        assert_eq!(
+            actual_target2, expected_target,
+            "symlink should still point to main repo's .heist/my-slug after second call"
+        );
+
+        // Test symlink recreation variant: delete symlink and re-run
+        fs::remove_file(&symlink_path)
+            .expect("failed to delete symlink");
+        assert!(
+            !symlink_path.exists(),
+            "symlink should be deleted"
+        );
+
+        let mut cmd3 = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output3 = cmd3
+            .current_dir(main_repo)
+            .arg("worktree")
+            .arg("add")
+            .arg("my-slug")
+            .output()
+            .expect("failed to run worktree add after symlink deletion");
+
+        assert!(
+            output3.status.success(),
+            "worktree add after symlink deletion should succeed, got exit code {:?}, stderr: {}",
+            output3.status.code(),
+            String::from_utf8_lossy(&output3.stderr)
+        );
+
+        // Verify symlink was recreated
+        assert!(
+            symlink_path.exists(),
+            ".worktrees/my-slug/.heist/my-slug should be recreated"
+        );
+
+        let symlink_target3 = fs::read_link(&symlink_path)
+            .expect("failed to read symlink after recreation");
+        let actual_target3 = symlink_target3.canonicalize()
+            .expect("failed to canonicalize actual target after recreation");
+        assert_eq!(
+            actual_target3, expected_target,
+            "symlink should point to main repo's .heist/my-slug after recreation"
+        );
+    }
 }
