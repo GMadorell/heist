@@ -114,6 +114,16 @@ pub fn parse_sections(text: &str) -> Result<BTreeMap<String, String>, ParseError
     Ok(sections)
 }
 
+pub fn merge(layers: &[BTreeMap<String, String>]) -> BTreeMap<String, String> {
+    let mut result = BTreeMap::new();
+    for layer in layers {
+        for (key, value) in layer {
+            result.insert(key.clone(), value.clone());
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,5 +310,60 @@ None, no linter configured.
         // Error message should include line number 9
         assert!(error_msg.contains("9"),
                 "error message should include line number 9, got: {}", error_msg);
+    }
+
+    #[test]
+    fn leaf_replaces_whole_sections() {
+        // Root fixture (all 6 sections)
+        let root_fixture = r#"# Validation
+
+## Build
+None, this is a plugin.
+
+## Lint
+None, no linter configured.
+
+## Test
+No automated test suite.
+
+## Docs
+Keep README in sync.
+
+## PR conventions
+Main branch: main
+
+## Notes
+No CI configured."#;
+
+        let root_map = parse_sections(root_fixture)
+            .expect("root fixture should parse");
+
+        // Leaf fixture (only Build, Lint, Test with different content)
+        let leaf_fixture = r#"## Build
+Custom build command.
+
+## Lint
+Custom linter config.
+
+## Test
+Custom test runner."#;
+
+        let mut leaf_map = BTreeMap::new();
+        leaf_map.insert("Build".to_string(), "Custom build command.".to_string());
+        leaf_map.insert("Lint".to_string(), "Custom linter config.".to_string());
+        leaf_map.insert("Test".to_string(), "Custom test runner.".to_string());
+
+        // Call merge with root then leaf
+        let result = merge(&[root_map, leaf_map.clone()]);
+
+        // Build, Lint, Test should equal leaf's values verbatim
+        assert_eq!(result["Build"], "Custom build command.");
+        assert_eq!(result["Lint"], "Custom linter config.");
+        assert_eq!(result["Test"], "Custom test runner.");
+
+        // Docs, PR conventions, Notes should equal root's values verbatim
+        assert_eq!(result["Docs"].trim(), "Keep README in sync.");
+        assert_eq!(result["PR conventions"].trim(), "Main branch: main");
+        assert_eq!(result["Notes"].trim(), "No CI configured.");
     }
 }
