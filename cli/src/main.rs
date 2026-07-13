@@ -41,7 +41,7 @@ enum StateCommands {
     /// Initialize state
     Init { slug: String },
     /// Get state
-    Get,
+    Get { slug: String, field: String },
     /// Set state
     Set,
     /// Get state schema
@@ -111,9 +111,50 @@ fn handle_state(command: StateCommands) {
 
             std::process::exit(exitcode::SUCCESS);
         }
-        StateCommands::Get => {
-            eprintln!("not implemented");
-            std::process::exit(1);
+        StateCommands::Get { slug, field } => {
+            // Read state.json file
+            let state_file = Path::new(".heist").join(&slug).join("state.json");
+            let content = match fs::read_to_string(&state_file) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("failed to read state.json: {}", e);
+                    std::process::exit(exitcode::INTERNAL);
+                }
+            };
+
+            // Parse JSON
+            let state_json: serde_json::Value = match serde_json::from_str(&content) {
+                Ok(json) => json,
+                Err(e) => {
+                    eprintln!("failed to parse state.json: {}", e);
+                    std::process::exit(exitcode::INTERNAL);
+                }
+            };
+
+            // Get field value and print as plain text
+            if let Some(value) = state_json.get(&field) {
+                match value {
+                    serde_json::Value::String(s) => {
+                        println!("{}", s);
+                    }
+                    serde_json::Value::Number(n) => {
+                        println!("{}", n);
+                    }
+                    serde_json::Value::Bool(b) => {
+                        println!("{}", b);
+                    }
+                    serde_json::Value::Null => {
+                        println!("null");
+                    }
+                    _ => {
+                        println!("{}", value.to_string());
+                    }
+                }
+                std::process::exit(exitcode::SUCCESS);
+            } else {
+                eprintln!("field not found: {}", field);
+                std::process::exit(exitcode::INTERNAL);
+            }
         }
         StateCommands::Set => {
             eprintln!("not implemented");
