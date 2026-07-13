@@ -76,6 +76,21 @@ pub fn parse_sections(text: &str) -> Result<BTreeMap<String, String>, ParseError
         }
     }
 
+    // Check that all required sections are present
+    let required_sections = vec!["Build", "Lint", "Test"];
+    let missing_sections: Vec<&str> = required_sections
+        .iter()
+        .filter(|&&section| !sections.contains_key(section))
+        .copied()
+        .collect();
+
+    if !missing_sections.is_empty() {
+        return Err(ParseError::new(format!(
+            "missing required section(s): {}",
+            missing_sections.join(", ")
+        )));
+    }
+
     Ok(sections)
 }
 
@@ -208,5 +223,38 @@ No CI configured."#;
                 key
             );
         }
+    }
+
+    #[test]
+    fn rejects_missing_required_section() {
+        // Fixture identical to Step 25's canonical but with ## Test section deleted
+        let fixture_without_test = r#"# Validation
+
+## Build
+None, this is a plugin.
+
+## Lint
+None, no linter configured.
+
+## Docs
+Keep README in sync.
+
+## PR conventions
+Main branch: main
+
+## Notes
+No CI configured."#;
+
+        let result = parse_sections(fixture_without_test);
+
+        // Should be Err, not Ok
+        assert!(result.is_err(), "parse_sections should fail when Test section is missing");
+
+        let error = result.unwrap_err();
+        let error_msg = error.to_string();
+
+        // Error message should mention "Test"
+        assert!(error_msg.to_lowercase().contains("test"),
+                "error message should mention 'Test', got: {}", error_msg);
     }
 }
