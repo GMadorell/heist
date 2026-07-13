@@ -46,7 +46,7 @@ pub enum Stage {
     Done,
 }
 
-fn get_today_date() -> String {
+pub fn get_today_date() -> String {
     let output = std::process::Command::new("date")
         .arg("+%Y-%m-%d")
         .output()

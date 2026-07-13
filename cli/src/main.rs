@@ -5,7 +5,7 @@ use std::path::Path;
 mod exitcode;
 mod state;
 
-use state::State;
+use state::{State, get_today_date};
 
 #[derive(Parser)]
 #[command(name = "heist-cli")]
@@ -43,7 +43,7 @@ enum StateCommands {
     /// Get state
     Get { slug: String, field: String },
     /// Set state
-    Set,
+    Set { slug: String, field: String, value: String },
     /// Get state schema
     Schema,
 }
@@ -163,9 +163,56 @@ fn handle_state(command: StateCommands) {
                 std::process::exit(exitcode::INTERNAL);
             }
         }
-        StateCommands::Set => {
-            eprintln!("not implemented");
-            std::process::exit(1);
+        StateCommands::Set { slug, field, value } => {
+            // Read state.json file
+            let state_file = Path::new(".heist").join(&slug).join("state.json");
+
+            // Check if the file exists before parsing
+            if !state_file.exists() {
+                eprintln!("state file not found for slug: {}", slug);
+                std::process::exit(exitcode::PRECONDITION);
+            }
+
+            let content = match fs::read_to_string(&state_file) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("failed to read state.json: {}", e);
+                    std::process::exit(exitcode::INTERNAL);
+                }
+            };
+
+            // Parse JSON
+            let mut state_json: serde_json::Value = match serde_json::from_str(&content) {
+                Ok(json) => json,
+                Err(e) => {
+                    eprintln!("failed to parse state.json: {}", e);
+                    std::process::exit(exitcode::INTERNAL);
+                }
+            };
+
+            // Update the field with the new value
+            state_json[&field] = serde_json::json!(value);
+
+            // Update the updated field to today's date
+            let today = get_today_date();
+            state_json["updated"] = serde_json::json!(today);
+
+            // Serialize back to JSON with pretty printing
+            let updated_json = match serde_json::to_string_pretty(&state_json) {
+                Ok(json) => json,
+                Err(e) => {
+                    eprintln!("failed to serialize state: {}", e);
+                    std::process::exit(exitcode::INTERNAL);
+                }
+            };
+
+            // Write state.json back
+            if let Err(e) = fs::write(&state_file, updated_json) {
+                eprintln!("failed to write state.json: {}", e);
+                std::process::exit(exitcode::INTERNAL);
+            }
+
+            std::process::exit(exitcode::SUCCESS);
         }
         StateCommands::Schema => {
             eprintln!("not implemented");
