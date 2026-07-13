@@ -152,4 +152,126 @@ mod worktree_remove {
             stage
         );
     }
+
+    #[test]
+    fn refuses_unmerged_branch() {
+        // Create temp directories for main repo and bare remote
+        let main_temp = TempDir::new().expect("failed to create main temp dir");
+        let main_repo = main_temp.path();
+
+        let bare_temp = TempDir::new().expect("failed to create bare temp dir");
+        let bare_repo = bare_temp.path();
+
+        // Initialize bare remote repo
+        run_git(bare_repo, &["init", "-q", "--bare"]);
+
+        // Initialize main repo
+        run_git(main_repo, &["init", "-q", "-b", "main"]);
+        run_git(main_repo, &["config", "user.email", "test@example.com"]);
+        run_git(main_repo, &["config", "user.name", "Test"]);
+
+        // Add remote and make initial commit
+        let bare_repo_str = bare_repo.to_string_lossy();
+        run_git(main_repo, &["remote", "add", "origin", &bare_repo_str]);
+        fs::write(main_repo.join("README.md"), "hello").expect("failed to write README");
+        run_git(main_repo, &["add", "."]);
+        run_git(main_repo, &["commit", "-q", "-m", "init"]);
+
+        // Push to remote
+        run_git(main_repo, &["push", "-u", "origin", "main"]);
+
+        // Initialize state for my-slug
+        let mut init_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        init_cmd.current_dir(main_repo);
+        init_cmd.arg("state").arg("init").arg("my-slug");
+        init_cmd.assert().success();
+
+        // Verify state.json was created
+        let state_file = main_repo.join(".heist/my-slug/state.json");
+        assert!(state_file.exists(), "state.json should exist");
+
+        // Run heist-cli worktree add my-slug
+        let mut add_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output = add_cmd
+            .current_dir(main_repo)
+            .arg("worktree")
+            .arg("add")
+            .arg("my-slug")
+            .output()
+            .expect("failed to run worktree add");
+
+        assert!(
+            output.status.success(),
+            "worktree add should succeed, got exit code {:?}, stderr: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        // Verify .worktrees/my-slug exists
+        let worktree_path = main_repo.join(".worktrees/my-slug");
+        assert!(worktree_path.exists(), ".worktrees/my-slug should exist");
+
+        // Make a commit on the worktree on heist/my-slug branch
+        fs::write(
+            worktree_path.join("feature.txt"),
+            "feature work",
+        ).expect("failed to write feature.txt");
+        run_git(&worktree_path, &["add", "."]);
+        run_git(&worktree_path, &["commit", "-q", "-m", "add feature"]);
+
+        // Push the heist/my-slug branch to origin
+        run_git(&worktree_path, &["push", "-u", "origin", "heist/my-slug"]);
+
+        // DO NOT merge heist/my-slug into main - this is the key difference from the happy path
+
+        // Run heist-cli worktree remove my-slug
+        let mut remove_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+        let output = remove_cmd
+            .current_dir(main_repo)
+            .arg("worktree")
+            .arg("remove")
+            .arg("my-slug")
+            .output()
+            .expect("failed to run worktree remove");
+
+        // Check exit code is 2 (PRECONDITION)
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "worktree remove should exit with code 2, got {:?}, stderr: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        // Check stderr contains branch name and "not merged"
+        let stderr_str = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr_str.contains("heist/my-slug"),
+            "stderr should contain branch name 'heist/my-slug', got: {}",
+            stderr_str
+        );
+        assert!(
+            stderr_str.contains("not merged"),
+            "stderr should contain 'not merged', got: {}",
+            stderr_str
+        );
+
+        // Verify .worktrees/my-slug still exists (shouldn't have been removed)
+        assert!(
+            worktree_path.exists(),
+            ".worktrees/my-slug should still exist after refusing to remove unmerged branch"
+        );
+
+        // Verify heist/my-slug branch still exists
+        let branch_output = StdCommand::new("git")
+            .args(["branch", "-a"])
+            .current_dir(main_repo)
+            .output()
+            .expect("failed to run git branch -a");
+        let branch_str = String::from_utf8_lossy(&branch_output.stdout);
+        assert!(
+            branch_str.contains("heist/my-slug"),
+            "branch heist/my-slug should still exist after refusing to remove unmerged branch"
+        );
+    }
 }
