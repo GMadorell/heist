@@ -282,6 +282,49 @@ pub(crate) fn resolve_validations(paths: &[PathBuf]) -> Result<String, Box<dyn s
     Ok(output)
 }
 
+/// Check if at least one validation.md exists along the ancestor chain for a given path.
+///
+/// Walks from repo root down to the directory containing the path,
+/// checking if any validation.md file exists along the chain.
+/// Returns true if at least one is found, false otherwise.
+pub(crate) fn check_validation_exists(path: &Path) -> Result<bool, Box<dyn std::error::Error>> {
+    let repo_root = find_repo_root()?;
+
+    // Canonicalize the path relative to repo root
+    let target_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        repo_root.join(path)
+    };
+
+    // Get the directory containing the target path
+    let target_dir = target_path.parent().unwrap_or_else(|| Path::new("."));
+
+    // Collect all validation.md files from repo root down to target_dir
+    let mut validation_files = Vec::new();
+
+    // Start from repo root and walk down to target_dir
+    let mut current = repo_root.to_path_buf();
+    validation_files.push(current.join("validation.md"));
+
+    // Walk down the directory tree
+    if let Ok(rel_path) = target_dir.strip_prefix(&repo_root) {
+        for component in rel_path.components() {
+            current.push(component);
+            validation_files.push(current.join("validation.md"));
+        }
+    }
+
+    // Check if any validation.md exists
+    for validation_file in &validation_files {
+        if validation_file.exists() {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

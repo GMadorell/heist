@@ -84,7 +84,7 @@ enum ValidationCommands {
     /// Resolve validation
     Resolve { paths: Vec<std::path::PathBuf> },
     /// Check validation
-    Check,
+    Check { path: std::path::PathBuf },
 }
 
 fn main() {
@@ -555,9 +555,21 @@ fn handle_validation(command: ValidationCommands) {
                 }
             }
         }
-        ValidationCommands::Check => {
-            eprintln!("not implemented");
-            std::process::exit(1);
+        ValidationCommands::Check { path } => {
+            match validation::check_validation_exists(&path) {
+                Ok(true) => {
+                    println!("ok");
+                    std::process::exit(exitcode::SUCCESS);
+                }
+                Ok(false) => {
+                    println!("missing");
+                    std::process::exit(exitcode::PRECONDITION);
+                }
+                Err(e) => {
+                    eprintln!("failed to check validation: {}", e);
+                    std::process::exit(exitcode::INTERNAL);
+                }
+            }
         }
     }
 }
