@@ -366,4 +366,54 @@ Custom test runner."#;
         assert_eq!(result["PR conventions"].trim(), "Main branch: main");
         assert_eq!(result["Notes"].trim(), "No CI configured.");
     }
+
+    #[test]
+    fn three_level_merge_applies_nearest_override_per_section() {
+        // Root fixture with all 6 sections
+        let root_fixture = r#"# Validation
+
+## Build
+root build
+
+## Lint
+root lint
+
+## Test
+root test
+
+## Docs
+root docs
+
+## PR conventions
+root pr conventions
+
+## Notes
+root notes"#;
+
+        let root_map = parse_sections(root_fixture)
+            .expect("root fixture should parse");
+
+        // Middle layer: only override Test
+        let mut middle_map = BTreeMap::new();
+        middle_map.insert("Test".to_string(), "middle test".to_string());
+
+        // Leaf layer: only override Build
+        let mut leaf_map = BTreeMap::new();
+        leaf_map.insert("Build".to_string(), "leaf build".to_string());
+
+        // Call merge with root, middle, leaf
+        let result = merge(&[root_map, middle_map, leaf_map]);
+
+        // Build should come from leaf
+        assert_eq!(result["Build"], "leaf build");
+
+        // Test should come from middle (nearest override for Test)
+        assert_eq!(result["Test"].trim(), "middle test");
+
+        // Everything else should come from root
+        assert_eq!(result["Lint"].trim(), "root lint");
+        assert_eq!(result["Docs"].trim(), "root docs");
+        assert_eq!(result["PR conventions"].trim(), "root pr conventions");
+        assert_eq!(result["Notes"].trim(), "root notes");
+    }
 }
