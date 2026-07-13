@@ -49,7 +49,7 @@ mod resume {
         // Verify stdout is exactly as specified
         let stdout = String::from_utf8_lossy(&output.stdout);
         let expected =
-            "slug: my-slug\nstage: forging\nnext_step: 5\nworktree: /abs/path/to/worktree\n";
+            "slug: my-slug\nstage: forging\nnext_step: 5 (forging)\nworktree: /abs/path/to/worktree\n";
         assert_eq!(
             stdout.to_string(),
             expected,

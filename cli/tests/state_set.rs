@@ -267,7 +267,7 @@ mod state_set {
 
     fn get_today_date() -> String {
         let output = std::process::Command::new("date")
-            .arg("+%Y-%m-%d")
+            .args(["-u", "+%Y-%m-%d"])
             .output()
             .expect("failed to get date");
         String::from_utf8(output.stdout)

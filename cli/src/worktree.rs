@@ -1,126 +1,97 @@
-/// Detect the repository's main branch.
+use std::path::Path;
+
+/// Detect the repository's main branch, always via git.
 ///
-/// Prefers a `Main branch: <name>` line under `## PR conventions` in
-/// `validation.md` at `repo_root` if present; otherwise falls back to git
-/// (origin's default branch, or the current branch if there's no remote).
-pub(crate) fn detect_main_branch(repo_root: &std::path::Path) -> String {
-    let validation_path = repo_root.join("validation.md");
-    if let Ok(text) = std::fs::read_to_string(&validation_path) {
-        if let Some(branch) = parse_main_branch_from_validation(&text) {
-            return branch;
-        }
-    }
-
-    detect_main_branch_via_git(repo_root)
-}
-
-fn parse_main_branch_from_validation(text: &str) -> Option<String> {
-    let mut in_pr_conventions = false;
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("##") {
-            in_pr_conventions = trimmed
-                .trim_start_matches('#')
-                .trim()
-                .eq_ignore_ascii_case("PR conventions");
-            continue;
-        }
-        if in_pr_conventions {
-            let bullet = trimmed.trim_start_matches(['-', '*']).trim();
-            if let Some(rest) = bullet.strip_prefix("Main branch:") {
-                let branch = rest.trim().trim_matches('`').trim();
-                if !branch.is_empty() {
-                    return Some(branch.to_string());
+/// Prefers origin's default branch (`refs/remotes/origin/HEAD`); falls back to
+/// the current branch when there's no remote. The `Main branch:` line in
+/// `validation.md` is for human-facing agents (Cleaner, etc.), not for the
+/// deterministic CLI, which shouldn't parse prose for something git knows.
+pub(crate) fn detect_main_branch(repo_root: &Path) -> String {
+    if let Ok(repo) = git2::Repository::open(repo_root) {
+        if let Ok(reference) = repo.find_reference("refs/remotes/origin/HEAD") {
+            if let Ok(Some(target)) = reference.symbolic_target() {
+                if let Some(name) = target.rsplit('/').next() {
+                    if !name.is_empty() {
+                        return name.to_string();
+                    }
                 }
             }
         }
-    }
-    None
-}
 
-fn detect_main_branch_via_git(repo_root: &std::path::Path) -> String {
-    // Try origin's default branch first.
-    let output = std::process::Command::new("git")
-        .args(["symbolic-ref", "refs/remotes/origin/HEAD"])
-        .current_dir(repo_root)
-        .output();
-
-    if let Ok(output) = output {
-        if output.status.success() {
-            let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if let Some(name) = raw.rsplit('/').next() {
-                if !name.is_empty() {
-                    return name.to_string();
-                }
+        // No remote default: fall back to the current branch.
+        if let Ok(head) = repo.head() {
+            if let Ok(name) = head.shorthand() {
+                return name.to_string();
             }
         }
     }
 
-    // Fall back to the current branch (no remote configured).
-    let output = std::process::Command::new("git")
-        .args(["branch", "--show-current"])
-        .current_dir(repo_root)
-        .output()
-        .expect("failed to run git branch --show-current");
+    String::new()
+}
 
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
+/// Whether `branch` is merged into `origin/<main_branch>`.
+///
+/// True when the branch tip equals the main tip (e.g. after a fast-forward
+/// merge) or is an ancestor of it.
+pub(crate) fn branch_merged_into_main(
+    repo_root: &Path,
+    branch: &str,
+    main_branch: &str,
+) -> Result<bool, git2::Error> {
+    let repo = git2::Repository::open(repo_root)?;
+    let branch_oid = repo.revparse_single(branch)?.id();
+    let main_oid = repo
+        .revparse_single(&format!("origin/{}", main_branch))?
+        .id();
+
+    if branch_oid == main_oid {
+        return Ok(true);
+    }
+    repo.graph_descendant_of(main_oid, branch_oid)
 }
 
 /// Ensure `.worktrees/` is ignored in the repository's `.gitignore`.
 ///
-/// Checks if `.worktrees/` is already ignored in the `.gitignore` file.
-/// If not, appends it to `.gitignore` (creating the file if absent) and returns `true`.
-/// Returns `false` if `.worktrees/` was already ignored (no changes made).
-pub(crate) fn ensure_worktrees_ignored(repo_root: &std::path::Path) -> bool {
+/// Appends the entry (creating the file if absent) and returns `true`, or
+/// returns `false` when it was already ignored (no changes made).
+pub(crate) fn ensure_worktrees_ignored(repo_root: &Path) -> bool {
     let gitignore_path = repo_root.join(".gitignore");
 
-    // Check if already in .gitignore file
     if gitignore_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&gitignore_path) {
             if content.contains(".worktrees/") {
-                return false; // Already in file, no change needed
+                return false;
             }
         }
     }
 
-    // .worktrees/ is not in .gitignore, add it
     let mut content = if gitignore_path.exists() {
         std::fs::read_to_string(&gitignore_path).unwrap_or_default()
     } else {
         String::new()
     };
 
-    // Ensure content ends with newline if it's not empty
     if !content.is_empty() && !content.ends_with('\n') {
         content.push('\n');
     }
-
     content.push_str(".worktrees/\n");
 
     std::fs::write(&gitignore_path, &content).expect("failed to write .gitignore");
-
-    true // Changed
+    true
 }
 
-/// Check if a worktree for the given slug already exists.
-///
-/// Queries `git worktree list` to see if `.worktrees/<slug>` is registered.
-/// Returns `true` if the worktree exists, `false` otherwise.
-pub(crate) fn worktree_exists(repo_root: &std::path::Path, slug: &str) -> bool {
-    let worktree_path = format!(".worktrees/{}", slug);
-
-    let output = std::process::Command::new("git")
-        .args(["worktree", "list"])
-        .current_dir(repo_root)
-        .output();
-
-    if let Ok(output) = output {
-        if output.status.success() {
-            let list_str = String::from_utf8_lossy(&output.stdout);
-            return list_str.contains(&worktree_path);
+/// Whether a worktree for `slug` is already registered (`.worktrees/<slug>`).
+pub(crate) fn worktree_exists(repo_root: &Path, slug: &str) -> bool {
+    if let Ok(repo) = git2::Repository::open(repo_root) {
+        if let Ok(worktrees) = repo.worktrees() {
+            // iter() yields Result<Option<&str>, _>; flatten twice to reach &str.
+            return worktrees
+                .iter()
+                .flatten()
+                .flatten()
+                .any(|name| name == slug);
         }
     }
-
     false
 }
 
@@ -145,48 +116,21 @@ mod tests {
         assert!(status.success(), "git {:?} failed", args);
     }
 
-    mod worktree_add {
-        use super::*;
+    #[test]
+    fn detects_main_branch_via_git() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let repo_root = temp_dir.path();
 
-        #[test]
-        fn detects_main_branch_from_validation_md() {
-            let temp_dir = TempDir::new().expect("failed to create temp directory");
-            let repo_root = temp_dir.path();
+        run_git(repo_root, &["init", "-q", "-b", "main"]);
+        run_git(repo_root, &["config", "user.email", "test@example.com"]);
+        run_git(repo_root, &["config", "user.name", "Test"]);
 
-            run_git(repo_root, &["init", "-q"]);
-            run_git(repo_root, &["config", "user.email", "test@example.com"]);
-            run_git(repo_root, &["config", "user.name", "Test"]);
+        fs::write(repo_root.join("README.md"), "hello").expect("failed to write file");
+        run_git(repo_root, &["add", "."]);
+        run_git(repo_root, &["commit", "-q", "-m", "init"]);
 
-            fs::write(
-                repo_root.join("validation.md"),
-                "## PR conventions\n- Main branch: main\n- Commit style: whatever\n",
-            )
-            .expect("failed to write validation.md");
-
-            run_git(repo_root, &["add", "."]);
-            run_git(repo_root, &["commit", "-q", "-m", "init"]);
-
-            let branch = crate::worktree::detect_main_branch(repo_root);
-            assert_eq!(branch, "main");
-        }
-
-        #[test]
-        fn detects_main_branch_via_git_fallback() {
-            let temp_dir = TempDir::new().expect("failed to create temp directory");
-            let repo_root = temp_dir.path();
-
-            run_git(repo_root, &["init", "-q", "-b", "main"]);
-            run_git(repo_root, &["config", "user.email", "test@example.com"]);
-            run_git(repo_root, &["config", "user.name", "Test"]);
-
-            fs::write(repo_root.join("README.md"), "hello").expect("failed to write file");
-            run_git(repo_root, &["add", "."]);
-            run_git(repo_root, &["commit", "-q", "-m", "init"]);
-
-            // No validation.md present in this repo.
-            let branch = crate::worktree::detect_main_branch(repo_root);
-            assert_eq!(branch, "main");
-        }
+        let branch = crate::worktree::detect_main_branch(repo_root);
+        assert_eq!(branch, "main");
     }
 
     #[test]
@@ -202,14 +146,11 @@ mod tests {
         run_git(repo_root, &["add", "."]);
         run_git(repo_root, &["commit", "-q", "-m", "init"]);
 
-        // No .gitignore exists yet
         assert!(!repo_root.join(".gitignore").exists());
 
-        // Call ensure_worktrees_ignored
         let changed = crate::worktree::ensure_worktrees_ignored(repo_root);
         assert!(changed, "should return true when .gitignore was missing");
 
-        // Verify .gitignore now exists and contains .worktrees/
         let gitignore_content =
             fs::read_to_string(repo_root.join(".gitignore")).expect("failed to read .gitignore");
         assert!(
@@ -227,7 +168,6 @@ mod tests {
         run_git(repo_root, &["config", "user.email", "test@example.com"]);
         run_git(repo_root, &["config", "user.name", "Test"]);
 
-        // Create .gitignore with .worktrees/ already present
         fs::write(repo_root.join(".gitignore"), ".worktrees/\n")
             .expect("failed to write .gitignore");
         fs::write(repo_root.join("README.md"), "hello").expect("failed to write file");
@@ -237,14 +177,12 @@ mod tests {
         let original_content =
             fs::read_to_string(repo_root.join(".gitignore")).expect("failed to read .gitignore");
 
-        // Call ensure_worktrees_ignored
         let changed = crate::worktree::ensure_worktrees_ignored(repo_root);
         assert!(
             !changed,
             "should return false when .worktrees/ is already ignored"
         );
 
-        // Verify .gitignore hasn't changed
         let new_content =
             fs::read_to_string(repo_root.join(".gitignore")).expect("failed to read .gitignore");
         assert_eq!(

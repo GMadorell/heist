@@ -151,7 +151,7 @@ mod worktree_add {
 
         // Check that updated field is today's date
         let get_date_output = StdCommand::new("date")
-            .arg("+%Y-%m-%d")
+            .args(["-u", "+%Y-%m-%d"])
             .output()
             .expect("failed to get date");
         let today = String::from_utf8(get_date_output.stdout)
