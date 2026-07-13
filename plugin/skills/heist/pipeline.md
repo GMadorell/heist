@@ -11,9 +11,9 @@ If `validation.md` doesn't exist at the repo root, invoke the `heist:casing` ski
 ### 2. Planning: relay loop with the Mastermind
 
 1. Spawn `heist:slugger` (foreground, one-shot) with the raw change description the user gave `/heist`. The answer will be a slug, parse it.
-2. Ensure `.heist/<slug>/` at the repo root exists.
-3. Write `.heist/<slug>/state.json` from `templates/state.json` (in this plugin's directory) with `slug` set, `stage: "planning"`, `created`/`updated` set to today.
-4. Run the setup half of the `heist:safehouse` skill's instructions for `<slug>` (same logic as invoking `/heist:safehouse <slug>` directly). We should end up with a worktree created at this point, and the `state.json` updated too.
+2. Run `heist-cli state init <slug>`.
+3. Run `heist-cli worktree add <slug>`.
+4. Run `heist-cli state set <slug> stage planning`.
 5. Spawn `heist:mastermind` (foreground, i.e. `run_in_background: false` on the Agent tool call) with a task message containing: the raw change description, the slug, the worktree's absolute path, and an explicit `cd <worktree-path>` instruction.
 6. **The relay loop**: each Mastermind reply is either a structured question or the completion signal. The Mastermind runs in the worktree context via the explicit cd instruction from step 5.
    - **Mandatory routing rule**: every structured question, with no exceptions, gets an `AskUserQuestion` call before you do anything else with it. Never answer on the human's behalf, never treat the `RECOMMENDATION:` line as an implicit answer, never skip the call because the question "seems minor" or "seems obvious" or because you're confident what the human would pick. The Mastermind already did the work of deciding this is a human decision (see its interview protocol) — your only job here is to relay, not to re-judge that call.
