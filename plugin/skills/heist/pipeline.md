@@ -4,6 +4,10 @@ This is the full `/heist <description>` pipeline: casing → planning → fence 
 
 The pipeline runs stage-to-stage without stopping; the only stage that waits on a human is human review (step 4). Steps below say "continue into X" as a pointer, not a reminder — no need to restate "don't stop" each time.
 
+## Preflight
+
+Defensive check first: if the `heist-cli` binary isn't on `PATH` (`command -v heist-cli`), print the install command (`cargo install --git https://github.com/GMadorell/heist heist-cli`) and halt — there's no fallback path to maintain here.
+
 ### 1. Casing gate
 
 If `validation.md` doesn't exist at the repo root, invoke the `heist:casing` skill's instructions yourself before continuing (don't ask the human to do it as a separate step — this is the "auto-triggered by /heist when validation.md missing" behavior). If it exists, proceed directly.
