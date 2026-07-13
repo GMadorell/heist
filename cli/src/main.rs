@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 
 mod exitcode;
+mod resume;
 mod state;
 mod worktree;
 mod validation;
