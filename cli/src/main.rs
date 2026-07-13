@@ -10,7 +10,65 @@ mod worktree;
 
 use state::{get_today_date, State, CURRENT_SCHEMA_VERSION};
 
-// Known fields in state.json
+#[derive(Parser)]
+#[command(name = "heist-cli")]
+#[command(about = "Heist CLI tool", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    State {
+        #[command(subcommand)]
+        command: StateCommands,
+    },
+    Worktree {
+        #[command(subcommand)]
+        command: WorktreeCommands,
+    },
+    Validation {
+        #[command(subcommand)]
+        command: ValidationCommands,
+    },
+    Resume {
+        slug: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum StateCommands {
+    Init {
+        slug: String,
+    },
+    Get {
+        slug: String,
+        field: String,
+    },
+    Set {
+        slug: String,
+        field: String,
+        value: String,
+    },
+    Schema {
+        #[arg(long = "write-docs")]
+        write_docs: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorktreeCommands {
+    Add { slug: String },
+    Remove { slug: String },
+}
+
+#[derive(Subcommand)]
+enum ValidationCommands {
+    Resolve { paths: Vec<std::path::PathBuf> },
+    Check { path: std::path::PathBuf },
+}
+
 const KNOWN_FIELDS: &[&str] = &[
     "schema_version",
     "slug",
@@ -26,70 +84,6 @@ const KNOWN_FIELDS: &[&str] = &[
 
 fn is_known_field(field: &str) -> bool {
     KNOWN_FIELDS.contains(&field)
-}
-
-#[derive(Parser)]
-#[command(name = "heist-cli")]
-#[command(about = "Heist CLI tool", long_about = None)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// State management commands
-    State {
-        #[command(subcommand)]
-        command: StateCommands,
-    },
-    /// Worktree management commands
-    Worktree {
-        #[command(subcommand)]
-        command: WorktreeCommands,
-    },
-    /// Validation commands
-    Validation {
-        #[command(subcommand)]
-        command: ValidationCommands,
-    },
-    /// Resume a command
-    Resume { slug: String },
-}
-
-#[derive(Subcommand)]
-enum StateCommands {
-    /// Initialize state
-    Init { slug: String },
-    /// Get state
-    Get { slug: String, field: String },
-    /// Set state
-    Set {
-        slug: String,
-        field: String,
-        value: String,
-    },
-    /// Get state schema
-    Schema {
-        #[arg(long = "write-docs")]
-        write_docs: bool,
-    },
-}
-
-#[derive(Subcommand)]
-enum WorktreeCommands {
-    /// Add a worktree
-    Add { slug: String },
-    /// Remove a worktree
-    Remove { slug: String },
-}
-
-#[derive(Subcommand)]
-enum ValidationCommands {
-    /// Resolve validation
-    Resolve { paths: Vec<std::path::PathBuf> },
-    /// Check validation
-    Check { path: std::path::PathBuf },
 }
 
 fn main() {
@@ -140,16 +134,13 @@ fn handle_state(command: StateCommands) {
             std::process::exit(exitcode::SUCCESS);
         }
         StateCommands::Get { slug, field } => {
-            // Check if field is known
             if !is_known_field(&field) {
                 eprintln!("unknown field: {}", field);
                 std::process::exit(exitcode::PRECONDITION);
             }
 
-            // Read state.json file
             let state_file = Path::new(".heist").join(&slug).join("state.json");
 
-            // Check if the file exists before parsing
             if !state_file.exists() {
                 eprintln!("state file not found for slug: {}", slug);
                 std::process::exit(exitcode::PRECONDITION);
@@ -163,7 +154,6 @@ fn handle_state(command: StateCommands) {
                 }
             };
 
-            // Parse JSON
             let state_json: serde_json::Value = match serde_json::from_str(&content) {
                 Ok(json) => json,
                 Err(e) => {
@@ -172,7 +162,6 @@ fn handle_state(command: StateCommands) {
                 }
             };
 
-            // Check schema version
             if let Some(version) = state_json.get("schema_version").and_then(|v| v.as_u64()) {
                 let version = version as u32;
                 if version != CURRENT_SCHEMA_VERSION {
@@ -187,7 +176,6 @@ fn handle_state(command: StateCommands) {
                 std::process::exit(exitcode::INTERNAL);
             }
 
-            // Get field value and print as plain text
             if let Some(value) = state_json.get(&field) {
                 match value {
                     serde_json::Value::String(s) => {
@@ -213,16 +201,13 @@ fn handle_state(command: StateCommands) {
             }
         }
         StateCommands::Set { slug, field, value } => {
-            // Check if field is known
             if !is_known_field(&field) {
                 eprintln!("unknown field: {}", field);
                 std::process::exit(exitcode::PRECONDITION);
             }
 
-            // Read state.json file
             let state_file = Path::new(".heist").join(&slug).join("state.json");
 
-            // Check if the file exists before parsing
             if !state_file.exists() {
                 eprintln!("state file not found for slug: {}", slug);
                 std::process::exit(exitcode::PRECONDITION);
@@ -236,7 +221,6 @@ fn handle_state(command: StateCommands) {
                 }
             };
 
-            // Parse JSON
             let mut state_json: serde_json::Value = match serde_json::from_str(&content) {
                 Ok(json) => json,
                 Err(e) => {
@@ -245,7 +229,6 @@ fn handle_state(command: StateCommands) {
                 }
             };
 
-            // Check schema version
             if let Some(version) = state_json.get("schema_version").and_then(|v| v.as_u64()) {
                 let version = version as u32;
                 if version != CURRENT_SCHEMA_VERSION {
