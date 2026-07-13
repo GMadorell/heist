@@ -32,9 +32,19 @@ pub fn parse_sections(text: &str) -> Result<BTreeMap<String, String>, ParseError
     let mut i = 0;
     while i < lines.len() {
         let line = lines[i];
+        let line_number = i + 1; // 1-based line number
 
-        // Check if line is a section heading (starts with "## ")
-        if line.starts_with("## ") {
+        // Check if line looks like a heading attempt (starts with ## - section heading)
+        if line.starts_with("##") {
+            // Valid heading pattern: must be "## " (with space after ##)
+            if !line.starts_with("## ") {
+                // Malformed heading
+                return Err(ParseError::new(format!(
+                    "malformed heading on line {}: {}",
+                    line_number, line
+                )));
+            }
+
             let raw_heading = line[3..].trim().to_string();
             let heading_lower = raw_heading.to_lowercase();
 
@@ -51,6 +61,16 @@ pub fn parse_sections(text: &str) -> Result<BTreeMap<String, String>, ParseError
 
             while i < lines.len() && !lines[i].starts_with("## ") {
                 let body_line = lines[i];
+                let body_line_number = i + 1; // 1-based line number for body lines
+
+                // Check if this line looks like a malformed heading (starts with ## but not ## )
+                if body_line.starts_with("##") && !body_line.starts_with("## ") {
+                    return Err(ParseError::new(format!(
+                        "malformed heading on line {}: {}",
+                        body_line_number, body_line
+                    )));
+                }
+
                 // Normalize bullet markers: trim and treat - and * as equivalent
                 let normalized_line = if body_line.trim_start().starts_with('-') || body_line.trim_start().starts_with('*') {
                     let trimmed = body_line.trim_start();
@@ -256,5 +276,29 @@ No CI configured."#;
         // Error message should mention "Test"
         assert!(error_msg.to_lowercase().contains("test"),
                 "error message should mention 'Test', got: {}", error_msg);
+    }
+
+    #[test]
+    fn rejects_malformed_heading_with_line_number() {
+        let fixture = r#"# Validation
+
+## Build
+None, this is a plugin.
+
+## Lint
+None, no linter configured.
+
+###Test:"#;
+
+        let result = parse_sections(fixture);
+
+        assert!(result.is_err(), "parse_sections should reject malformed heading");
+
+        let error = result.unwrap_err();
+        let error_msg = error.to_string();
+
+        // Error message should include line number 9
+        assert!(error_msg.contains("9"),
+                "error message should include line number 9, got: {}", error_msg);
     }
 }
