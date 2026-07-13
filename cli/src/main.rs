@@ -63,7 +63,10 @@ enum StateCommands {
     /// Set state
     Set { slug: String, field: String, value: String },
     /// Get state schema
-    Schema,
+    Schema {
+        #[arg(long = "write-docs")]
+        write_docs: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -268,19 +271,17 @@ fn handle_state(command: StateCommands) {
 
             std::process::exit(exitcode::SUCCESS);
         }
-        StateCommands::Schema => {
-            // Print field list
-            println!("schema_version: u32");
-            println!("slug: string");
-            println!("stage: string (casing|planning|fence_review|human_review|forging|safehouse|implementing|cleaning|done)");
-            println!("worktree: string|null");
-            println!("branch: string|null");
-            println!("score_step: u32");
-            println!("score_steps_total: u32");
-            println!("fence_rounds: u32");
-            println!("created: string");
-            println!("updated: string");
-            println!();
+        StateCommands::Schema { write_docs } => {
+            let field_list = "schema_version: u32\n\
+slug: string\n\
+stage: string (casing|planning|fence_review|human_review|forging|safehouse|implementing|cleaning|done)\n\
+worktree: string|null\n\
+branch: string|null\n\
+score_step: u32\n\
+score_steps_total: u32\n\
+fence_rounds: u32\n\
+created: string\n\
+updated: string";
 
             // Create example state and pretty print
             let example_state = State::new("example");
@@ -291,7 +292,21 @@ fn handle_state(command: StateCommands) {
                     std::process::exit(exitcode::INTERNAL);
                 }
             };
-            println!("{}", json);
+
+            let body = format!("{}\n\n{}", field_list, json);
+            println!("{}", body);
+
+            if write_docs {
+                if let Err(e) = fs::create_dir_all("docs") {
+                    eprintln!("failed to create docs directory: {}", e);
+                    std::process::exit(exitcode::INTERNAL);
+                }
+                let docs_content = format!("# State schema\n\n{}\n", body);
+                if let Err(e) = fs::write("docs/state-schema.md", docs_content) {
+                    eprintln!("failed to write docs/state-schema.md: {}", e);
+                    std::process::exit(exitcode::INTERNAL);
+                }
+            }
 
             std::process::exit(exitcode::SUCCESS);
         }
