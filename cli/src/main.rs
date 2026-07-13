@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 
+mod exitcode;
+
 #[derive(Parser)]
 #[command(name = "heist-cli")]
 #[command(about = "Heist CLI tool", long_about = None)]
