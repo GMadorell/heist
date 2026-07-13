@@ -5,10 +5,10 @@ use std::path::Path;
 mod exitcode;
 mod resume;
 mod state;
-mod worktree;
 mod validation;
+mod worktree;
 
-use state::{State, get_today_date, CURRENT_SCHEMA_VERSION};
+use state::{get_today_date, State, CURRENT_SCHEMA_VERSION};
 
 // Known fields in state.json
 const KNOWN_FIELDS: &[&str] = &[
@@ -64,7 +64,11 @@ enum StateCommands {
     /// Get state
     Get { slug: String, field: String },
     /// Set state
-    Set { slug: String, field: String, value: String },
+    Set {
+        slug: String,
+        field: String,
+        value: String,
+    },
     /// Get state schema
     Schema {
         #[arg(long = "write-docs")]
@@ -172,7 +176,10 @@ fn handle_state(command: StateCommands) {
             if let Some(version) = state_json.get("schema_version").and_then(|v| v.as_u64()) {
                 let version = version as u32;
                 if version != CURRENT_SCHEMA_VERSION {
-                    eprintln!("schema version mismatch: file has version {}, but CLI supports version {}", version, CURRENT_SCHEMA_VERSION);
+                    eprintln!(
+                        "schema version mismatch: file has version {}, but CLI supports version {}",
+                        version, CURRENT_SCHEMA_VERSION
+                    );
                     std::process::exit(exitcode::PRECONDITION);
                 }
             } else {
@@ -196,7 +203,7 @@ fn handle_state(command: StateCommands) {
                         println!("null");
                     }
                     _ => {
-                        println!("{}", value.to_string());
+                        println!("{}", value);
                     }
                 }
                 std::process::exit(exitcode::SUCCESS);
@@ -242,7 +249,10 @@ fn handle_state(command: StateCommands) {
             if let Some(version) = state_json.get("schema_version").and_then(|v| v.as_u64()) {
                 let version = version as u32;
                 if version != CURRENT_SCHEMA_VERSION {
-                    eprintln!("schema version mismatch: file has version {}, but CLI supports version {}", version, CURRENT_SCHEMA_VERSION);
+                    eprintln!(
+                        "schema version mismatch: file has version {}, but CLI supports version {}",
+                        version, CURRENT_SCHEMA_VERSION
+                    );
                     std::process::exit(exitcode::PRECONDITION);
                 }
             } else {
@@ -336,7 +346,7 @@ fn handle_worktree(command: WorktreeCommands) {
             if !worktree_exists {
                 // Run git worktree add (suppress stdout)
                 let output = std::process::Command::new("git")
-                    .args(&[
+                    .args([
                         "worktree",
                         "add",
                         worktree_path.to_string_lossy().as_ref(),
@@ -368,7 +378,8 @@ fn handle_worktree(command: WorktreeCommands) {
 
             // Create .heist/<slug> symlink in the new worktree
             let main_heist_path = repo_root.join(".heist").join(&slug);
-            let main_heist_canonical = main_heist_path.canonicalize()
+            let main_heist_canonical = main_heist_path
+                .canonicalize()
                 .expect("failed to canonicalize main repo .heist/<slug>");
 
             let worktree_heist_dir = worktree_path.join(".heist");
@@ -379,8 +390,7 @@ fn handle_worktree(command: WorktreeCommands) {
 
             let worktree_heist_slug = worktree_heist_dir.join(&slug);
             if worktree_heist_slug.exists() {
-                fs::remove_file(&worktree_heist_slug)
-                    .expect("failed to remove existing symlink");
+                fs::remove_file(&worktree_heist_slug).expect("failed to remove existing symlink");
             }
 
             #[cfg(unix)]
@@ -399,14 +409,14 @@ fn handle_worktree(command: WorktreeCommands) {
             // Update state.json with worktree and branch
             let state_file = repo_root.join(".heist").join(&slug).join("state.json");
 
-            let content = fs::read_to_string(&state_file)
-                .expect("failed to read state.json");
+            let content = fs::read_to_string(&state_file).expect("failed to read state.json");
 
-            let mut state_json: serde_json::Value = serde_json::from_str(&content)
-                .expect("failed to parse state.json");
+            let mut state_json: serde_json::Value =
+                serde_json::from_str(&content).expect("failed to parse state.json");
 
             // Update worktree and branch fields
-            state_json["worktree"] = serde_json::json!(worktree_path.canonicalize()
+            state_json["worktree"] = serde_json::json!(worktree_path
+                .canonicalize()
                 .expect("failed to canonicalize worktree path")
                 .to_string_lossy()
                 .to_string());
@@ -417,15 +427,15 @@ fn handle_worktree(command: WorktreeCommands) {
             state_json["updated"] = serde_json::json!(today);
 
             // Serialize back to JSON with pretty printing
-            let updated_json = serde_json::to_string_pretty(&state_json)
-                .expect("failed to serialize state");
+            let updated_json =
+                serde_json::to_string_pretty(&state_json).expect("failed to serialize state");
 
             // Write state.json back
-            fs::write(&state_file, updated_json)
-                .expect("failed to write state.json");
+            fs::write(&state_file, updated_json).expect("failed to write state.json");
 
             // Print worktree path to stdout
-            let worktree_absolute = worktree_path.canonicalize()
+            let worktree_absolute = worktree_path
+                .canonicalize()
                 .expect("failed to canonicalize worktree path");
             println!("{}", worktree_absolute.display());
 
@@ -439,7 +449,7 @@ fn handle_worktree(command: WorktreeCommands) {
 
             // Confirm heist/<slug> is merged into main
             let merged_output = std::process::Command::new("git")
-                .args(&["branch", "--merged", &format!("origin/{}", main_branch)])
+                .args(["branch", "--merged", &format!("origin/{}", main_branch)])
                 .current_dir(repo_root)
                 .output()
                 .expect("failed to check merged branches");
@@ -460,7 +470,11 @@ fn handle_worktree(command: WorktreeCommands) {
             // Run git worktree remove .worktrees/<slug>
             let worktree_path = repo_root.join(".worktrees").join(&slug);
             let worktree_remove_output = std::process::Command::new("git")
-                .args(&["worktree", "remove", worktree_path.to_string_lossy().as_ref()])
+                .args([
+                    "worktree",
+                    "remove",
+                    worktree_path.to_string_lossy().as_ref(),
+                ])
                 .output()
                 .expect("failed to run git worktree remove");
 
@@ -472,7 +486,7 @@ fn handle_worktree(command: WorktreeCommands) {
 
             // Run git branch -d heist/<slug>
             let branch_delete_output = std::process::Command::new("git")
-                .args(&["branch", "-d", &format!("heist/{}", slug)])
+                .args(["branch", "-d", &format!("heist/{}", slug)])
                 .output()
                 .expect("failed to run git branch -d");
 
@@ -484,7 +498,7 @@ fn handle_worktree(command: WorktreeCommands) {
 
             // Also delete the remote branch
             let remote_branch_delete_output = std::process::Command::new("git")
-                .args(&["push", "origin", "--delete", &format!("heist/{}", slug)])
+                .args(["push", "origin", "--delete", &format!("heist/{}", slug)])
                 .output()
                 .expect("failed to run git push origin --delete");
 
@@ -497,11 +511,10 @@ fn handle_worktree(command: WorktreeCommands) {
             // Update state.json's stage to "done" if not already
             let state_file = repo_root.join(".heist").join(&slug).join("state.json");
 
-            let content = fs::read_to_string(&state_file)
-                .expect("failed to read state.json");
+            let content = fs::read_to_string(&state_file).expect("failed to read state.json");
 
-            let mut state_json: serde_json::Value = serde_json::from_str(&content)
-                .expect("failed to parse state.json");
+            let mut state_json: serde_json::Value =
+                serde_json::from_str(&content).expect("failed to parse state.json");
 
             // Set stage to "done"
             state_json["stage"] = serde_json::json!("done");
@@ -511,12 +524,11 @@ fn handle_worktree(command: WorktreeCommands) {
             state_json["updated"] = serde_json::json!(today);
 
             // Serialize back to JSON with pretty printing
-            let updated_json = serde_json::to_string_pretty(&state_json)
-                .expect("failed to serialize state");
+            let updated_json =
+                serde_json::to_string_pretty(&state_json).expect("failed to serialize state");
 
             // Write state.json back
-            fs::write(&state_file, updated_json)
-                .expect("failed to write state.json");
+            fs::write(&state_file, updated_json).expect("failed to write state.json");
 
             std::process::exit(exitcode::SUCCESS);
         }
@@ -556,22 +568,20 @@ fn handle_validation(command: ValidationCommands) {
                 }
             }
         }
-        ValidationCommands::Check { path } => {
-            match validation::check_validation_exists(&path) {
-                Ok(true) => {
-                    println!("ok");
-                    std::process::exit(exitcode::SUCCESS);
-                }
-                Ok(false) => {
-                    println!("missing");
-                    std::process::exit(exitcode::PRECONDITION);
-                }
-                Err(e) => {
-                    eprintln!("failed to check validation: {}", e);
-                    std::process::exit(exitcode::INTERNAL);
-                }
+        ValidationCommands::Check { path } => match validation::check_validation_exists(&path) {
+            Ok(true) => {
+                println!("ok");
+                std::process::exit(exitcode::SUCCESS);
             }
-        }
+            Ok(false) => {
+                println!("missing");
+                std::process::exit(exitcode::PRECONDITION);
+            }
+            Err(e) => {
+                eprintln!("failed to check validation: {}", e);
+                std::process::exit(exitcode::INTERNAL);
+            }
+        },
     }
 }
 
@@ -606,7 +616,10 @@ fn handle_resume(slug: String) {
     if let Some(version) = state_json.get("schema_version").and_then(|v| v.as_u64()) {
         let version = version as u32;
         if version != CURRENT_SCHEMA_VERSION {
-            eprintln!("schema version mismatch: file has version {}, but CLI supports version {}", version, CURRENT_SCHEMA_VERSION);
+            eprintln!(
+                "schema version mismatch: file has version {}, but CLI supports version {}",
+                version, CURRENT_SCHEMA_VERSION
+            );
             std::process::exit(exitcode::PRECONDITION);
         }
     } else {
@@ -615,13 +628,15 @@ fn handle_resume(slug: String) {
     }
 
     // Extract slug
-    let slug_value = state_json.get("slug")
+    let slug_value = state_json
+        .get("slug")
         .and_then(|v| v.as_str())
         .unwrap_or(&slug)
         .to_string();
 
     // Extract stage and calculate next_step
-    let stage = state_json.get("stage")
+    let stage = state_json
+        .get("stage")
         .and_then(|v| v.as_str())
         .unwrap_or("casing");
 

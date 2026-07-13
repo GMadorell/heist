@@ -74,24 +74,49 @@ mod tests {
         assert_eq!(json["schema_version"], 1, "schema_version should be 1");
         assert_eq!(json["slug"], "my-slug", "slug should be 'my-slug'");
         assert_eq!(json["stage"], "casing", "stage should be 'casing'");
-        assert_eq!(json["worktree"], serde_json::Value::Null, "worktree should be null");
-        assert_eq!(json["branch"], serde_json::Value::Null, "branch should be null");
+        assert_eq!(
+            json["worktree"],
+            serde_json::Value::Null,
+            "worktree should be null"
+        );
+        assert_eq!(
+            json["branch"],
+            serde_json::Value::Null,
+            "branch should be null"
+        );
         assert_eq!(json["score_step"], 0, "score_step should be 0");
-        assert_eq!(json["score_steps_total"], 0, "score_steps_total should be 0");
+        assert_eq!(
+            json["score_steps_total"], 0,
+            "score_steps_total should be 0"
+        );
         assert_eq!(json["fence_rounds"], 0, "fence_rounds should be 0");
         assert_eq!(json["created"], today, "created should be today's date");
         assert_eq!(json["updated"], today, "updated should be today's date");
 
         // Verify no "stages" key exists
-        assert!(!json.get("stages").is_some(), "should not have 'stages' key");
+        assert!(json.get("stages").is_none(), "should not have 'stages' key");
 
         // Verify the object has exactly the expected keys
         let obj = json.as_object().expect("should be an object");
         let expected_keys = vec![
-            "schema_version", "slug", "stage", "worktree", "branch",
-            "score_step", "score_steps_total", "fence_rounds", "created", "updated"
+            "schema_version",
+            "slug",
+            "stage",
+            "worktree",
+            "branch",
+            "score_step",
+            "score_steps_total",
+            "fence_rounds",
+            "created",
+            "updated",
         ];
-        assert_eq!(obj.len(), expected_keys.len(), "object should have exactly {} keys, got: {:?}", expected_keys.len(), obj.keys().collect::<Vec<_>>());
+        assert_eq!(
+            obj.len(),
+            expected_keys.len(),
+            "object should have exactly {} keys, got: {:?}",
+            expected_keys.len(),
+            obj.keys().collect::<Vec<_>>()
+        );
     }
 
     #[test]

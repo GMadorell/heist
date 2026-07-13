@@ -28,7 +28,7 @@ pub fn parse_sections(text: &str) -> Result<BTreeMap<String, String>, ParseError
     let lines: Vec<&str> = text.lines().collect();
 
     // Canonical section names (for normalization)
-    let canonical_names = vec!["Build", "Lint", "Test", "Docs", "PR conventions", "Notes"];
+    let canonical_names = ["Build", "Lint", "Test", "Docs", "PR conventions", "Notes"];
 
     let mut i = 0;
     while i < lines.len() {
@@ -73,7 +73,9 @@ pub fn parse_sections(text: &str) -> Result<BTreeMap<String, String>, ParseError
                 }
 
                 // Normalize bullet markers: trim and treat - and * as equivalent
-                let normalized_line = if body_line.trim_start().starts_with('-') || body_line.trim_start().starts_with('*') {
+                let normalized_line = if body_line.trim_start().starts_with('-')
+                    || body_line.trim_start().starts_with('*')
+                {
                     let trimmed = body_line.trim_start();
                     let normalized = if trimmed.starts_with('*') {
                         trimmed.replacen('*', "-", 1)
@@ -98,7 +100,7 @@ pub fn parse_sections(text: &str) -> Result<BTreeMap<String, String>, ParseError
     }
 
     // Check that all required sections are present
-    let required_sections = vec!["Build", "Lint", "Test"];
+    let required_sections = ["Build", "Lint", "Test"];
     let missing_sections: Vec<&str> = required_sections
         .iter()
         .filter(|&&section| !sections.contains_key(section))
@@ -128,16 +130,14 @@ pub fn merge(layers: &[BTreeMap<String, String>]) -> BTreeMap<String, String> {
 /// Find the git repository root by running `git rev-parse --show-toplevel`.
 pub(crate) fn find_repo_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let output = std::process::Command::new("git")
-        .args(&["rev-parse", "--show-toplevel"])
+        .args(["rev-parse", "--show-toplevel"])
         .output()?;
 
     if !output.status.success() {
         return Err("git rev-parse --show-toplevel failed".into());
     }
 
-    let root_path = String::from_utf8(output.stdout)?
-        .trim()
-        .to_string();
+    let root_path = String::from_utf8(output.stdout)?.trim().to_string();
 
     Ok(PathBuf::from(root_path))
 }
@@ -170,7 +170,7 @@ fn resolve_validation_with_scope(
     validation_files.push(current.join("validation.md"));
 
     // Walk down the directory tree
-    if let Ok(rel_path) = target_dir.strip_prefix(&repo_root) {
+    if let Ok(rel_path) = target_dir.strip_prefix(repo_root) {
         for component in rel_path.components() {
             current.push(component);
             validation_files.push(current.join("validation.md"));
@@ -181,7 +181,7 @@ fn resolve_validation_with_scope(
     let mut layers = Vec::new();
     for validation_file in &validation_files {
         if validation_file.exists() {
-            let text = std::fs::read_to_string(&validation_file)?;
+            let text = std::fs::read_to_string(validation_file)?;
             let sections = parse_sections(&text)?;
             layers.push(sections);
 
@@ -255,7 +255,7 @@ pub(crate) fn resolve_validations(paths: &[PathBuf]) -> Result<String, Box<dyn s
 
     for (scope_dir, merged) in scope_to_sections {
         // Format scope label (use "." for repo root)
-        let scope_label = if scope_dir.as_os_str().is_empty() || scope_dir == PathBuf::from(".") {
+        let scope_label = if scope_dir.as_os_str().is_empty() || scope_dir == *"." {
             ".".to_string()
         } else {
             scope_dir.to_string_lossy().to_string()
@@ -357,14 +357,22 @@ No CI configured."#;
         let sections = result.unwrap();
 
         // Check that we have exactly 6 sections
-        assert_eq!(sections.len(), 6, "should have exactly 6 sections, got: {:?}", sections.keys().collect::<Vec<_>>());
+        assert_eq!(
+            sections.len(),
+            6,
+            "should have exactly 6 sections, got: {:?}",
+            sections.keys().collect::<Vec<_>>()
+        );
 
         // Check all expected keys exist
         assert!(sections.contains_key("Build"), "should have Build section");
         assert!(sections.contains_key("Lint"), "should have Lint section");
         assert!(sections.contains_key("Test"), "should have Test section");
         assert!(sections.contains_key("Docs"), "should have Docs section");
-        assert!(sections.contains_key("PR conventions"), "should have PR conventions section");
+        assert!(
+            sections.contains_key("PR conventions"),
+            "should have PR conventions section"
+        );
         assert!(sections.contains_key("Notes"), "should have Notes section");
 
         // Check body text is trimmed and matches
@@ -440,16 +448,16 @@ No CI configured."#;
 
         // Body content should be identical
         for (key, canonical_body) in &canonical_sections {
-            let mutated_body = mutated_sections.get(key)
-                .expect(&format!("mutated should have key '{}'", key));
+            let mutated_body = mutated_sections
+                .get(key)
+                .unwrap_or_else(|| panic!("mutated should have key '{}'", key));
 
             // Normalize bullets: replace * with - for comparison
             let canonical_normalized = canonical_body.replace('*', "-");
             let mutated_normalized = mutated_body.replace('*', "-");
 
             assert_eq!(
-                canonical_normalized,
-                mutated_normalized,
+                canonical_normalized, mutated_normalized,
                 "body content should be identical for section '{}'",
                 key
             );
@@ -479,14 +487,20 @@ No CI configured."#;
         let result = parse_sections(fixture_without_test);
 
         // Should be Err, not Ok
-        assert!(result.is_err(), "parse_sections should fail when Test section is missing");
+        assert!(
+            result.is_err(),
+            "parse_sections should fail when Test section is missing"
+        );
 
         let error = result.unwrap_err();
         let error_msg = error.to_string();
 
         // Error message should mention "Test"
-        assert!(error_msg.to_lowercase().contains("test"),
-                "error message should mention 'Test', got: {}", error_msg);
+        assert!(
+            error_msg.to_lowercase().contains("test"),
+            "error message should mention 'Test', got: {}",
+            error_msg
+        );
     }
 
     #[test]
@@ -503,14 +517,20 @@ None, no linter configured.
 
         let result = parse_sections(fixture);
 
-        assert!(result.is_err(), "parse_sections should reject malformed heading");
+        assert!(
+            result.is_err(),
+            "parse_sections should reject malformed heading"
+        );
 
         let error = result.unwrap_err();
         let error_msg = error.to_string();
 
         // Error message should include line number 9
-        assert!(error_msg.contains("9"),
-                "error message should include line number 9, got: {}", error_msg);
+        assert!(
+            error_msg.contains("9"),
+            "error message should include line number 9, got: {}",
+            error_msg
+        );
     }
 
     #[test]
@@ -536,11 +556,10 @@ Main branch: main
 ## Notes
 No CI configured."#;
 
-        let root_map = parse_sections(root_fixture)
-            .expect("root fixture should parse");
+        let root_map = parse_sections(root_fixture).expect("root fixture should parse");
 
         // Leaf fixture (only Build, Lint, Test with different content)
-        let leaf_fixture = r#"## Build
+        let _leaf_fixture = r#"## Build
 Custom build command.
 
 ## Lint
@@ -591,8 +610,7 @@ root pr conventions
 ## Notes
 root notes"#;
 
-        let root_map = parse_sections(root_fixture)
-            .expect("root fixture should parse");
+        let root_map = parse_sections(root_fixture).expect("root fixture should parse");
 
         // Middle layer: only override Test
         let mut middle_map = BTreeMap::new();
