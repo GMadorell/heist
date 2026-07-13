@@ -7,6 +7,24 @@ mod state;
 
 use state::{State, get_today_date};
 
+// Known fields in state.json
+const KNOWN_FIELDS: &[&str] = &[
+    "schema_version",
+    "slug",
+    "stage",
+    "worktree",
+    "branch",
+    "score_step",
+    "score_steps_total",
+    "fence_rounds",
+    "created",
+    "updated",
+];
+
+fn is_known_field(field: &str) -> bool {
+    KNOWN_FIELDS.contains(&field)
+}
+
 #[derive(Parser)]
 #[command(name = "heist-cli")]
 #[command(about = "Heist CLI tool", long_about = None)]
@@ -112,6 +130,12 @@ fn handle_state(command: StateCommands) {
             std::process::exit(exitcode::SUCCESS);
         }
         StateCommands::Get { slug, field } => {
+            // Check if field is known
+            if !is_known_field(&field) {
+                eprintln!("unknown field: {}", field);
+                std::process::exit(exitcode::PRECONDITION);
+            }
+
             // Read state.json file
             let state_file = Path::new(".heist").join(&slug).join("state.json");
 
@@ -164,6 +188,12 @@ fn handle_state(command: StateCommands) {
             }
         }
         StateCommands::Set { slug, field, value } => {
+            // Check if field is known
+            if !is_known_field(&field) {
+                eprintln!("unknown field: {}", field);
+                std::process::exit(exitcode::PRECONDITION);
+            }
+
             // Read state.json file
             let state_file = Path::new(".heist").join(&slug).join("state.json");
 
