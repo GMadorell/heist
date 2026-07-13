@@ -1,0 +1,8 @@
+[package]
+name = "heist-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "heist-cli"
+path = "src/main.rs"
