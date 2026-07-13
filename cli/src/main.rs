@@ -269,8 +269,31 @@ fn handle_state(command: StateCommands) {
             std::process::exit(exitcode::SUCCESS);
         }
         StateCommands::Schema => {
-            eprintln!("not implemented");
-            std::process::exit(1);
+            // Print field list
+            println!("schema_version: u32");
+            println!("slug: string");
+            println!("stage: string (casing|planning|fence_review|human_review|forging|safehouse|implementing|cleaning|done)");
+            println!("worktree: string|null");
+            println!("branch: string|null");
+            println!("score_step: u32");
+            println!("score_steps_total: u32");
+            println!("fence_rounds: u32");
+            println!("created: string");
+            println!("updated: string");
+            println!();
+
+            // Create example state and pretty print
+            let example_state = State::new("example");
+            let json = match serde_json::to_string_pretty(&example_state) {
+                Ok(json) => json,
+                Err(e) => {
+                    eprintln!("failed to serialize state: {}", e);
+                    std::process::exit(exitcode::INTERNAL);
+                }
+            };
+            println!("{}", json);
+
+            std::process::exit(exitcode::SUCCESS);
         }
     }
 }
