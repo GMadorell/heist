@@ -73,7 +73,7 @@ enum StateCommands {
 #[derive(Subcommand)]
 enum WorktreeCommands {
     /// Add a worktree
-    Add,
+    Add { slug: String },
     /// Remove a worktree
     Remove,
 }
@@ -316,9 +316,100 @@ updated: string";
 
 fn handle_worktree(command: WorktreeCommands) {
     match command {
-        WorktreeCommands::Add => {
-            eprintln!("not implemented");
-            std::process::exit(1);
+        WorktreeCommands::Add { slug } => {
+            let repo_root = Path::new(".");
+
+            // Detect the main branch
+            let main_branch = worktree::detect_main_branch(repo_root);
+
+            // Ensure .worktrees/ is ignored
+            worktree::ensure_worktrees_ignored(repo_root);
+
+            // Create worktree directory
+            let worktree_path = repo_root.join(".worktrees").join(&slug);
+
+            // Run git worktree add (suppress stdout)
+            let output = std::process::Command::new("git")
+                .args(&[
+                    "worktree",
+                    "add",
+                    worktree_path.to_string_lossy().as_ref(),
+                    "-b",
+                    &format!("heist/{}", slug),
+                    &format!("origin/{}", main_branch),
+                ])
+                .output()
+                .expect("failed to run git worktree add");
+
+            if !output.status.success() {
+                eprintln!("failed to create worktree");
+                std::process::exit(exitcode::INTERNAL);
+            }
+
+            // Create .heist/<slug> symlink in the new worktree
+            let main_heist_path = repo_root.join(".heist").join(&slug);
+            let main_heist_canonical = main_heist_path.canonicalize()
+                .expect("failed to canonicalize main repo .heist/<slug>");
+
+            let worktree_heist_dir = worktree_path.join(".heist");
+            if !worktree_heist_dir.exists() {
+                fs::create_dir_all(&worktree_heist_dir)
+                    .expect("failed to create .heist directory in worktree");
+            }
+
+            let worktree_heist_slug = worktree_heist_dir.join(&slug);
+            if worktree_heist_slug.exists() {
+                fs::remove_file(&worktree_heist_slug)
+                    .expect("failed to remove existing symlink");
+            }
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs as unix_fs;
+                unix_fs::symlink(&main_heist_canonical, &worktree_heist_slug)
+                    .expect("failed to create symlink");
+            }
+
+            #[cfg(not(unix))]
+            {
+                eprintln!("symlink creation not supported on this platform");
+                std::process::exit(exitcode::INTERNAL);
+            }
+
+            // Update state.json with worktree and branch
+            let state_file = repo_root.join(".heist").join(&slug).join("state.json");
+
+            let content = fs::read_to_string(&state_file)
+                .expect("failed to read state.json");
+
+            let mut state_json: serde_json::Value = serde_json::from_str(&content)
+                .expect("failed to parse state.json");
+
+            // Update worktree and branch fields
+            state_json["worktree"] = serde_json::json!(worktree_path.canonicalize()
+                .expect("failed to canonicalize worktree path")
+                .to_string_lossy()
+                .to_string());
+            state_json["branch"] = serde_json::json!(format!("heist/{}", slug));
+
+            // Update the updated field to today's date
+            let today = get_today_date();
+            state_json["updated"] = serde_json::json!(today);
+
+            // Serialize back to JSON with pretty printing
+            let updated_json = serde_json::to_string_pretty(&state_json)
+                .expect("failed to serialize state");
+
+            // Write state.json back
+            fs::write(&state_file, updated_json)
+                .expect("failed to write state.json");
+
+            // Print worktree path to stdout
+            let worktree_absolute = worktree_path.canonicalize()
+                .expect("failed to canonicalize worktree path");
+            println!("{}", worktree_absolute.display());
+
+            std::process::exit(exitcode::SUCCESS);
         }
         WorktreeCommands::Remove => {
             eprintln!("not implemented");
