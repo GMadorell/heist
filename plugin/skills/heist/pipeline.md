@@ -10,7 +10,7 @@ Defensive check first: if the `heist-cli` binary isn't on `PATH` (`command -v he
 
 ### 1. Casing gate
 
-If `validation.md` doesn't exist at the repo root, invoke the `heist:casing` skill's instructions yourself before continuing (don't ask the human to do it as a separate step — this is the "auto-triggered by /heist when validation.md missing" behavior). If it exists, proceed directly.
+Run `heist-cli validation check .` at the repo root. If it prints `missing`, invoke the `heist:casing` skill's instructions yourself before continuing (don't ask the human to do it as a separate step — this is the "auto-triggered by /heist when validation.md missing" behavior). If it prints `ok`, proceed directly.
 
 ### 2. Planning: relay loop with the Mastermind
 
