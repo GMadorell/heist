@@ -75,10 +75,8 @@ mod worktree_remove {
         assert!(worktree_path.exists(), ".worktrees/my-slug should exist");
 
         // Make a commit on the worktree on heist/my-slug branch
-        fs::write(
-            worktree_path.join("feature.txt"),
-            "feature work",
-        ).expect("failed to write feature.txt");
+        fs::write(worktree_path.join("feature.txt"), "feature work")
+            .expect("failed to write feature.txt");
         run_git(&worktree_path, &["add", "."]);
         run_git(&worktree_path, &["commit", "-q", "-m", "add feature"]);
 
@@ -141,11 +139,12 @@ mod worktree_remove {
         );
 
         // Verify state.json's stage is "done"
-        let state_content = fs::read_to_string(&state_file)
-            .expect("failed to read state.json");
-        let state_json: serde_json::Value = serde_json::from_str(&state_content)
-            .expect("failed to parse state.json");
-        let stage = state_json["stage"].as_str().expect("stage should be string");
+        let state_content = fs::read_to_string(&state_file).expect("failed to read state.json");
+        let state_json: serde_json::Value =
+            serde_json::from_str(&state_content).expect("failed to parse state.json");
+        let stage = state_json["stage"]
+            .as_str()
+            .expect("stage should be string");
         assert_eq!(
             stage, "done",
             "stage should be 'done' after worktree removal, got: {}",
@@ -212,10 +211,8 @@ mod worktree_remove {
         assert!(worktree_path.exists(), ".worktrees/my-slug should exist");
 
         // Make a commit on the worktree on heist/my-slug branch
-        fs::write(
-            worktree_path.join("feature.txt"),
-            "feature work",
-        ).expect("failed to write feature.txt");
+        fs::write(worktree_path.join("feature.txt"), "feature work")
+            .expect("failed to write feature.txt");
         run_git(&worktree_path, &["add", "."]);
         run_git(&worktree_path, &["commit", "-q", "-m", "add feature"]);
 

@@ -119,7 +119,11 @@ updated: string
         );
 
         // stdout unchanged from Step 16's golden text
-        assert_eq!(stdout.trim(), body.trim(), "stdout should match Step 16 golden text");
+        assert_eq!(
+            stdout.trim(),
+            body.trim(),
+            "stdout should match Step 16 golden text"
+        );
 
         // docs/state-schema.md written with heading + same content
         let docs_file = temp_path.join("docs/state-schema.md");

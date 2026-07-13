@@ -43,7 +43,12 @@ mod state_set {
             .output()
             .expect("failed to run command");
 
-        assert!(output.status.success(), "expected success, got {:?}, stderr: {}", output.status, String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "expected success, got {:?}, stderr: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         // Re-read state.json
         let content = fs::read_to_string(temp_path.join(".heist/my-slug/state.json"))
@@ -53,19 +58,16 @@ mod state_set {
 
         // Assert stage is now "fence_review"
         assert_eq!(
-            state["stage"],
-            "fence_review",
+            state["stage"], "fence_review",
             "stage should be 'fence_review', got: {}",
             state["stage"]
         );
 
         // Assert updated equals today's date
         assert_eq!(
-            state["updated"],
-            today,
+            state["updated"], today,
             "updated should be today's date ({}), got: {}",
-            today,
-            state["updated"]
+            today, state["updated"]
         );
 
         // Assert other fields are unchanged
@@ -73,10 +75,7 @@ mod state_set {
             state["schema_version"], 1,
             "schema_version should be unchanged"
         );
-        assert_eq!(
-            state["slug"], "my-slug",
-            "slug should be unchanged"
-        );
+        assert_eq!(state["slug"], "my-slug", "slug should be unchanged");
         assert_eq!(
             state["worktree"],
             serde_json::Value::Null,
@@ -87,18 +86,12 @@ mod state_set {
             serde_json::Value::Null,
             "branch should be unchanged"
         );
-        assert_eq!(
-            state["score_step"], 0,
-            "score_step should be unchanged"
-        );
+        assert_eq!(state["score_step"], 0, "score_step should be unchanged");
         assert_eq!(
             state["score_steps_total"], 0,
             "score_steps_total should be unchanged"
         );
-        assert_eq!(
-            state["fence_rounds"], 0,
-            "fence_rounds should be unchanged"
-        );
+        assert_eq!(state["fence_rounds"], 0, "fence_rounds should be unchanged");
         assert_eq!(
             state["created"], "2026-07-10",
             "created should be unchanged"

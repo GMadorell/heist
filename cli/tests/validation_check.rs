@@ -86,8 +86,7 @@ root notes"#;
             .expect("failed to write some/nested/anything.rs");
 
         // Create a dummy file (so git add has something)
-        fs::write(repo_root.join("README.md"), "# Test")
-            .expect("failed to write README.md");
+        fs::write(repo_root.join("README.md"), "# Test").expect("failed to write README.md");
 
         // Commit everything
         run_git(repo_root, &["add", "."]);

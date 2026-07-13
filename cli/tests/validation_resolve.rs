@@ -53,8 +53,7 @@ root notes"#;
             .expect("failed to write root validation.md");
 
         // Create cli directory and cli/validation.md with only Build/Lint/Test (different content)
-        fs::create_dir_all(repo_root.join("cli"))
-            .expect("failed to create cli directory");
+        fs::create_dir_all(repo_root.join("cli")).expect("failed to create cli directory");
 
         let cli_validation = r#"## Build
 cli build command
@@ -69,8 +68,7 @@ cli test runner"#;
             .expect("failed to write cli/validation.md");
 
         // Create plugin directory and plugin/validation.md (different from cli)
-        fs::create_dir_all(repo_root.join("plugin"))
-            .expect("failed to create plugin directory");
+        fs::create_dir_all(repo_root.join("plugin")).expect("failed to create plugin directory");
 
         let plugin_validation = r#"## Build
 plugin build command
@@ -85,8 +83,7 @@ plugin test runner"#;
             .expect("failed to write plugin/validation.md");
 
         // Create cli/src directory
-        fs::create_dir_all(repo_root.join("cli/src"))
-            .expect("failed to create cli/src directory");
+        fs::create_dir_all(repo_root.join("cli/src")).expect("failed to create cli/src directory");
 
         // Create a dummy file at cli/src/main.rs
         fs::write(repo_root.join("cli/src/main.rs"), "// stub")
@@ -97,15 +94,21 @@ plugin test runner"#;
             .expect("failed to create plugin/skills/heist directory");
 
         // Create a dummy file at plugin/skills/heist/pipeline.md
-        fs::write(repo_root.join("plugin/skills/heist/pipeline.md"), "# pipeline")
-            .expect("failed to write plugin/skills/heist/pipeline.md");
+        fs::write(
+            repo_root.join("plugin/skills/heist/pipeline.md"),
+            "# pipeline",
+        )
+        .expect("failed to write plugin/skills/heist/pipeline.md");
 
         // Create cli/tests directory and validation_resolve.rs
         fs::create_dir_all(repo_root.join("cli/tests"))
             .expect("failed to create cli/tests directory");
 
-        fs::write(repo_root.join("cli/tests/validation_resolve.rs"), "// test file")
-            .expect("failed to write cli/tests/validation_resolve.rs");
+        fs::write(
+            repo_root.join("cli/tests/validation_resolve.rs"),
+            "// test file",
+        )
+        .expect("failed to write cli/tests/validation_resolve.rs");
 
         // Commit everything
         run_git(repo_root, &["add", "."]);
@@ -195,8 +198,14 @@ root notes
         // Expect two distinct labeled blocks: one for plugin scope, one for cli scope
         // plugin scope should have plugin's Build/Lint/Test overrides
         assert!(stdout.contains("## Build"), "should contain Build section");
-        assert!(stdout.contains("plugin build command"), "should contain plugin build command");
-        assert!(stdout.contains("cli build command"), "should contain cli build command");
+        assert!(
+            stdout.contains("plugin build command"),
+            "should contain plugin build command"
+        );
+        assert!(
+            stdout.contains("cli build command"),
+            "should contain cli build command"
+        );
 
         // Check for scope labels (the deepest validation.md directory found)
         // For plugin/skills/heist/pipeline.md, scope is plugin
@@ -205,7 +214,10 @@ root notes
         let lines: Vec<&str> = stdout.lines().collect();
 
         // Count how many times we see "## Build" - there should be 2 (one per scope)
-        let build_count = lines.iter().filter(|line| line.contains("## Build")).count();
+        let build_count = lines
+            .iter()
+            .filter(|line| line.contains("## Build"))
+            .count();
         assert_eq!(
             build_count, 2,
             "should have exactly 2 Build sections (one per scope), got: {}",
@@ -240,7 +252,10 @@ root notes
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         // Expect only ONE block (deduped, since both paths resolve to same cli scope)
-        let build_count = stdout.lines().filter(|line| line.contains("## Build")).count();
+        let build_count = stdout
+            .lines()
+            .filter(|line| line.contains("## Build"))
+            .count();
         assert_eq!(
             build_count, 1,
             "should have exactly 1 Build section (deduped same scope), got: {}",

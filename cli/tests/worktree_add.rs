@@ -57,7 +57,9 @@ mod worktree_add {
         let initial_content = fs::read_to_string(&state_file).expect("failed to read state.json");
         let initial_state: serde_json::Value =
             serde_json::from_str(&initial_content).expect("failed to parse state.json");
-        let initial_stage = initial_state["stage"].as_str().expect("stage should be string");
+        let initial_stage = initial_state["stage"]
+            .as_str()
+            .expect("stage should be string");
 
         // Run heist-cli worktree add my-slug
         let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
@@ -80,7 +82,8 @@ mod worktree_add {
         // Verify stdout is the worktree path followed by newline
         let stdout = String::from_utf8_lossy(&output.stdout);
         let worktree_path = main_repo.join(".worktrees/my-slug");
-        let canonicalized_path = worktree_path.canonicalize()
+        let canonicalized_path = worktree_path
+            .canonicalize()
             .expect("failed to canonicalize worktree path");
         let expected_output = format!("{}\n", canonicalized_path.display());
         assert_eq!(
@@ -90,10 +93,7 @@ mod worktree_add {
         );
 
         // Verify .worktrees/my-slug exists
-        assert!(
-            worktree_path.exists(),
-            ".worktrees/my-slug should exist"
-        );
+        assert!(worktree_path.exists(), ".worktrees/my-slug should exist");
 
         // Verify it's a registered git worktree on branch heist/my-slug
         let list_output = StdCommand::new("git")
@@ -118,11 +118,13 @@ mod worktree_add {
             ".worktrees/my-slug/.heist/my-slug should exist"
         );
 
-        let symlink_target = fs::read_link(&symlink_path)
-            .expect("failed to read symlink");
-        let expected_target = main_repo.join(".heist/my-slug").canonicalize()
+        let symlink_target = fs::read_link(&symlink_path).expect("failed to read symlink");
+        let expected_target = main_repo
+            .join(".heist/my-slug")
+            .canonicalize()
             .expect("failed to canonicalize expected target");
-        let actual_target = symlink_target.canonicalize()
+        let actual_target = symlink_target
+            .canonicalize()
             .expect("failed to canonicalize actual target");
 
         assert_eq!(
@@ -131,8 +133,8 @@ mod worktree_add {
         );
 
         // Verify state.json was updated with worktree and branch
-        let updated_content = fs::read_to_string(&state_file)
-            .expect("failed to read updated state.json");
+        let updated_content =
+            fs::read_to_string(&state_file).expect("failed to read updated state.json");
         let updated_state: serde_json::Value =
             serde_json::from_str(&updated_content).expect("failed to parse updated state.json");
 
@@ -145,10 +147,7 @@ mod worktree_add {
 
         // Check branch field is set
         let branch_value = updated_state["branch"].as_str();
-        assert!(
-            branch_value.is_some(),
-            "branch field should not be null"
-        );
+        assert!(branch_value.is_some(), "branch field should not be null");
 
         // Check that updated field is today's date
         let get_date_output = StdCommand::new("date")
@@ -160,18 +159,16 @@ mod worktree_add {
             .trim()
             .to_string();
 
-        let updated_date = updated_state["updated"].as_str().expect("updated should be string");
-        assert_eq!(
-            updated_date, today,
-            "updated field should be today's date"
-        );
+        let updated_date = updated_state["updated"]
+            .as_str()
+            .expect("updated should be string");
+        assert_eq!(updated_date, today, "updated field should be today's date");
 
         // Check that stage is unchanged
-        let updated_stage = updated_state["stage"].as_str().expect("stage should be string");
-        assert_eq!(
-            updated_stage, initial_stage,
-            "stage should not change"
-        );
+        let updated_stage = updated_state["stage"]
+            .as_str()
+            .expect("stage should be string");
+        assert_eq!(updated_stage, initial_stage, "stage should not change");
     }
 
     #[test]
@@ -230,7 +227,8 @@ mod worktree_add {
 
         let stdout1 = String::from_utf8_lossy(&output1.stdout);
         let worktree_path = main_repo.join(".worktrees/my-slug");
-        let canonicalized_path = worktree_path.canonicalize()
+        let canonicalized_path = worktree_path
+            .canonicalize()
             .expect("failed to canonicalize worktree path");
         let expected_output = format!("{}\n", canonicalized_path.display());
 
@@ -247,11 +245,13 @@ mod worktree_add {
             ".worktrees/my-slug/.heist/my-slug should exist after first call"
         );
 
-        let symlink_target = fs::read_link(&symlink_path)
-            .expect("failed to read symlink");
-        let expected_target = main_repo.join(".heist/my-slug").canonicalize()
+        let symlink_target = fs::read_link(&symlink_path).expect("failed to read symlink");
+        let expected_target = main_repo
+            .join(".heist/my-slug")
+            .canonicalize()
             .expect("failed to canonicalize expected target");
-        let actual_target = symlink_target.canonicalize()
+        let actual_target = symlink_target
+            .canonicalize()
             .expect("failed to canonicalize actual target");
         assert_eq!(
             actual_target, expected_target,
@@ -283,9 +283,10 @@ mod worktree_add {
         );
 
         // Verify symlink still exists and is still correct
-        let symlink_target2 = fs::read_link(&symlink_path)
-            .expect("failed to read symlink after second call");
-        let actual_target2 = symlink_target2.canonicalize()
+        let symlink_target2 =
+            fs::read_link(&symlink_path).expect("failed to read symlink after second call");
+        let actual_target2 = symlink_target2
+            .canonicalize()
             .expect("failed to canonicalize actual target after second call");
         assert_eq!(
             actual_target2, expected_target,
@@ -293,12 +294,8 @@ mod worktree_add {
         );
 
         // Test symlink recreation variant: delete symlink and re-run
-        fs::remove_file(&symlink_path)
-            .expect("failed to delete symlink");
-        assert!(
-            !symlink_path.exists(),
-            "symlink should be deleted"
-        );
+        fs::remove_file(&symlink_path).expect("failed to delete symlink");
+        assert!(!symlink_path.exists(), "symlink should be deleted");
 
         let mut cmd3 = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
         let output3 = cmd3
@@ -322,9 +319,10 @@ mod worktree_add {
             ".worktrees/my-slug/.heist/my-slug should be recreated"
         );
 
-        let symlink_target3 = fs::read_link(&symlink_path)
-            .expect("failed to read symlink after recreation");
-        let actual_target3 = symlink_target3.canonicalize()
+        let symlink_target3 =
+            fs::read_link(&symlink_path).expect("failed to read symlink after recreation");
+        let actual_target3 = symlink_target3
+            .canonicalize()
             .expect("failed to canonicalize actual target after recreation");
         assert_eq!(
             actual_target3, expected_target,

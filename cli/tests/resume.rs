@@ -26,11 +26,8 @@ mod resume {
   "updated": "2024-01-01"
 }"#;
 
-        fs::write(
-            temp_path.join(".heist/my-slug/state.json"),
-            state_json,
-        )
-        .expect("failed to write state.json");
+        fs::write(temp_path.join(".heist/my-slug/state.json"), state_json)
+            .expect("failed to write state.json");
 
         // Run heist-cli resume my-slug
         let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
@@ -51,7 +48,8 @@ mod resume {
 
         // Verify stdout is exactly as specified
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let expected = "slug: my-slug\nstage: forging\nnext_step: 5\nworktree: /abs/path/to/worktree\n";
+        let expected =
+            "slug: my-slug\nstage: forging\nnext_step: 5\nworktree: /abs/path/to/worktree\n";
         assert_eq!(
             stdout.to_string(),
             expected,

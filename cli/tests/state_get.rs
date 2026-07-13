@@ -39,11 +39,19 @@ mod state_get {
             .output()
             .expect("failed to run command");
 
-        assert!(output.status.success(), "expected success, got {:?}", output.status);
+        assert!(
+            output.status.success(),
+            "expected success, got {:?}",
+            output.status
+        );
 
         // Verify stdout is exactly "forging\n"
         let stdout = String::from_utf8_lossy(&output.stdout);
-        assert_eq!(stdout, "forging\n", "stdout should be exactly 'forging\\n', got: {:?}", stdout);
+        assert_eq!(
+            stdout, "forging\n",
+            "stdout should be exactly 'forging\\n', got: {:?}",
+            stdout
+        );
     }
 
     #[test]
