@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -122,6 +123,92 @@ pub fn merge(layers: &[BTreeMap<String, String>]) -> BTreeMap<String, String> {
         }
     }
     result
+}
+
+/// Find the git repository root by running `git rev-parse --show-toplevel`.
+pub(crate) fn find_repo_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let output = std::process::Command::new("git")
+        .args(&["rev-parse", "--show-toplevel"])
+        .output()?;
+
+    if !output.status.success() {
+        return Err("git rev-parse --show-toplevel failed".into());
+    }
+
+    let root_path = String::from_utf8(output.stdout)?
+        .trim()
+        .to_string();
+
+    Ok(PathBuf::from(root_path))
+}
+
+/// Resolve validation for a given path.
+///
+/// Walks from repo root down to the directory containing the path,
+/// collecting and merging all validation.md files found along the way.
+/// Returns the merged sections in fixed order: Build, Lint, Test, Docs, PR conventions, Notes.
+pub(crate) fn resolve_validation(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let repo_root = find_repo_root()?;
+
+    // Canonicalize the path relative to repo root
+    let target_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        repo_root.join(path)
+    };
+
+    // Get the directory containing the target path
+    let target_dir = target_path.parent().unwrap_or_else(|| Path::new("."));
+
+    // Collect all validation.md files from repo root down to target_dir
+    let mut validation_files = Vec::new();
+
+    // Start from repo root and walk down to target_dir
+    let mut current = repo_root.clone();
+    validation_files.push(current.join("validation.md"));
+
+    // Walk down the directory tree
+    if let Ok(rel_path) = target_dir.strip_prefix(&repo_root) {
+        for component in rel_path.components() {
+            current.push(component);
+            validation_files.push(current.join("validation.md"));
+        }
+    }
+
+    // Parse each validation.md that exists
+    let mut layers = Vec::new();
+    for validation_file in validation_files {
+        if validation_file.exists() {
+            let text = std::fs::read_to_string(&validation_file)?;
+            let sections = parse_sections(&text)?;
+            layers.push(sections);
+        }
+    }
+
+    if layers.is_empty() {
+        return Err("no validation.md files found".into());
+    }
+
+    // Merge all layers
+    let merged = merge(&layers);
+
+    // Print in fixed order: Build, Lint, Test, Docs, PR conventions, Notes
+    let mut output = String::new();
+    let order = vec!["Build", "Lint", "Test", "Docs", "PR conventions", "Notes"];
+    for section_name in order {
+        if let Some(body) = merged.get(section_name) {
+            output.push_str(&format!("## {}\n{}\n\n", section_name, body));
+        }
+    }
+
+    // Remove trailing newline added by the loop
+    if output.ends_with("\n\n") {
+        output.pop();
+        output.pop();
+    }
+    output.push('\n');
+
+    Ok(output)
 }
 
 #[cfg(test)]

@@ -82,7 +82,7 @@ enum WorktreeCommands {
 #[derive(Subcommand)]
 enum ValidationCommands {
     /// Resolve validation
-    Resolve,
+    Resolve { path: std::path::PathBuf },
     /// Check validation
     Check,
 }
@@ -524,9 +524,17 @@ fn handle_worktree(command: WorktreeCommands) {
 
 fn handle_validation(command: ValidationCommands) {
     match command {
-        ValidationCommands::Resolve => {
-            eprintln!("not implemented");
-            std::process::exit(1);
+        ValidationCommands::Resolve { path } => {
+            match validation::resolve_validation(&path) {
+                Ok(output) => {
+                    print!("{}", output);
+                    std::process::exit(exitcode::SUCCESS);
+                }
+                Err(e) => {
+                    eprintln!("failed to resolve validation: {}", e);
+                    std::process::exit(exitcode::INTERNAL);
+                }
+            }
         }
         ValidationCommands::Check => {
             eprintln!("not implemented");
