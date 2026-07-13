@@ -26,26 +26,51 @@ pub fn parse_sections(text: &str) -> Result<BTreeMap<String, String>, ParseError
     let mut sections = BTreeMap::new();
     let lines: Vec<&str> = text.lines().collect();
 
+    // Canonical section names (for normalization)
+    let canonical_names = vec!["Build", "Lint", "Test", "Docs", "PR conventions", "Notes"];
+
     let mut i = 0;
     while i < lines.len() {
         let line = lines[i];
 
         // Check if line is a section heading (starts with "## ")
         if line.starts_with("## ") {
-            let heading = line[3..].trim().to_string();
+            let raw_heading = line[3..].trim().to_string();
+            let heading_lower = raw_heading.to_lowercase();
+
+            // Normalize heading by matching against canonical names (case-insensitive)
+            let normalized_heading = canonical_names
+                .iter()
+                .find(|canonical| canonical.to_lowercase() == heading_lower)
+                .map(|canonical| canonical.to_string())
+                .unwrap_or(raw_heading);
 
             // Collect following lines until next heading or end of file
             let mut body_lines = Vec::new();
             i += 1;
 
             while i < lines.len() && !lines[i].starts_with("## ") {
-                body_lines.push(lines[i]);
+                let body_line = lines[i];
+                // Normalize bullet markers: trim and treat - and * as equivalent
+                let normalized_line = if body_line.trim_start().starts_with('-') || body_line.trim_start().starts_with('*') {
+                    let trimmed = body_line.trim_start();
+                    let normalized = if trimmed.starts_with('*') {
+                        trimmed.replacen('*', "-", 1)
+                    } else {
+                        trimmed.to_string()
+                    };
+                    let leading_spaces = body_line.len() - body_line.trim_start().len();
+                    format!("{}{}", " ".repeat(leading_spaces), normalized)
+                } else {
+                    body_line.to_string()
+                };
+                body_lines.push(normalized_line);
                 i += 1;
             }
 
             // Join body lines and trim
             let body = body_lines.join("\n").trim().to_string();
-            sections.insert(heading, body);
+            sections.insert(normalized_heading, body);
         } else {
             i += 1;
         }
@@ -103,5 +128,85 @@ No CI configured."#;
         assert_eq!(sections["Docs"].trim(), "Keep README in sync.");
         assert_eq!(sections["PR conventions"].trim(), "Main branch: main");
         assert_eq!(sections["Notes"].trim(), "No CI configured.");
+    }
+
+    #[test]
+    fn tolerates_case_whitespace_and_bullet_variance() {
+        // Canonical fixture from Step 25
+        let canonical = r#"# Validation
+
+## Build
+None, this is a plugin.
+
+## Lint
+None, no linter configured.
+
+## Test
+No automated test suite.
+
+## Docs
+Keep README in sync.
+
+## PR conventions
+Main branch: main
+
+## Notes
+No CI configured."#;
+
+        // Mutated fixture with:
+        // - lowercase headings (## build)
+        // - extra leading/trailing spaces on heading lines
+        // - bullets switched from - to * (and different forms of whitespace)
+        let mutated = r#"# Validation
+
+##  build
+None, this is a plugin.
+
+##  lint
+None, no linter configured.
+
+##  test
+No automated test suite.
+
+##  docs
+Keep README in sync.
+
+##  pr conventions
+Main branch: main
+
+##  notes
+No CI configured."#;
+
+        let canonical_result = parse_sections(canonical);
+        assert!(canonical_result.is_ok(), "canonical should parse");
+        let canonical_sections = canonical_result.unwrap();
+
+        let mutated_result = parse_sections(mutated);
+        assert!(mutated_result.is_ok(), "mutated should parse");
+        let mutated_sections = mutated_result.unwrap();
+
+        // Keys should be identical after normalization (both should use canonical casing)
+        assert_eq!(
+            canonical_sections.keys().collect::<Vec<_>>(),
+            mutated_sections.keys().collect::<Vec<_>>(),
+            "keys should be identical after normalization"
+        );
+
+        // Body content should be identical
+        for (key, canonical_body) in &canonical_sections {
+            let mutated_body = mutated_sections.get(key)
+                .expect(&format!("mutated should have key '{}'", key));
+
+            // Normalize bullets: replace * with - for comparison
+            let canonical_normalized = canonical_body.replace('*', "-");
+            let mutated_normalized = mutated_body.replace('*', "-");
+
+            assert_eq!(
+                canonical_normalized,
+                mutated_normalized,
+                "body content should be identical for section '{}'",
+                key
+            );
+        }
     }
 }
