@@ -70,48 +70,24 @@ enum ValidationCommands {
     Check { path: std::path::PathBuf },
 }
 
+/// Parse args, wire dependencies, dispatch to a command, exit with its code.
 fn main() {
     let cli = Cli::parse();
 
-    // Wire the real dependencies once; handlers depend only on the traits.
+    // Wire the real dependencies once; commands depend only on the traits.
     let state_repo = FileStateRepository;
     let git = RealGit;
     let repo_root = Path::new(".");
 
     let code = match cli.command {
-        Commands::State { command } => handle_state(command, &state_repo),
-        Commands::Worktree { command } => handle_worktree(command, repo_root, &state_repo, &git),
-        Commands::Validation { command } => handle_validation(command),
-        Commands::Resume { slug } => handle_resume(&slug, &state_repo),
+        Commands::State { command } => run_state(command, &state_repo).collapse(),
+        Commands::Worktree { command } => {
+            run_worktree(command, repo_root, &state_repo, &git).collapse()
+        }
+        Commands::Validation { command } => run_validation(command),
+        Commands::Resume { slug } => run_resume(&slug, &state_repo).collapse(),
     };
     code.exit();
-}
-
-/// Load a slug's state, or print the error and yield the matching exit code.
-fn load_state(repo: &dyn StateRepository, slug: &str) -> Result<State, ExitCode> {
-    repo.load(slug).map_err(|e| {
-        eprintln!("failed to load state for slug {}: {}", slug, e);
-        e.exit_code()
-    })
-}
-
-/// Persist a slug's state, or print the error and yield the matching exit code.
-fn save_state(repo: &dyn StateRepository, slug: &str, state: &State) -> Result<(), ExitCode> {
-    repo.save(slug, state).map_err(|e| {
-        eprintln!("failed to save state for slug {}: {}", slug, e);
-        e.exit_code()
-    })
-}
-
-/// Collapse a `Result<ExitCode, ExitCode>` (success vs. handled error) into one.
-fn either(result: Result<ExitCode, ExitCode>) -> ExitCode {
-    match result {
-        Ok(code) | Err(code) => code,
-    }
-}
-
-fn handle_state(command: StateCommands, repo: &dyn StateRepository) -> ExitCode {
-    either(run_state(command, repo))
 }
 
 fn run_state(command: StateCommands, repo: &dyn StateRepository) -> Result<ExitCode, ExitCode> {
@@ -171,15 +147,6 @@ updated: string";
             Ok(ExitCode::Success)
         }
     }
-}
-
-fn handle_worktree(
-    command: WorktreeCommands,
-    repo_root: &Path,
-    state_repo: &dyn StateRepository,
-    git: &dyn GitRepository,
-) -> ExitCode {
-    either(run_worktree(command, repo_root, state_repo, git))
 }
 
 fn run_worktree(
@@ -263,42 +230,7 @@ fn run_worktree(
     }
 }
 
-/// Point `<worktree>/.heist/<slug>` at the main repo's `.heist/<slug>` so state
-/// is shared between the worktree and the main checkout.
-fn create_worktree_symlink(repo_root: &Path, worktree_path: &Path, slug: &str) {
-    let main_heist_canonical = repo_root
-        .join(".heist")
-        .join(slug)
-        .canonicalize()
-        .expect("failed to canonicalize main repo .heist/<slug>");
-
-    let worktree_heist_dir = worktree_path.join(".heist");
-    if !worktree_heist_dir.exists() {
-        fs::create_dir_all(&worktree_heist_dir)
-            .expect("failed to create .heist directory in worktree");
-    }
-
-    let worktree_heist_slug = worktree_heist_dir.join(slug);
-    if worktree_heist_slug.exists() {
-        fs::remove_file(&worktree_heist_slug).expect("failed to remove existing symlink");
-    }
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs as unix_fs;
-        unix_fs::symlink(&main_heist_canonical, &worktree_heist_slug)
-            .expect("failed to create symlink");
-    }
-
-    #[cfg(not(unix))]
-    {
-        let _ = main_heist_canonical;
-        eprintln!("symlink creation not supported on this platform");
-        ExitCode::Internal.exit();
-    }
-}
-
-fn handle_validation(command: ValidationCommands) -> ExitCode {
+fn run_validation(command: ValidationCommands) -> ExitCode {
     match command {
         ValidationCommands::Resolve { paths } => {
             if paths.is_empty() {
@@ -340,11 +272,8 @@ fn handle_validation(command: ValidationCommands) -> ExitCode {
     }
 }
 
-fn handle_resume(slug: &str, repo: &dyn StateRepository) -> ExitCode {
-    let state = match load_state(repo, slug) {
-        Ok(state) => state,
-        Err(code) => return code,
-    };
+fn run_resume(slug: &str, repo: &dyn StateRepository) -> Result<ExitCode, ExitCode> {
+    let state = load_state(repo, slug)?;
 
     let next_step = match state.stage.next_step() {
         Some((number, name)) => format!("{} ({})", number, name),
@@ -357,14 +286,83 @@ fn handle_resume(slug: &str, repo: &dyn StateRepository) -> ExitCode {
     println!("next_step: {}", next_step);
     println!("worktree: {}", worktree);
 
-    ExitCode::Success
+    Ok(ExitCode::Success)
+}
+
+/// Point `<worktree>/.heist/<slug>` at the main repo's `.heist/<slug>` so state
+/// is shared between the worktree and the main checkout.
+fn create_worktree_symlink(repo_root: &Path, worktree_path: &Path, slug: &str) {
+    let main_heist_canonical = repo_root
+        .join(".heist")
+        .join(slug)
+        .canonicalize()
+        .expect("failed to canonicalize main repo .heist/<slug>");
+
+    let worktree_heist_dir = worktree_path.join(".heist");
+    if !worktree_heist_dir.exists() {
+        fs::create_dir_all(&worktree_heist_dir)
+            .expect("failed to create .heist directory in worktree");
+    }
+
+    let worktree_heist_slug = worktree_heist_dir.join(slug);
+    if worktree_heist_slug.exists() {
+        fs::remove_file(&worktree_heist_slug).expect("failed to remove existing symlink");
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs as unix_fs;
+        unix_fs::symlink(&main_heist_canonical, &worktree_heist_slug)
+            .expect("failed to create symlink");
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = main_heist_canonical;
+        eprintln!("symlink creation not supported on this platform");
+        ExitCode::Internal.exit();
+    }
+}
+
+/// Load a slug's state, or print the error and yield the matching exit code.
+fn load_state(repo: &dyn StateRepository, slug: &str) -> Result<State, ExitCode> {
+    repo.load(slug).map_err(|e| {
+        eprintln!("failed to load state for slug {}: {}", slug, e);
+        e.exit_code()
+    })
+}
+
+/// Persist a slug's state, or print the error and yield the matching exit code.
+fn save_state(repo: &dyn StateRepository, slug: &str, state: &State) -> Result<(), ExitCode> {
+    repo.save(slug, state).map_err(|e| {
+        eprintln!("failed to save state for slug {}: {}", slug, e);
+        e.exit_code()
+    })
+}
+
+/// Extracts the value out of a `Result<T, T>`, whichever variant it is.
+///
+/// The stdlib has exactly this (`Result::into_ok_or_err`), but it's been
+/// nightly-only since 2021 or so (rust-lang/rust#82223) and was never
+/// stabilized, so command handlers that report their own errors via `?` and
+/// converge on a single `ExitCode` need a small local stand-in.
+trait Collapse<T> {
+    fn collapse(self) -> T;
+}
+
+impl<T> Collapse<T> for Result<T, T> {
+    fn collapse(self) -> T {
+        match self {
+            Ok(v) | Err(v) => v,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     //! In-process decision-logic tests for the command handlers.
     //!
-    //! These exercise `handle_state`/`handle_worktree`'s branching against the
+    //! These exercise `run_state`/`run_worktree`'s branching against the
     //! in-memory `InMemoryStateRepository` and `FakeGit`, with no subprocess and
     //! no real git repo, so preconditions like "branch not merged" or "origin
     //! unreachable" are cheap to arrange and assert.
@@ -378,7 +376,7 @@ mod tests {
     #[test]
     fn state_init_succeeds_for_new_slug() {
         let repo = InMemoryStateRepository::new();
-        let code = handle_state(StateCommands::Init { slug: "foo".into() }, &repo);
+        let code = run_state(StateCommands::Init { slug: "foo".into() }, &repo).collapse();
         assert_eq!(code, ExitCode::Success);
         assert_eq!(
             repo.get("foo").expect("state should exist").stage,
@@ -389,35 +387,37 @@ mod tests {
     #[test]
     fn state_init_rejects_existing_slug() {
         let repo = InMemoryStateRepository::new().with_state("foo", State::new("foo"));
-        let code = handle_state(StateCommands::Init { slug: "foo".into() }, &repo);
+        let code = run_state(StateCommands::Init { slug: "foo".into() }, &repo).collapse();
         assert_eq!(code, ExitCode::Precondition);
     }
 
     #[test]
     fn state_set_on_missing_slug_is_precondition() {
         let repo = InMemoryStateRepository::new();
-        let code = handle_state(
+        let code = run_state(
             StateCommands::Set {
                 slug: "ghost".into(),
                 field: "stage".into(),
                 value: "done".into(),
             },
             &repo,
-        );
+        )
+        .collapse();
         assert_eq!(code, ExitCode::Precondition);
     }
 
     #[test]
     fn state_set_persists_valid_field() {
         let repo = InMemoryStateRepository::new().with_state("foo", State::new("foo"));
-        let code = handle_state(
+        let code = run_state(
             StateCommands::Set {
                 slug: "foo".into(),
                 field: "score_step".into(),
                 value: "4".into(),
             },
             &repo,
-        );
+        )
+        .collapse();
         assert_eq!(code, ExitCode::Success);
         assert_eq!(repo.get("foo").expect("state should exist").score_step, 4);
     }
@@ -425,14 +425,15 @@ mod tests {
     #[test]
     fn state_set_invalid_numeric_is_precondition_and_leaves_state() {
         let repo = InMemoryStateRepository::new().with_state("foo", State::new("foo"));
-        let code = handle_state(
+        let code = run_state(
             StateCommands::Set {
                 slug: "foo".into(),
                 field: "score_step".into(),
                 value: "not-a-number".into(),
             },
             &repo,
-        );
+        )
+        .collapse();
         assert_eq!(code, ExitCode::Precondition);
         assert_eq!(repo.get("foo").expect("state should exist").score_step, 0);
     }
@@ -443,12 +444,13 @@ mod tests {
         // No merged branch configured, so heist/foo is treated as unmerged.
         let git = FakeGit::new().with_default_branch("main");
 
-        let code = handle_worktree(
+        let code = run_worktree(
             WorktreeCommands::Remove { slug: "foo".into() },
             Path::new("."),
             &repo,
             &git,
-        );
+        )
+        .collapse();
 
         assert_eq!(code, ExitCode::Precondition);
         // State must NOT advance to Done when the precondition fails.
@@ -465,12 +467,13 @@ mod tests {
             .with_default_branch("main")
             .with_merged_branch("heist/foo");
 
-        let code = handle_worktree(
+        let code = run_worktree(
             WorktreeCommands::Remove { slug: "foo".into() },
             Path::new("."),
             &repo,
             &git,
-        );
+        )
+        .collapse();
 
         assert_eq!(code, ExitCode::Success);
         assert_eq!(
@@ -488,12 +491,13 @@ mod tests {
                 message: "worktree is dirty".into(),
             });
 
-        let code = handle_worktree(
+        let code = run_worktree(
             WorktreeCommands::Remove { slug: "foo".into() },
             Path::new("."),
             &repo,
             &git,
-        );
+        )
+        .collapse();
 
         assert_eq!(code, ExitCode::Git);
         // Failing mid-teardown must not strand the state at Done.
@@ -512,12 +516,13 @@ mod tests {
                 message: "not fully merged".into(),
             });
 
-        let code = handle_worktree(
+        let code = run_worktree(
             WorktreeCommands::Remove { slug: "foo".into() },
             Path::new("."),
             &repo,
             &git,
-        );
+        )
+        .collapse();
 
         assert_eq!(code, ExitCode::Git);
         assert_eq!(
@@ -535,12 +540,13 @@ mod tests {
             message: "cannot find remote ref".into(),
         });
 
-        let code = handle_worktree(
+        let code = run_worktree(
             WorktreeCommands::Add { slug: "foo".into() },
             temp_dir.path(),
             &repo,
             &git,
-        );
+        )
+        .collapse();
 
         assert_eq!(code, ExitCode::Git);
         // State untouched: worktree/branch never populated.
