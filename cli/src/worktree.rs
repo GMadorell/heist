@@ -1,18 +1,26 @@
 #[cfg(test)]
 mod tests {
-    mod worktree_add {
-        use std::fs;
-        use std::process::Command;
-        use tempfile::TempDir;
+    use std::fs;
+    use std::process::Command;
+    use tempfile::TempDir;
 
-        fn run_git(dir: &std::path::Path, args: &[&str]) {
-            let status = Command::new("git")
-                .args(args)
-                .current_dir(dir)
-                .status()
-                .expect("failed to run git");
-            assert!(status.success(), "git {:?} failed", args);
-        }
+    fn run_git(dir: &std::path::Path, args: &[&str]) {
+        let status = Command::new("git")
+            // Disable commit signing for these throwaway test repos: if the
+            // ambient global git config has commit.gpgsign=true, parallel
+            // test threads all invoking gpg-agent concurrently can serialize
+            // and occasionally time out, making the test suite flaky.
+            .arg("-c")
+            .arg("commit.gpgsign=false")
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .expect("failed to run git");
+        assert!(status.success(), "git {:?} failed", args);
+    }
+
+    mod worktree_add {
+        use super::*;
 
         #[test]
         fn detects_main_branch_from_validation_md() {
@@ -53,6 +61,60 @@ mod tests {
             let branch = crate::worktree::detect_main_branch(repo_root);
             assert_eq!(branch, "main");
         }
+    }
+
+    #[test]
+    fn adds_worktrees_to_missing_gitignore() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let repo_root = temp_dir.path();
+
+        run_git(repo_root, &["init", "-q"]);
+        run_git(repo_root, &["config", "user.email", "test@example.com"]);
+        run_git(repo_root, &["config", "user.name", "Test"]);
+
+        fs::write(repo_root.join("README.md"), "hello").expect("failed to write file");
+        run_git(repo_root, &["add", "."]);
+        run_git(repo_root, &["commit", "-q", "-m", "init"]);
+
+        // No .gitignore exists yet
+        assert!(!repo_root.join(".gitignore").exists());
+
+        // Call ensure_worktrees_ignored
+        let changed = crate::worktree::ensure_worktrees_ignored(repo_root);
+        assert!(changed, "should return true when .gitignore was missing");
+
+        // Verify .gitignore now exists and contains .worktrees/
+        let gitignore_content = fs::read_to_string(repo_root.join(".gitignore"))
+            .expect("failed to read .gitignore");
+        assert!(gitignore_content.contains(".worktrees/"), ".gitignore should contain .worktrees/");
+    }
+
+    #[test]
+    fn leaves_existing_gitignore_entry_alone() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let repo_root = temp_dir.path();
+
+        run_git(repo_root, &["init", "-q"]);
+        run_git(repo_root, &["config", "user.email", "test@example.com"]);
+        run_git(repo_root, &["config", "user.name", "Test"]);
+
+        // Create .gitignore with .worktrees/ already present
+        fs::write(repo_root.join(".gitignore"), ".worktrees/\n").expect("failed to write .gitignore");
+        fs::write(repo_root.join("README.md"), "hello").expect("failed to write file");
+        run_git(repo_root, &["add", "-A"]);
+        run_git(repo_root, &["commit", "-q", "-m", "init"]);
+
+        let original_content = fs::read_to_string(repo_root.join(".gitignore"))
+            .expect("failed to read .gitignore");
+
+        // Call ensure_worktrees_ignored
+        let changed = crate::worktree::ensure_worktrees_ignored(repo_root);
+        assert!(!changed, "should return false when .worktrees/ is already ignored");
+
+        // Verify .gitignore hasn't changed
+        let new_content = fs::read_to_string(repo_root.join(".gitignore"))
+            .expect("failed to read .gitignore");
+        assert_eq!(original_content, new_content, ".gitignore should not be modified");
     }
 }
 
@@ -119,4 +181,41 @@ fn detect_main_branch_via_git(repo_root: &std::path::Path) -> String {
         .expect("failed to run git branch --show-current");
 
     String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+/// Ensure `.worktrees/` is ignored in the repository's `.gitignore`.
+///
+/// Checks if `.worktrees/` is already ignored in the `.gitignore` file.
+/// If not, appends it to `.gitignore` (creating the file if absent) and returns `true`.
+/// Returns `false` if `.worktrees/` was already ignored (no changes made).
+pub(crate) fn ensure_worktrees_ignored(repo_root: &std::path::Path) -> bool {
+    let gitignore_path = repo_root.join(".gitignore");
+
+    // Check if already in .gitignore file
+    if gitignore_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&gitignore_path) {
+            if content.contains(".worktrees/") {
+                return false; // Already in file, no change needed
+            }
+        }
+    }
+
+    // .worktrees/ is not in .gitignore, add it
+    let mut content = if gitignore_path.exists() {
+        std::fs::read_to_string(&gitignore_path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    // Ensure content ends with newline if it's not empty
+    if !content.is_empty() && !content.ends_with('\n') {
+        content.push('\n');
+    }
+
+    content.push_str(".worktrees/\n");
+
+    std::fs::write(&gitignore_path, &content)
+        .expect("failed to write .gitignore");
+
+    true // Changed
 }
