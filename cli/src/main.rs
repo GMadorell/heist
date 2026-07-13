@@ -5,6 +5,7 @@ use std::path::Path;
 mod exitcode;
 mod state;
 mod worktree;
+mod validation;
 
 use state::{State, get_today_date, CURRENT_SCHEMA_VERSION};
 
