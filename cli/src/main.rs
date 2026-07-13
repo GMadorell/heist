@@ -54,7 +54,7 @@ enum Commands {
         command: ValidationCommands,
     },
     /// Resume a command
-    Resume,
+    Resume { slug: String },
 }
 
 #[derive(Subcommand)]
@@ -95,7 +95,7 @@ fn main() {
         Commands::State { command } => handle_state(command),
         Commands::Worktree { command } => handle_worktree(command),
         Commands::Validation { command } => handle_validation(command),
-        Commands::Resume => handle_resume(),
+        Commands::Resume { slug } => handle_resume(slug),
     }
 }
 
@@ -575,7 +575,87 @@ fn handle_validation(command: ValidationCommands) {
     }
 }
 
-fn handle_resume() {
-    eprintln!("not implemented");
-    std::process::exit(1);
+fn handle_resume(slug: String) {
+    // Read state.json file
+    let state_file = Path::new(".heist").join(&slug).join("state.json");
+
+    // Check if the file exists before parsing
+    if !state_file.exists() {
+        eprintln!("state file not found for slug: {}", slug);
+        std::process::exit(exitcode::PRECONDITION);
+    }
+
+    let content = match fs::read_to_string(&state_file) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("failed to read state.json: {}", e);
+            std::process::exit(exitcode::INTERNAL);
+        }
+    };
+
+    // Parse JSON
+    let state_json: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(json) => json,
+        Err(e) => {
+            eprintln!("failed to parse state.json: {}", e);
+            std::process::exit(exitcode::INTERNAL);
+        }
+    };
+
+    // Check schema version
+    if let Some(version) = state_json.get("schema_version").and_then(|v| v.as_u64()) {
+        let version = version as u32;
+        if version != CURRENT_SCHEMA_VERSION {
+            eprintln!("schema version mismatch: file has version {}, but CLI supports version {}", version, CURRENT_SCHEMA_VERSION);
+            std::process::exit(exitcode::PRECONDITION);
+        }
+    } else {
+        eprintln!("schema version not found or invalid in state.json");
+        std::process::exit(exitcode::INTERNAL);
+    }
+
+    // Extract slug
+    let slug_value = state_json.get("slug")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&slug)
+        .to_string();
+
+    // Extract stage and calculate next_step
+    let stage = state_json.get("stage")
+        .and_then(|v| v.as_str())
+        .unwrap_or("casing");
+
+    // Parse stage string to Stage enum
+    let parsed_stage: state::Stage = match stage {
+        "casing" => state::Stage::Casing,
+        "planning" => state::Stage::Planning,
+        "fence_review" => state::Stage::FenceReview,
+        "human_review" => state::Stage::HumanReview,
+        "forging" => state::Stage::Forging,
+        "safehouse" => state::Stage::Safehouse,
+        "implementing" => state::Stage::Implementing,
+        "cleaning" => state::Stage::Cleaning,
+        "done" => state::Stage::Done,
+        _ => {
+            eprintln!("unknown stage: {}", stage);
+            std::process::exit(exitcode::INTERNAL);
+        }
+    };
+
+    let next_step_num = resume::next_step(parsed_stage);
+
+    // Extract worktree (can be null or a string)
+    let worktree_value = match state_json.get("worktree") {
+        Some(serde_json::Value::String(s)) => s.to_string(),
+        Some(serde_json::Value::Null) | None => "none".to_string(),
+        _ => "none".to_string(),
+    };
+
+    // Print the four lines
+    println!("slug: {}", slug_value);
+    println!("stage: {}", stage);
+    println!("next_step: {}", next_step_num);
+    println!("worktree: {}", worktree_value);
+
+    std::process::exit(exitcode::SUCCESS);
 }
