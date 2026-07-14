@@ -2,7 +2,10 @@ use crate::domain::error::StateError;
 use crate::domain::state::State;
 use crate::ports::git::{GitError, GitRepository};
 use crate::ports::state_repository::StateRepository;
-use std::path::Path;
+use crate::ports::validation_source::ValidationSource;
+use std::collections::BTreeMap;
+use std::error::Error;
+use std::path::{Path, PathBuf};
 
 pub struct InMemoryStateRepository {
     states: std::cell::RefCell<std::collections::HashMap<String, State>>,
@@ -154,5 +157,36 @@ impl GitRepository for FakeGit {
             return Err(err.clone());
         }
         Ok(())
+    }
+}
+
+/// In-memory validation source for domain validation tests: a fixed repo
+/// root plus a map of directory -> validation.md contents.
+pub struct InMemoryValidationSource {
+    repo_root: PathBuf,
+    files: BTreeMap<PathBuf, String>,
+}
+
+impl InMemoryValidationSource {
+    pub fn new(repo_root: impl Into<PathBuf>) -> Self {
+        InMemoryValidationSource {
+            repo_root: repo_root.into(),
+            files: BTreeMap::new(),
+        }
+    }
+
+    pub fn with_validation(mut self, dir: impl Into<PathBuf>, contents: impl Into<String>) -> Self {
+        self.files.insert(dir.into(), contents.into());
+        self
+    }
+}
+
+impl ValidationSource for InMemoryValidationSource {
+    fn repo_root(&self) -> Result<PathBuf, Box<dyn Error>> {
+        Ok(self.repo_root.clone())
+    }
+
+    fn read_validation(&self, dir: &Path) -> Result<Option<String>, Box<dyn Error>> {
+        Ok(self.files.get(dir).cloned())
     }
 }

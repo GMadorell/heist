@@ -1,6 +1,7 @@
 use crate::adapters::file_state_repository::FileStateRepository;
 use crate::adapters::filesystem_worktree::FilesystemWorktree;
 use crate::adapters::real_git::RealGit;
+use crate::adapters::validation_fs::ValidationFs;
 use crate::domain;
 use crate::domain::state::State;
 use crate::domain::value::{DateValue, NonBlankValue};
@@ -248,6 +249,7 @@ fn run_worktree(
 }
 
 fn run_validation(command: ValidationCommands) -> ExitCode {
+    let src = ValidationFs;
     match command {
         ValidationCommands::Resolve { paths } => {
             if paths.is_empty() {
@@ -256,9 +258,9 @@ fn run_validation(command: ValidationCommands) -> ExitCode {
             }
 
             let result = if paths.len() == 1 {
-                crate::validation::resolve_validation(&paths[0])
+                domain::validation::resolve_validation(&src, &paths[0])
             } else {
-                crate::validation::resolve_validations(&paths)
+                domain::validation::resolve_validations(&src, &paths)
             };
 
             match result {
@@ -273,7 +275,7 @@ fn run_validation(command: ValidationCommands) -> ExitCode {
             }
         }
         ValidationCommands::Check { path } => {
-            match crate::validation::check_validation_exists(&path) {
+            match domain::validation::check_validation_exists(&src, &path) {
                 Ok(true) => {
                     println!("ok");
                     ExitCode::Success

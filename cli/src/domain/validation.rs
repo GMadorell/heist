@@ -1,19 +1,20 @@
+use crate::ports::validation_source::ValidationSource;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
 /// Fixed output order for sections.
-const SECTION_ORDER: [&str; 6] = ["Build", "Lint", "Test", "Docs", "PR conventions", "Notes"];
+pub const SECTION_ORDER: [&str; 6] = ["Build", "Lint", "Test", "Docs", "PR conventions", "Notes"];
 
 /// Resolve validation for a single path into its rendered section block.
 ///
 /// Walks from the repo root down to the path's directory, merging every
 /// `validation.md` found along the way, then renders sections in
 /// `SECTION_ORDER`.
-pub(crate) fn resolve_validation(path: &Path) -> Result<String, Box<dyn Error>> {
-    let repo_root = find_repo_root()?;
-    let (merged, _scope) = resolve_validation_with_scope(path, &repo_root)?;
+pub fn resolve_validation(src: &dyn ValidationSource, path: &Path) -> Result<String, Box<dyn Error>> {
+    let repo_root = src.repo_root()?;
+    let (merged, _scope) = resolve_validation_with_scope(src, path, &repo_root)?;
 
     let mut output = String::new();
     for section in SECTION_ORDER {
@@ -31,12 +32,15 @@ pub(crate) fn resolve_validation(path: &Path) -> Result<String, Box<dyn Error>> 
 ///
 /// Paths that resolve to the same deepest `validation.md` directory share one
 /// labeled block; distinct scopes each get their own.
-pub(crate) fn resolve_validations(paths: &[PathBuf]) -> Result<String, Box<dyn Error>> {
-    let repo_root = find_repo_root()?;
+pub fn resolve_validations(
+    src: &dyn ValidationSource,
+    paths: &[PathBuf],
+) -> Result<String, Box<dyn Error>> {
+    let repo_root = src.repo_root()?;
 
     let mut scope_to_sections: BTreeMap<PathBuf, BTreeMap<String, String>> = BTreeMap::new();
     for path in paths {
-        let (merged, scope) = resolve_validation_with_scope(path, &repo_root)?;
+        let (merged, scope) = resolve_validation_with_scope(src, path, &repo_root)?;
         scope_to_sections.insert(scope, merged);
     }
 
@@ -66,11 +70,17 @@ pub(crate) fn resolve_validations(paths: &[PathBuf]) -> Result<String, Box<dyn E
 }
 
 /// Whether at least one `validation.md` exists along the path's ancestor chain.
-pub(crate) fn check_validation_exists(path: &Path) -> Result<bool, Box<dyn Error>> {
-    let repo_root = find_repo_root()?;
-    Ok(validation_chain(path, &repo_root)
-        .iter()
-        .any(|file| file.exists()))
+pub fn check_validation_exists(
+    src: &dyn ValidationSource,
+    path: &Path,
+) -> Result<bool, Box<dyn Error>> {
+    let repo_root = src.repo_root()?;
+    for dir in validation_dirs(path, &repo_root) {
+        if src.read_validation(&dir)?.is_some() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Parse a `validation.md` body into its sections.
@@ -178,8 +188,9 @@ pub fn merge(layers: &[BTreeMap<String, String>]) -> BTreeMap<String, String> {
     result
 }
 
-/// Candidate `validation.md` paths from repo root down to the path's directory.
-fn validation_chain(path: &Path, repo_root: &Path) -> Vec<PathBuf> {
+/// Candidate `validation.md` directories from repo root down to the path's
+/// directory.
+fn validation_dirs(path: &Path, repo_root: &Path) -> Vec<PathBuf> {
     let target_path = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -187,36 +198,34 @@ fn validation_chain(path: &Path, repo_root: &Path) -> Vec<PathBuf> {
     };
     let target_dir = target_path.parent().unwrap_or_else(|| Path::new("."));
 
-    let mut files = Vec::new();
+    let mut dirs = Vec::new();
     let mut current = repo_root.to_path_buf();
-    files.push(current.join("validation.md"));
+    dirs.push(current.clone());
 
     if let Ok(rel) = target_dir.strip_prefix(repo_root) {
         for component in rel.components() {
             current.push(component);
-            files.push(current.join("validation.md"));
+            dirs.push(current.clone());
         }
     }
-    files
+    dirs
 }
 
 /// Merge every `validation.md` along the path's chain, returning the merged
 /// sections and the deepest scope directory (relative to repo root).
 fn resolve_validation_with_scope(
+    src: &dyn ValidationSource,
     path: &Path,
     repo_root: &Path,
 ) -> Result<(BTreeMap<String, String>, PathBuf), Box<dyn Error>> {
     let mut layers = Vec::new();
     let mut scope_dir = PathBuf::from(".");
 
-    for file in validation_chain(path, repo_root) {
-        if file.exists() {
-            let text = std::fs::read_to_string(&file)?;
+    for dir in validation_dirs(path, repo_root) {
+        if let Some(text) = src.read_validation(&dir)? {
             layers.push(parse_sections(&text)?);
-            if let Some(parent) = file.parent() {
-                if let Ok(rel) = parent.strip_prefix(repo_root) {
-                    scope_dir = rel.to_path_buf();
-                }
+            if let Ok(rel) = dir.strip_prefix(repo_root) {
+                scope_dir = rel.to_path_buf();
             }
         }
     }
@@ -227,15 +236,6 @@ fn resolve_validation_with_scope(
     let merged = merge(&layers);
     require_sections(&merged)?;
     Ok((merged, scope_dir))
-}
-
-/// The git working-directory root, discovered from the current directory.
-pub(crate) fn find_repo_root() -> Result<PathBuf, Box<dyn Error>> {
-    let repo = git2::Repository::discover(".")?;
-    let workdir = repo
-        .workdir()
-        .ok_or("repository has no working directory")?;
-    Ok(workdir.to_path_buf())
 }
 
 #[derive(Debug)]
