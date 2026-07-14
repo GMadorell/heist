@@ -2,9 +2,6 @@ use assert_cmd::Command;
 
 #[test]
 fn prints_field_list_and_example() {
-    // Get today's date (UTC) using the same convention as State::today().
-    let today = get_today_date();
-
     // Run heist-cli state schema
     let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
     let output = cmd
@@ -21,8 +18,9 @@ fn prints_field_list_and_example() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    let expected = format!(
-        r#"schema_version: u32
+    // The example's created/updated dates are a fixed constant (not "today"),
+    // so the schema output is fully deterministic.
+    let expected = r#"schema_version: u32
 slug: string
 stage: string (casing|planning|fence_review|human_review|forging|safehouse|implementing|cleaning|done)
 worktree: string|null
@@ -33,7 +31,7 @@ fence_rounds: u32
 created: string
 updated: string
 
-{{
+{
   "schema_version": 1,
   "slug": "example",
   "stage": "casing",
@@ -42,26 +40,13 @@ updated: string
   "score_step": 0,
   "score_steps_total": 0,
   "fence_rounds": 0,
-  "created": "{}",
-  "updated": "{}"
-}}"#,
-        today, today
-    );
+  "created": "2026-01-01",
+  "updated": "2026-01-01"
+}"#;
 
     assert_eq!(
         stdout.trim(),
         expected.trim(),
         "stdout should match expected golden text"
     );
-}
-
-fn get_today_date() -> String {
-    let output = std::process::Command::new("date")
-        .args(["-u", "+%Y-%m-%d"])
-        .output()
-        .expect("failed to get date");
-    String::from_utf8(output.stdout)
-        .expect("invalid utf8 from date command")
-        .trim()
-        .to_string()
 }

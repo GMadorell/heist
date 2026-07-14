@@ -1,11 +1,15 @@
 use heist_cli::adapters::file_state_repository::FileStateRepository;
 use heist_cli::domain::error::StateError;
 use heist_cli::domain::state::State;
-use heist_cli::domain::value::ScoreStep;
+use heist_cli::domain::value::{DateValue, ScoreStep};
 use heist_cli::ports::state_repository::StateRepository;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tempfile::TempDir;
+
+fn fixed_date() -> DateValue {
+    DateValue::parse("today", "2026-01-01").expect("valid date")
+}
 
 // `FileStateRepository` resolves paths relative to the process cwd
 // (joining onto `.heist/<slug>/state.json`), so every test here must chdir.
@@ -58,7 +62,7 @@ fn exists_false_before_init() {
 fn init_creates_state_file_visible_to_exists_and_load() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
-    let state = State::new("foo").expect("valid slug");
+    let state = State::new("foo", fixed_date()).expect("valid slug");
 
     repo.init("foo", &state).expect("init should succeed");
 
@@ -71,7 +75,7 @@ fn init_creates_state_file_visible_to_exists_and_load() {
 fn init_rejects_already_initialised_slug() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
-    let state = State::new("foo").expect("valid slug");
+    let state = State::new("foo", fixed_date()).expect("valid slug");
     repo.init("foo", &state).expect("first init should succeed");
 
     assert!(matches!(
@@ -86,7 +90,7 @@ fn init_rejects_pre_existing_empty_slug_dir() {
     let repo = FileStateRepository;
     std::fs::create_dir_all(".heist/foo").expect("create empty slug dir");
 
-    let state = State::new("foo").expect("valid slug");
+    let state = State::new("foo", fixed_date()).expect("valid slug");
     assert!(matches!(
         repo.init("foo", &state),
         Err(StateError::AlreadyExists)
@@ -116,7 +120,7 @@ fn load_unparseable_file_is_unparseable() {
 fn save_then_load_roundtrips() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
-    let mut state = State::new("foo").expect("valid slug");
+    let mut state = State::new("foo", fixed_date()).expect("valid slug");
     state.score_step = ScoreStep::new(3);
     std::fs::create_dir_all(".heist/foo").expect("create slug dir");
 
@@ -132,7 +136,7 @@ fn save_then_load_roundtrips() {
 fn save_without_slug_dir_is_unreadable() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
-    let state = State::new("foo").expect("valid slug");
+    let state = State::new("foo", fixed_date()).expect("valid slug");
 
     assert!(matches!(
         repo.save("foo", &state),

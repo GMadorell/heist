@@ -19,8 +19,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(slug: &str) -> Result<Self, FieldError> {
-        let today = DateValue::today();
+    pub fn new(slug: &str, today: DateValue) -> Result<Self, FieldError> {
         Ok(State {
             schema_version: SchemaVersion::CURRENT,
             slug: SlugValue::parse(slug)?,
@@ -137,13 +136,12 @@ impl Stage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::today;
     use serde_json::json;
 
     #[test]
     fn new_state_has_expected_defaults() {
-        let today = today();
-        let state = State::new("my-slug").expect("valid slug");
+        let today = DateValue::parse("today", "2026-01-01").expect("valid date");
+        let state = State::new("my-slug", today.clone()).expect("valid slug");
         let json = serde_json::to_value(&state).expect("failed to serialize");
 
         assert_eq!(
@@ -157,8 +155,8 @@ mod tests {
                 "score_step": 0,
                 "score_steps_total": 0,
                 "fence_rounds": 0,
-                "created": today,
-                "updated": today,
+                "created": today.to_string(),
+                "updated": today.to_string(),
             })
         );
     }

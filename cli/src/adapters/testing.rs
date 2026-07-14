@@ -1,11 +1,21 @@
 use crate::domain::error::StateError;
 use crate::domain::state::State;
+use crate::domain::value::DateValue;
+use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository};
 use crate::ports::state_repository::StateRepository;
 use crate::ports::validation_source::ValidationSource;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
+
+pub struct FixedClock(pub DateValue);
+
+impl Clock for FixedClock {
+    fn today(&self) -> DateValue {
+        self.0.clone()
+    }
+}
 
 pub struct InMemoryStateRepository {
     states: std::cell::RefCell<std::collections::HashMap<String, State>>,

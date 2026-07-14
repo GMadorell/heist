@@ -1,5 +1,4 @@
 use crate::domain::error::FieldError;
-use crate::utils::today;
 use nutype::nutype;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -60,10 +59,6 @@ impl DateValue {
             value: value.to_string(),
             expected: "an ISO 8601 date (YYYY-MM-DD)".to_string(),
         })
-    }
-
-    pub fn today() -> Self {
-        Self::try_new(today()).expect("today() always produces a valid date")
     }
 
     fn is_valid_date(s: &str) -> bool {

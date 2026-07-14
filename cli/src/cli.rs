@@ -1,11 +1,13 @@
 use crate::adapters::file_state_repository::FileStateRepository;
 use crate::adapters::filesystem_worktree::FilesystemWorktree;
 use crate::adapters::real_git::RealGit;
+use crate::adapters::system_clock::SystemClock;
 use crate::adapters::validation_fs::ValidationFs;
 use crate::domain;
 use crate::domain::state::State;
 use crate::domain::value::{DateValue, NonBlankValue};
 use crate::exitcode::ExitCode;
+use crate::ports::clock::Clock;
 use crate::ports::git::GitRepository;
 use crate::ports::state_repository::StateRepository;
 use crate::ports::worktree_fs::WorktreeFs;
@@ -71,22 +73,29 @@ enum ValidationCommands {
 pub fn run(cli: Cli) -> ExitCode {
     let state_repo = FileStateRepository;
     let git = RealGit;
+    let clock = SystemClock;
     let repo_root = Path::new(".");
 
     match cli.command {
-        Commands::State { command } => run_state(command, &state_repo).unwrap_or_else(|v| v),
+        Commands::State { command } => {
+            run_state(command, &state_repo, &clock).unwrap_or_else(|v| v)
+        }
         Commands::Worktree { command } => {
-            run_worktree(command, repo_root, &state_repo, &git).unwrap_or_else(|v| v)
+            run_worktree(command, repo_root, &state_repo, &git, &clock).unwrap_or_else(|v| v)
         }
         Commands::Validation { command } => run_validation(command),
         Commands::Resume { slug } => run_resume(&slug, &state_repo).unwrap_or_else(|v| v),
     }
 }
 
-fn run_state(command: StateCommands, repo: &dyn StateRepository) -> Result<ExitCode, ExitCode> {
+fn run_state(
+    command: StateCommands,
+    repo: &dyn StateRepository,
+    clock: &dyn Clock,
+) -> Result<ExitCode, ExitCode> {
     match command {
         StateCommands::Init { slug } => {
-            let state = match State::new(&slug) {
+            let state = match State::new(&slug, clock.today()) {
                 Ok(state) => state,
                 Err(e) => {
                     eprintln!("{}", e);
@@ -120,7 +129,7 @@ fn run_state(command: StateCommands, repo: &dyn StateRepository) -> Result<ExitC
                 eprintln!("{}", e);
                 return Ok(ExitCode::Precondition);
             }
-            state.updated = DateValue::today();
+            state.updated = clock.today();
             save_state(repo, &slug, &state)?;
             Ok(ExitCode::Success)
         }
@@ -136,7 +145,10 @@ fence_rounds: u32\n\
 created: string\n\
 updated: string";
 
-            let example = State::new("example").map_err(|e| internal_error(&e))?;
+            let example_date =
+                DateValue::parse("created", "2026-01-01").expect("constant date is valid");
+            let example =
+                State::new("example", example_date).map_err(|e| internal_error(&e))?;
             let json = match serde_json::to_string_pretty(&example) {
                 Ok(json) => json,
                 Err(e) => {
@@ -156,6 +168,7 @@ fn run_worktree(
     repo_root: &Path,
     state_repo: &dyn StateRepository,
     git: &dyn GitRepository,
+    clock: &dyn Clock,
 ) -> Result<ExitCode, ExitCode> {
     let fs = FilesystemWorktree;
     match command {
@@ -197,7 +210,7 @@ fn run_worktree(
             let mut state = load_state(state_repo, &slug)?;
             state.worktree = Some(worktree_value.clone());
             state.branch = Some(branch);
-            state.updated = DateValue::today();
+            state.updated = clock.today();
             save_state(state_repo, &slug, &state)?;
 
             println!("{}", worktree_value);
@@ -240,7 +253,7 @@ fn run_worktree(
 
             let mut state = load_state(state_repo, &slug)?;
             state.stage = crate::domain::state::Stage::Done;
-            state.updated = DateValue::today();
+            state.updated = clock.today();
             save_state(state_repo, &slug, &state)?;
 
             Ok(ExitCode::Success)
@@ -336,17 +349,26 @@ fn internal_error(e: &impl std::fmt::Display) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::testing::{FakeGit, InMemoryStateRepository};
+    use crate::adapters::testing::{FakeGit, FixedClock, InMemoryStateRepository};
     use crate::domain::state::Stage;
     use crate::domain::value::ScoreStep;
     use crate::ports::git::GitError;
     use tempfile::TempDir;
 
+    fn fixed_date() -> DateValue {
+        DateValue::parse("today", "2026-01-01").expect("valid date")
+    }
+
+    fn fixed_clock() -> FixedClock {
+        FixedClock(fixed_date())
+    }
+
     #[test]
     fn state_init_succeeds_for_new_slug() {
         let repo = InMemoryStateRepository::new();
         let code =
-            run_state(StateCommands::Init { slug: "foo".into() }, &repo).unwrap_or_else(|v| v);
+            run_state(StateCommands::Init { slug: "foo".into() }, &repo, &fixed_clock())
+                .unwrap_or_else(|v| v);
         assert_eq!(code, ExitCode::Success);
         assert_eq!(
             repo.get("foo").expect("state should exist").stage,
@@ -357,9 +379,10 @@ mod tests {
     #[test]
     fn state_init_rejects_existing_slug() {
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo").expect("valid slug"));
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let code =
-            run_state(StateCommands::Init { slug: "foo".into() }, &repo).unwrap_or_else(|v| v);
+            run_state(StateCommands::Init { slug: "foo".into() }, &repo, &fixed_clock())
+                .unwrap_or_else(|v| v);
         assert_eq!(code, ExitCode::Precondition);
     }
 
@@ -373,6 +396,7 @@ mod tests {
                 value: "done".into(),
             },
             &repo,
+            &fixed_clock(),
         )
         .unwrap_or_else(|v| v);
         assert_eq!(code, ExitCode::Precondition);
@@ -381,7 +405,7 @@ mod tests {
     #[test]
     fn state_set_persists_valid_field() {
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo").expect("valid slug"));
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let code = run_state(
             StateCommands::Set {
                 slug: "foo".into(),
@@ -389,6 +413,7 @@ mod tests {
                 value: "4".into(),
             },
             &repo,
+            &fixed_clock(),
         )
         .unwrap_or_else(|v| v);
         assert_eq!(code, ExitCode::Success);
@@ -401,7 +426,7 @@ mod tests {
     #[test]
     fn state_set_invalid_numeric_is_precondition_and_leaves_state() {
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo").expect("valid slug"));
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let code = run_state(
             StateCommands::Set {
                 slug: "foo".into(),
@@ -409,6 +434,7 @@ mod tests {
                 value: "not-a-number".into(),
             },
             &repo,
+            &fixed_clock(),
         )
         .unwrap_or_else(|v| v);
         assert_eq!(code, ExitCode::Precondition);
@@ -429,6 +455,7 @@ mod tests {
             temp_dir.path(),
             &repo,
             &git,
+            &fixed_clock(),
         )
         .unwrap_or_else(|v| v);
 
@@ -439,7 +466,7 @@ mod tests {
     fn worktree_add_fails_when_origin_unreachable() {
         let temp_dir = TempDir::new().expect("failed to create temp directory");
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo").expect("valid slug"));
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let git = FakeGit::new().failing_add(GitError::WorktreeAdd {
             subtype: "origin-unreachable".into(),
             message: "cannot find remote ref".into(),
@@ -450,6 +477,7 @@ mod tests {
             temp_dir.path(),
             &repo,
             &git,
+            &fixed_clock(),
         )
         .unwrap_or_else(|v| v);
 
@@ -468,6 +496,7 @@ mod tests {
             Path::new("."),
             &repo,
             &git,
+            &fixed_clock(),
         )
         .unwrap_or_else(|v| v);
 
@@ -477,7 +506,7 @@ mod tests {
     #[test]
     fn worktree_remove_refuses_when_branch_not_merged() {
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo").expect("valid slug"));
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         // No merged branch configured, so heist/foo is treated as unmerged.
         let git = FakeGit::new().with_default_branch("main");
 
@@ -486,6 +515,7 @@ mod tests {
             Path::new("."),
             &repo,
             &git,
+            &fixed_clock(),
         )
         .unwrap_or_else(|v| v);
 
@@ -500,7 +530,7 @@ mod tests {
     #[test]
     fn worktree_remove_surfaces_worktree_removal_failure() {
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo").expect("valid slug"));
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let git = FakeGit::new()
             .with_merged_branch("heist/foo")
             .failing_remove(GitError::WorktreeRemove {
@@ -512,6 +542,7 @@ mod tests {
             Path::new("."),
             &repo,
             &git,
+            &fixed_clock(),
         )
         .unwrap_or_else(|v| v);
 
@@ -526,7 +557,7 @@ mod tests {
     #[test]
     fn worktree_remove_surfaces_branch_deletion_failure() {
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo").expect("valid slug"));
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let git = FakeGit::new()
             .with_merged_branch("heist/foo")
             .failing_delete(GitError::BranchDelete {
@@ -538,6 +569,7 @@ mod tests {
             Path::new("."),
             &repo,
             &git,
+            &fixed_clock(),
         )
         .unwrap_or_else(|v| v);
 
@@ -551,7 +583,7 @@ mod tests {
     #[test]
     fn worktree_remove_marks_done_when_merged() {
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo").expect("valid slug"));
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_merged_branch("heist/foo");
@@ -561,6 +593,7 @@ mod tests {
             Path::new("."),
             &repo,
             &git,
+            &fixed_clock(),
         )
         .unwrap_or_else(|v| v);
 

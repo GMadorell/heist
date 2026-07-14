@@ -1,3 +1,4 @@
+pub mod clock;
 pub mod git;
 pub mod state_repository;
 pub mod validation_source;
