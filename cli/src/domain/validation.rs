@@ -12,7 +12,10 @@ pub const SECTION_ORDER: [&str; 6] = ["Build", "Lint", "Test", "Docs", "PR conve
 /// Walks from the repo root down to the path's directory, merging every
 /// `validation.md` found along the way, then renders sections in
 /// `SECTION_ORDER`.
-pub fn resolve_validation(src: &dyn ValidationSource, path: &Path) -> Result<String, Box<dyn Error>> {
+pub fn resolve_validation(
+    src: &dyn ValidationSource,
+    path: &Path,
+) -> Result<String, Box<dyn Error>> {
     let repo_root = src.repo_root()?;
     let (merged, _scope) = resolve_validation_with_scope(src, path, &repo_root)?;
 

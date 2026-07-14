@@ -31,7 +31,8 @@ pub fn add(
     }
 
     let main_branch = git.default_branch(repo_root);
-    fs.ensure_worktrees_ignored(repo_root).map_err(AddError::Fs)?;
+    fs.ensure_worktrees_ignored(repo_root)
+        .map_err(AddError::Fs)?;
 
     let worktree_path = worktree::worktree_path(repo_root, slug);
     let branch = worktree::branch_name(slug).map_err(AddError::Naming)?;

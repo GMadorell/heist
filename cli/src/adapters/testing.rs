@@ -44,6 +44,12 @@ pub struct InMemoryStateRepository {
     states: std::cell::RefCell<std::collections::HashMap<String, State>>,
 }
 
+impl Default for InMemoryStateRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryStateRepository {
     pub fn new() -> Self {
         InMemoryStateRepository {
@@ -99,6 +105,12 @@ pub struct FakeGit {
     add_error: Option<GitError>,
     remove_error: Option<GitError>,
     delete_error: Option<GitError>,
+}
+
+impl Default for FakeGit {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FakeGit {
