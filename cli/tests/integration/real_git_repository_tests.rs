@@ -1,4 +1,5 @@
-use heist_cli::git_repository::{GitError, GitRepository, RealGit};
+use heist_cli::git_repository::RealGit;
+use heist_cli::ports::git::{GitError, GitRepository};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
