@@ -1,8 +1,8 @@
-use heist_cli::domain::value::ScoreStep;
+use heist_cli::adapters::file_state_repository::FileStateRepository;
 use heist_cli::domain::error::StateError;
 use heist_cli::domain::state::State;
+use heist_cli::domain::value::ScoreStep;
 use heist_cli::ports::state_repository::StateRepository;
-use heist_cli::state_repository::FileStateRepository;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tempfile::TempDir;

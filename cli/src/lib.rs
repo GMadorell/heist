@@ -1,9 +1,8 @@
+pub mod adapters;
 pub mod cli;
 pub mod domain;
 pub mod exitcode;
-pub mod git_repository;
 pub mod ports;
-pub mod state_repository;
 pub mod utils;
 pub mod validation;
 pub mod worktree;
