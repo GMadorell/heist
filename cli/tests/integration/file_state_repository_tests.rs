@@ -1,4 +1,4 @@
-use heist_cli::models::ScoreStep;
+use heist_cli::domain::value::ScoreStep;
 use heist_cli::state::{State, StateError};
 use heist_cli::state_repository::{FileStateRepository, StateRepository};
 use std::path::PathBuf;

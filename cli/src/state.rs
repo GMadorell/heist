@@ -1,4 +1,4 @@
-use crate::models::{
+use crate::domain::value::{
     DateValue, FenceRounds, NonBlankValue, SchemaVersion, ScoreStep, ScoreStepsTotal, SlugValue,
 };
 use serde::{Deserialize, Serialize};

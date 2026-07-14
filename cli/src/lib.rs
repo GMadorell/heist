@@ -1,7 +1,7 @@
 pub mod cli;
+pub mod domain;
 pub mod exitcode;
 pub mod git_repository;
-pub mod models;
 pub mod state;
 pub mod state_repository;
 pub mod utils;

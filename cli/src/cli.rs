@@ -1,6 +1,6 @@
 use crate::exitcode::ExitCode;
 use crate::git_repository::{GitRepository, RealGit};
-use crate::models::{DateValue, NonBlankValue};
+use crate::domain::value::{DateValue, NonBlankValue};
 use crate::state::State;
 use crate::state_repository::{FileStateRepository, StateRepository};
 use crate::worktree;
@@ -329,7 +329,7 @@ fn internal_error(e: &impl std::fmt::Display) -> ExitCode {
 mod tests {
     use super::*;
     use crate::git_repository::{FakeGit, GitError};
-    use crate::models::ScoreStep;
+    use crate::domain::value::ScoreStep;
     use crate::state::Stage;
     use crate::state_repository::InMemoryStateRepository;
     use tempfile::TempDir;
