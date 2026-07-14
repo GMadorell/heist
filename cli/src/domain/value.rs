@@ -1,4 +1,4 @@
-use crate::state::FieldError;
+use crate::domain::error::FieldError;
 use crate::utils::today;
 use nutype::nutype;
 use serde::{Deserialize, Serialize};

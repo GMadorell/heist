@@ -1,7 +1,7 @@
 use crate::exitcode::ExitCode;
 use crate::git_repository::{GitRepository, RealGit};
 use crate::domain::value::{DateValue, NonBlankValue};
-use crate::state::State;
+use crate::domain::state::State;
 use crate::state_repository::{FileStateRepository, StateRepository};
 use crate::worktree;
 use clap::{Parser, Subcommand};
@@ -232,7 +232,7 @@ fn run_worktree(
             // handled it, and failing there would strand state.json short of "done".
 
             let mut state = load_state(state_repo, &slug)?;
-            state.stage = crate::state::Stage::Done;
+            state.stage = crate::domain::state::Stage::Done;
             state.updated = DateValue::today();
             save_state(state_repo, &slug, &state)?;
 
@@ -330,7 +330,7 @@ mod tests {
     use super::*;
     use crate::git_repository::{FakeGit, GitError};
     use crate::domain::value::ScoreStep;
-    use crate::state::Stage;
+    use crate::domain::state::Stage;
     use crate::state_repository::InMemoryStateRepository;
     use tempfile::TempDir;
 

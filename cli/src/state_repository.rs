@@ -1,4 +1,5 @@
-use crate::state::{State, StateError};
+use crate::domain::error::StateError;
+use crate::domain::state::State;
 use std::path::{Path, PathBuf};
 
 pub trait StateRepository {

@@ -1,5 +1,6 @@
 use heist_cli::domain::value::ScoreStep;
-use heist_cli::state::{State, StateError};
+use heist_cli::domain::error::StateError;
+use heist_cli::domain::state::State;
 use heist_cli::state_repository::{FileStateRepository, StateRepository};
 use std::path::PathBuf;
 use std::sync::Mutex;
