@@ -1,11 +1,13 @@
 use crate::adapters::file_state_repository::FileStateRepository;
+use crate::adapters::filesystem_worktree::FilesystemWorktree;
 use crate::adapters::real_git::RealGit;
+use crate::domain;
 use crate::domain::state::State;
 use crate::domain::value::{DateValue, NonBlankValue};
 use crate::exitcode::ExitCode;
 use crate::ports::git::GitRepository;
 use crate::ports::state_repository::StateRepository;
-use crate::worktree;
+use crate::ports::worktree_fs::WorktreeFs;
 use clap::{Parser, Subcommand};
 use std::path::Path;
 
@@ -154,6 +156,7 @@ fn run_worktree(
     state_repo: &dyn StateRepository,
     git: &dyn GitRepository,
 ) -> Result<ExitCode, ExitCode> {
+    let fs = FilesystemWorktree;
     match command {
         WorktreeCommands::Add { slug } => {
             if !state_repo.exists(&slug) {
@@ -162,10 +165,11 @@ fn run_worktree(
             }
 
             let main_branch = git.default_branch(repo_root);
-            worktree::ensure_worktrees_ignored(repo_root).map_err(|e| internal_error(&e))?;
+            fs.ensure_worktrees_ignored(repo_root)
+                .map_err(|e| internal_error(&e))?;
 
-            let worktree_path = worktree::worktree_path(repo_root, &slug);
-            let branch = worktree::branch_name(&slug).map_err(|e| internal_error(&e))?;
+            let worktree_path = domain::worktree::worktree_path(repo_root, &slug);
+            let branch = domain::worktree::branch_name(&slug).map_err(|e| internal_error(&e))?;
 
             if !git.worktree_exists(repo_root, &slug) {
                 if let Err(e) = git.add_worktree(
@@ -179,11 +183,11 @@ fn run_worktree(
                 }
             }
 
-            worktree::create_worktree_symlink(repo_root, &worktree_path, &slug)
+            fs.link_heist_dir(repo_root, &worktree_path, &slug)
                 .map_err(|e| internal_error(&e))?;
 
-            let worktree_absolute = worktree_path
-                .canonicalize()
+            let worktree_absolute = fs
+                .canonicalize(&worktree_path)
                 .map_err(|e| internal_error(&e))?;
             let worktree_value =
                 NonBlankValue::parse("worktree", &worktree_absolute.to_string_lossy())
@@ -205,7 +209,7 @@ fn run_worktree(
             }
 
             let main_branch = git.default_branch(repo_root);
-            let branch = worktree::branch_name(&slug).map_err(|e| internal_error(&e))?;
+            let branch = domain::worktree::branch_name(&slug).map_err(|e| internal_error(&e))?;
 
             match git.is_branch_merged(repo_root, branch.as_ref(), &main_branch) {
                 Ok(true) => {}
@@ -219,7 +223,7 @@ fn run_worktree(
                 }
             }
 
-            let worktree_path = worktree::worktree_path(repo_root, &slug);
+            let worktree_path = domain::worktree::worktree_path(repo_root, &slug);
             if let Err(e) = git.remove_worktree(repo_root, &worktree_path) {
                 eprintln!("{}", e);
                 return Err(e.exit_code());
