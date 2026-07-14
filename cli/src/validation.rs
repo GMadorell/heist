@@ -148,10 +148,6 @@ pub fn parse_sections(text: &str) -> Result<BTreeMap<String, String>, ParseError
 }
 
 /// Enforce that the effective (merged) validation supplies `Build`/`Lint`/`Test`.
-///
-/// The rule applies to the whole resolved chain, not to each file: an ancestor
-/// `validation.md` may hold only repo-global sections (PR conventions, Notes)
-/// and leave the required sections to a nested leaf under `cli/` or `plugin/`.
 fn require_sections(sections: &BTreeMap<String, String>) -> Result<(), ParseError> {
     let missing: Vec<&str> = ["Build", "Lint", "Test"]
         .iter()

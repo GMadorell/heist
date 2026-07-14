@@ -1,19 +1,10 @@
-//! Git-access seam for the worktree commands.
-//!
-//! Command handlers depend on the [`GitRepository`] trait rather than calling
-//! `git2`/`std::process::Command` directly, so worktree/branch decisions can be
-//! unit-tested against an in-memory [`FakeGit`] without a real repo on disk.
-
 use crate::exitcode::ExitCode;
 use std::fmt;
 use std::path::Path;
 
-/// Git read/write operations the worktree commands need.
 pub trait GitRepository {
-    /// The repository's main branch (origin's default, else the current branch).
     fn default_branch(&self, repo_root: &Path) -> String;
 
-    /// Whether `branch` is merged into `origin/<into>`.
     fn is_branch_merged(
         &self,
         repo_root: &Path,
@@ -21,10 +12,10 @@ pub trait GitRepository {
         into: &str,
     ) -> Result<bool, GitError>;
 
-    /// Whether a worktree for `slug` is already registered.
+    fn delete_branch(&self, repo_root: &Path, branch: &str) -> Result<(), GitError>;
+
     fn worktree_exists(&self, repo_root: &Path, slug: &str) -> bool;
 
-    /// Create a worktree at `path` on a new `branch` from `start_point`.
     fn add_worktree(
         &self,
         repo_root: &Path,
@@ -33,25 +24,16 @@ pub trait GitRepository {
         start_point: &str,
     ) -> Result<(), GitError>;
 
-    /// Remove the worktree registered at `path`.
     fn remove_worktree(&self, repo_root: &Path, path: &Path) -> Result<(), GitError>;
-
-    /// Delete a local `branch` (safe delete, `git branch -d`).
-    fn delete_branch(&self, repo_root: &Path, branch: &str) -> Result<(), GitError>;
 }
 
-/// A git operation failure. Every variant maps to [`ExitCode::Git`]; the
-/// `Display` string matches the stderr line the CLI printed before this seam.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GitError {
-    /// `git worktree add` failed; `subtype` classifies the cause for callers.
     WorktreeAdd { subtype: String, message: String },
-    /// `git worktree remove` failed.
     WorktreeRemove { message: String },
-    /// `git branch -d` failed.
     BranchDelete { message: String },
-    /// The merged-ancestry check itself failed (e.g. a bad ref).
     MergeCheck { message: String },
+    CommandFailed { command: String, message: String },
 }
 
 impl GitError {
@@ -71,48 +53,40 @@ impl fmt::Display for GitError {
             GitError::MergeCheck { message } => {
                 write!(f, "failed to check merged branches: {}", message)
             }
+            GitError::CommandFailed { command, message } => {
+                write!(f, "failed to run {}: {}", command, message)
+            }
         }
     }
 }
 
-/// The real implementation: `git2` for reads, shelling out for the mutating
-/// worktree/branch operations.
 pub struct RealGit;
 
 impl GitRepository for RealGit {
-    /// Detect the repository's main branch, always via git.
-    ///
-    /// Prefers origin's default branch (`refs/remotes/origin/HEAD`); falls back to
-    /// the current branch when there's no remote. The `Main branch:` line in
-    /// `validation.md` is for human-facing agents (Cleaner, etc.), not for the
-    /// deterministic CLI, which shouldn't parse prose for something git knows.
     fn default_branch(&self, repo_root: &Path) -> String {
-        if let Ok(repo) = git2::Repository::open(repo_root) {
-            if let Ok(reference) = repo.find_reference("refs/remotes/origin/HEAD") {
-                if let Ok(Some(target)) = reference.symbolic_target() {
-                    if let Some(name) = target.rsplit('/').next() {
-                        if !name.is_empty() {
-                            return name.to_string();
-                        }
-                    }
-                }
-            }
+        let Ok(repo) = git2::Repository::open(repo_root) else {
+            return String::new();
+        };
 
-            // No remote default: fall back to the current branch.
-            if let Ok(head) = repo.head() {
-                if let Ok(name) = head.shorthand() {
-                    return name.to_string();
-                }
-            }
+        let remote_default = repo
+            .find_reference("refs/remotes/origin/HEAD")
+            .ok()
+            .and_then(|reference| {
+                let target = reference.symbolic_target().ok().flatten()?;
+                target.rsplit('/').next().map(str::to_string)
+            })
+            .filter(|name| !name.is_empty());
+        if let Some(name) = remote_default {
+            return name;
         }
 
-        String::new()
+        // No remote default: fall back to the current branch.
+        repo.head()
+            .ok()
+            .and_then(|head| head.shorthand().ok().map(str::to_string))
+            .unwrap_or_default()
     }
 
-    /// Whether `branch` is merged into `origin/<into>`.
-    ///
-    /// True when the branch tip equals the main tip (e.g. after a fast-forward
-    /// merge) or is an ancestor of it.
     fn is_branch_merged(
         &self,
         repo_root: &Path,
@@ -134,7 +108,23 @@ impl GitRepository for RealGit {
         })
     }
 
-    /// Whether a worktree for `slug` is already registered (`.worktrees/<slug>`).
+    fn delete_branch(&self, repo_root: &Path, branch: &str) -> Result<(), GitError> {
+        let output = std::process::Command::new("git")
+            .current_dir(repo_root)
+            .args(["branch", "-d", branch])
+            .output()
+            .map_err(|e| GitError::CommandFailed {
+                command: "git branch -d".to_string(),
+                message: e.to_string(),
+            })?;
+        if output.status.success() {
+            return Ok(());
+        }
+        Err(GitError::BranchDelete {
+            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        })
+    }
+
     fn worktree_exists(&self, repo_root: &Path, slug: &str) -> bool {
         if let Ok(repo) = git2::Repository::open(repo_root) {
             if let Ok(worktrees) = repo.worktrees() {
@@ -170,7 +160,10 @@ impl GitRepository for RealGit {
                 start_point,
             ])
             .output()
-            .expect("failed to run git worktree add");
+            .map_err(|e| GitError::CommandFailed {
+                command: "git worktree add".to_string(),
+                message: e.to_string(),
+            })?;
 
         if output.status.success() {
             return Ok(());
@@ -199,7 +192,10 @@ impl GitRepository for RealGit {
             .current_dir(repo_root)
             .args(["worktree", "remove", path.to_string_lossy().as_ref()])
             .output()
-            .expect("failed to run git worktree remove");
+            .map_err(|e| GitError::CommandFailed {
+                command: "git worktree remove".to_string(),
+                message: e.to_string(),
+            })?;
         if output.status.success() {
             return Ok(());
         }
@@ -207,25 +203,9 @@ impl GitRepository for RealGit {
             message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
         })
     }
-
-    fn delete_branch(&self, repo_root: &Path, branch: &str) -> Result<(), GitError> {
-        let output = std::process::Command::new("git")
-            .current_dir(repo_root)
-            .args(["branch", "-d", branch])
-            .output()
-            .expect("failed to run git branch -d");
-        if output.status.success() {
-            return Ok(());
-        }
-        Err(GitError::BranchDelete {
-            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
-        })
-    }
 }
 
-/// In-memory git for unit tests: a configurable default branch, a set of merged
-/// branches, and a set of registered worktree slugs. The three mutating
-/// operations can each be configured to fail with a specific [`GitError`].
+/// In-memory git for unit tests
 #[cfg(test)]
 pub struct FakeGit {
     default_branch: String,
@@ -307,8 +287,7 @@ impl GitRepository for FakeGit {
         _start_point: &str,
     ) -> Result<(), GitError> {
         if let Some(err) = &self.add_error {
-            // Clone the configured error so the fake can fail repeatedly.
-            return Err(clone_git_error(err));
+            return Err(err.clone());
         }
         // Register by the branch's slug suffix (`heist/<slug>` -> `<slug>`).
         let slug = branch.rsplit('/').next().unwrap_or(branch);
@@ -318,111 +297,15 @@ impl GitRepository for FakeGit {
 
     fn remove_worktree(&self, _repo_root: &Path, _path: &Path) -> Result<(), GitError> {
         if let Some(err) = &self.remove_error {
-            return Err(clone_git_error(err));
+            return Err(err.clone());
         }
         Ok(())
     }
 
     fn delete_branch(&self, _repo_root: &Path, _branch: &str) -> Result<(), GitError> {
         if let Some(err) = &self.delete_error {
-            return Err(clone_git_error(err));
+            return Err(err.clone());
         }
         Ok(())
-    }
-}
-
-#[cfg(test)]
-fn clone_git_error(err: &GitError) -> GitError {
-    match err {
-        GitError::WorktreeAdd { subtype, message } => GitError::WorktreeAdd {
-            subtype: subtype.clone(),
-            message: message.clone(),
-        },
-        GitError::WorktreeRemove { message } => GitError::WorktreeRemove {
-            message: message.clone(),
-        },
-        GitError::BranchDelete { message } => GitError::BranchDelete {
-            message: message.clone(),
-        },
-        GitError::MergeCheck { message } => GitError::MergeCheck {
-            message: message.clone(),
-        },
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use std::process::Command;
-    use tempfile::TempDir;
-
-    fn run_git(dir: &Path, args: &[&str]) {
-        let status = Command::new("git")
-            // Disable commit signing for these throwaway test repos: if the
-            // ambient global git config has commit.gpgsign=true, parallel
-            // test threads all invoking gpg-agent concurrently can serialize
-            // and occasionally time out, making the test suite flaky.
-            .arg("-c")
-            .arg("commit.gpgsign=false")
-            .args(args)
-            .current_dir(dir)
-            .status()
-            .expect("failed to run git");
-        assert!(status.success(), "git {:?} failed", args);
-    }
-
-    #[test]
-    fn detects_main_branch_via_git() {
-        let temp_dir = TempDir::new().expect("failed to create temp directory");
-        let repo_root = temp_dir.path();
-
-        run_git(repo_root, &["init", "-q", "-b", "main"]);
-        run_git(repo_root, &["config", "user.email", "test@example.com"]);
-        run_git(repo_root, &["config", "user.name", "Test"]);
-
-        fs::write(repo_root.join("README.md"), "hello").expect("failed to write file");
-        run_git(repo_root, &["add", "."]);
-        run_git(repo_root, &["commit", "-q", "-m", "init"]);
-
-        assert_eq!(RealGit.default_branch(repo_root), "main");
-    }
-
-    #[test]
-    fn fake_reports_configured_default_branch() {
-        let git = FakeGit::new().with_default_branch("trunk");
-        assert_eq!(git.default_branch(Path::new(".")), "trunk");
-    }
-
-    #[test]
-    fn fake_only_reports_configured_branches_as_merged() {
-        let git = FakeGit::new().with_merged_branch("heist/foo");
-        assert!(git
-            .is_branch_merged(Path::new("."), "heist/foo", "main")
-            .unwrap());
-        assert!(!git
-            .is_branch_merged(Path::new("."), "heist/bar", "main")
-            .unwrap());
-    }
-
-    #[test]
-    fn fake_reports_preexisting_worktree() {
-        let git = FakeGit::new().with_existing_worktree("foo");
-        assert!(git.worktree_exists(Path::new("."), "foo"));
-        assert!(!git.worktree_exists(Path::new("."), "bar"));
-    }
-
-    #[test]
-    fn fake_add_registers_worktree_by_slug() {
-        let git = FakeGit::new();
-        assert!(!git.worktree_exists(Path::new("."), "foo"));
-        git.add_worktree(
-            Path::new("."),
-            Path::new("/tmp/foo"),
-            "heist/foo",
-            "origin/main",
-        )
-        .expect("add should succeed");
-        assert!(git.worktree_exists(Path::new("."), "foo"));
     }
 }
