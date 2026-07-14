@@ -5,6 +5,7 @@ use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository};
 use crate::ports::state_repository::StateRepository;
 use crate::ports::validation_source::ValidationSource;
+use crate::ports::worktree_fs::WorktreeFs;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -14,6 +15,28 @@ pub struct FixedClock(pub DateValue);
 impl Clock for FixedClock {
     fn today(&self) -> DateValue {
         self.0.clone()
+    }
+}
+
+/// In-memory worktree fs for unit tests: echoes paths back with no real fs.
+pub struct FakeWorktreeFs;
+
+impl WorktreeFs for FakeWorktreeFs {
+    fn ensure_worktrees_ignored(&self, _repo_root: &Path) -> std::io::Result<bool> {
+        Ok(false)
+    }
+
+    fn link_heist_dir(
+        &self,
+        _repo_root: &Path,
+        _worktree_path: &Path,
+        _slug: &str,
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
+        Ok(path.to_path_buf())
     }
 }
 

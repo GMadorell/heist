@@ -1,4 +1,3 @@
-use crate::exitcode::ExitCode;
 use std::fmt;
 use std::path::Path;
 
@@ -34,12 +33,6 @@ pub enum GitError {
     BranchDelete { message: String },
     MergeCheck { message: String },
     CommandFailed { command: String, message: String },
-}
-
-impl GitError {
-    pub fn exit_code(&self) -> ExitCode {
-        ExitCode::Git
-    }
 }
 
 impl fmt::Display for GitError {

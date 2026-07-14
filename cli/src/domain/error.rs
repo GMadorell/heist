@@ -8,18 +8,6 @@ pub enum StateError {
     Unparseable(serde_json::Error),
 }
 
-impl StateError {
-    pub fn exit_code(&self) -> crate::exitcode::ExitCode {
-        use crate::exitcode::ExitCode;
-        match self {
-            StateError::Missing => ExitCode::Precondition,
-            StateError::AlreadyExists => ExitCode::Precondition,
-            StateError::Unreadable(_) => ExitCode::Internal,
-            StateError::Unparseable(_) => ExitCode::Precondition,
-        }
-    }
-}
-
 impl fmt::Display for StateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
