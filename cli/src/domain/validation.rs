@@ -194,6 +194,38 @@ pub fn merge(layers: &[BTreeMap<String, String>]) -> BTreeMap<String, String> {
     result
 }
 
+fn canonicalize_lenient(path: &Path) -> std::io::Result<PathBuf> {
+    if let Ok(canon) = path.canonicalize() {
+        return Ok(canon);
+    }
+    let mut tail: Vec<std::ffi::OsString> = Vec::new();
+    let mut ancestor = path;
+    loop {
+        let file_name = ancestor.file_name().map(|n| n.to_os_string());
+        match ancestor.parent() {
+            Some(parent) => {
+                if let Some(name) = file_name {
+                    tail.push(name);
+                }
+                if let Ok(canon_parent) = parent.canonicalize() {
+                    let mut result = canon_parent;
+                    for part in tail.into_iter().rev() {
+                        result.push(part);
+                    }
+                    return Ok(result);
+                }
+                ancestor = parent;
+            }
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("no existing ancestor found for {}", path.display()),
+                ));
+            }
+        }
+    }
+}
+
 /// Candidate `validation.md` directories from repo root down to the path's
 /// directory.
 fn validation_dirs(path: &Path, repo_root: &Path, cwd: &Path) -> Vec<PathBuf> {
@@ -529,5 +561,25 @@ root notes"#;
         assert_eq!(result["Docs"].trim(), "root docs");
         assert_eq!(result["PR conventions"].trim(), "root pr conventions");
         assert_eq!(result["Notes"].trim(), "root notes");
+    }
+
+    #[test]
+    fn canonicalize_lenient_returns_canonical_path_for_existing_dir() {
+        let temp_dir = tempfile::TempDir::new().expect("should create temp dir");
+        let result = canonicalize_lenient(temp_dir.path());
+        assert!(result.is_ok(), "canonicalize_lenient should succeed for existing dir");
+        let canonical_result = temp_dir.path().canonicalize().expect("should canonicalize temp dir");
+        assert_eq!(result.unwrap(), canonical_result);
+    }
+
+    #[test]
+    fn canonicalize_lenient_walks_up_to_nearest_existing_ancestor() {
+        let temp_dir = tempfile::TempDir::new().expect("should create temp dir");
+        let nonexistent_path = temp_dir.path().join("does-not-exist/also-missing.rs");
+        let result = canonicalize_lenient(&nonexistent_path);
+        assert!(result.is_ok(), "canonicalize_lenient should succeed for nonexistent path");
+        let expected = temp_dir.path().canonicalize().expect("should canonicalize temp dir")
+            .join("does-not-exist/also-missing.rs");
+        assert_eq!(result.unwrap(), expected);
     }
 }
