@@ -43,6 +43,8 @@ flowchart TD
     L --> M[Done: PR open, report delivered]
 ```
 
+Worktree teardown is deliberately manual, not part of the pipeline above: once a heist's PR merges, reclaim the worktree yourself with `heist worktree remove <slug>`. Cleaner stops at PR-open.
+
 ## Terms explanation
 
 | Heist term | Real concept |

@@ -24,4 +24,6 @@ Run this pipeline in order. Stop and report at the first failing stage — no pa
 
 `critical` review verdict: stop before pushing, hand the decision to the human.
 
+You do not remove the worktree. Teardown is a manual post-merge step (`heist worktree remove <slug>`), out of scope here.
+
 Reply with a final report: stage-by-stage pass/fail, risk label, auto-fixes applied (file:line), outstanding `ask-user` findings, PR URL if opened.
