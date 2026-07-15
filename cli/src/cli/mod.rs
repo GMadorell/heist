@@ -19,7 +19,7 @@ use std::path::Path;
     long_about = "Deterministic, token-free half of the Heist pipeline: state tracking, worktree \
 setup/teardown, and validation.md lookup. All commands read/write `.heist/<slug>/state.json` \
 relative to the current directory unless noted.\n\n\
-Exit codes: 0 success, 1 internal error, 2 precondition failed, 3 git command failed."
+Exit codes: 0 success, 1 internal error, 2 precondition failed, 3 git command failed, 4 invalid path argument."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -307,8 +307,8 @@ fn run_validation(
                     ExitCode::Success
                 }
                 Err(e) => {
-                    present::validation_resolve_failed(e);
-                    ExitCode::Internal
+                    present::validation_resolve_failed(&e);
+                    ExitCode::from(&e)
                 }
             }
         }
@@ -322,8 +322,8 @@ fn run_validation(
                 ExitCode::Precondition
             }
             Err(e) => {
-                present::validation_check_failed(e);
-                ExitCode::Internal
+                present::validation_check_failed(&e);
+                ExitCode::from(&e)
             }
         },
     }

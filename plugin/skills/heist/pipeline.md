@@ -10,7 +10,7 @@ If `heist` isn't on `PATH`, halt and point the user to the README's install sect
 
 ### 1. Casing gate
 
-Run `heist validation check .` at the repo root. If it prints `missing`, invoke the `heist:casing` skill's instructions yourself before continuing (don't ask the human to do it as a separate step — this is the "auto-triggered by /heist when validation.md missing" behavior). If it prints `ok`, proceed directly.
+Run `heist validation check <repo-root-absolute-path>`. Branch on the exit code: exit 0 → proceed directly; exit 2 → invoke the `heist:casing` skill's instructions yourself before continuing (don't ask the human to do it). Any other nonzero exit (e.g. 4, meaning the path argument itself was invalid) → halt and surface the raw stderr to the human, do NOT auto-run the casing skill in that case.
 
 ### 2. Planning: relay loop with the Mastermind
 
@@ -54,7 +54,7 @@ Use `crit` tool to review the blueprint found in `<worktree-path>/.heist/<slug>/
 
 The Mastermind's job ends at approval — forging is a fresh, one-shot transformation, not a continuation of its conversation.
 
-1. Spawn `heist:forger` (foreground, one-shot) with the worktree's absolute path and an explicit `cd <worktree-path>` instruction in the task message, so Forger reads `blueprint.md` from the worktree, runs `heist validation resolve <path>` for the effective validation sections, and writes `score.md` there.
+1. Spawn `heist:forger` (foreground, one-shot) with the worktree's absolute path and an explicit `cd <worktree-path>` instruction in the task message, so Forger reads `blueprint.md` from the worktree, runs `heist validation resolve <absolute-path>` for the effective validation sections, and writes `score.md` there.
 2. Run `heist state set <slug> stage safehouse` and `heist state set <slug> score_steps_total <step-count>` where `<step-count>` is the value the Forger reported.
 3. Report to the human: `score.md` path, step count, and any implicit calls the Forger flagged — worth a quick skim before implementation starts.
 4. Continue into the `implementing` flow below.

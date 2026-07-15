@@ -20,4 +20,16 @@ impl ValidationSource for ValidationFs {
         }
         Ok(Some(std::fs::read_to_string(&file)?))
     }
+
+    fn exists(&self, path: &Path) -> bool {
+        path.exists()
+    }
+
+    fn is_dir(&self, path: &Path) -> bool {
+        path.is_dir()
+    }
+
+    fn canonicalize(&self, path: &Path) -> Result<PathBuf, Box<dyn Error>> {
+        Ok(path.canonicalize()?)
+    }
 }

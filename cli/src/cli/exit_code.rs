@@ -1,4 +1,5 @@
 use crate::domain::error::StateError;
+use crate::domain::validation::ValidationError;
 use crate::ports::git::GitError;
 
 /// The discriminants are the raw process exit codes callers rely on, so they
@@ -9,6 +10,7 @@ pub enum ExitCode {
     Internal = 1,
     Precondition = 2,
     Git = 3,
+    Usage = 4,
 }
 
 impl ExitCode {
@@ -32,5 +34,44 @@ impl From<&StateError> for ExitCode {
 impl From<&GitError> for ExitCode {
     fn from(_: &GitError) -> Self {
         ExitCode::Git
+    }
+}
+
+impl From<&ValidationError> for ExitCode {
+    fn from(e: &ValidationError) -> Self {
+        match e {
+            ValidationError::PathNotAbsolute { .. } => ExitCode::Usage,
+            ValidationError::PathOutsideProject { .. } => ExitCode::Usage,
+            ValidationError::Other(_) => ExitCode::Internal,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn path_not_absolute_maps_to_usage() {
+        let e = ValidationError::PathNotAbsolute {
+            requested: PathBuf::from("relative/path.rs"),
+        };
+        assert_eq!(ExitCode::from(&e), ExitCode::Usage);
+    }
+
+    #[test]
+    fn path_outside_project_maps_to_usage() {
+        let e = ValidationError::PathOutsideProject {
+            requested: PathBuf::from("x"),
+            project_root: PathBuf::from("/y"),
+        };
+        assert_eq!(ExitCode::from(&e), ExitCode::Usage);
+    }
+
+    #[test]
+    fn other_maps_to_internal() {
+        let e = ValidationError::Other("boom".into());
+        assert_eq!(ExitCode::from(&e), ExitCode::Internal);
     }
 }

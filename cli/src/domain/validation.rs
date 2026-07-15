@@ -4,6 +4,52 @@ use std::error::Error;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug)]
+pub enum ValidationError {
+    PathNotAbsolute {
+        requested: PathBuf,
+    },
+    PathOutsideProject {
+        requested: PathBuf,
+        project_root: PathBuf,
+    },
+    Other(Box<dyn Error>),
+}
+
+impl fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ValidationError::PathNotAbsolute { requested } => {
+                write!(f, "path {} must be absolute", requested.display())
+            }
+            ValidationError::PathOutsideProject {
+                requested,
+                project_root,
+            } => write!(
+                f,
+                "path {} is outside the project root {}",
+                requested.display(),
+                project_root.display()
+            ),
+            ValidationError::Other(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl Error for ValidationError {}
+
+impl From<Box<dyn Error>> for ValidationError {
+    fn from(e: Box<dyn Error>) -> Self {
+        ValidationError::Other(e)
+    }
+}
+
+impl From<ParseError> for ValidationError {
+    fn from(e: ParseError) -> Self {
+        ValidationError::Other(Box::new(e))
+    }
+}
+
 /// Fixed output order for sections.
 pub const SECTION_ORDER: [&str; 6] = ["Build", "Lint", "Test", "Docs", "PR conventions", "Notes"];
 
@@ -15,7 +61,7 @@ pub const SECTION_ORDER: [&str; 6] = ["Build", "Lint", "Test", "Docs", "PR conve
 pub fn resolve_validation(
     src: &dyn ValidationSource,
     path: &Path,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, ValidationError> {
     let repo_root = src.repo_root()?;
     let (merged, _scope) = resolve_validation_with_scope(src, path, &repo_root)?;
 
@@ -38,7 +84,7 @@ pub fn resolve_validation(
 pub fn resolve_validations(
     src: &dyn ValidationSource,
     paths: &[PathBuf],
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, ValidationError> {
     let repo_root = src.repo_root()?;
 
     let mut scope_to_sections: BTreeMap<PathBuf, BTreeMap<String, String>> = BTreeMap::new();
@@ -76,9 +122,9 @@ pub fn resolve_validations(
 pub fn check_validation_exists(
     src: &dyn ValidationSource,
     path: &Path,
-) -> Result<bool, Box<dyn Error>> {
+) -> Result<bool, ValidationError> {
     let repo_root = src.repo_root()?;
-    for dir in validation_dirs(path, &repo_root) {
+    for dir in validation_dirs(src, path, &repo_root)? {
         if src.read_validation(&dir)?.is_some() {
             return Ok(true);
         }
@@ -191,27 +237,74 @@ pub fn merge(layers: &[BTreeMap<String, String>]) -> BTreeMap<String, String> {
     result
 }
 
-/// Candidate `validation.md` directories from repo root down to the path's
-/// directory.
-fn validation_dirs(path: &Path, repo_root: &Path) -> Vec<PathBuf> {
-    let target_path = if path.is_absolute() {
-        path.to_path_buf()
+/// Candidate `validation.md` directories from repo root down to the target's
+/// scope directory.
+///
+/// `path` must be absolute (relative input is rejected with
+/// `PathNotAbsolute`). Both `path` and `repo_root` are canonicalized before
+/// comparison, so callers may pass either the canonical or symlinked spelling
+/// of either. If `path` doesn't exist yet, its nearest existing ancestor
+/// (typically its parent) is canonicalized instead and used as the scope
+/// directory, so a not-yet-created leaf still resolves against its
+/// containing directory's `validation.md` chain. If `path` refers to an
+/// existing directory, that directory itself is the scope (not its parent).
+/// If `path` refers to an existing file, its parent directory is the scope.
+/// A target outside `repo_root` (after canonicalization) is rejected with
+/// `PathOutsideProject`.
+fn validation_dirs(
+    src: &dyn ValidationSource,
+    path: &Path,
+    repo_root: &Path,
+) -> Result<Vec<PathBuf>, ValidationError> {
+    if !path.is_absolute() {
+        return Err(ValidationError::PathNotAbsolute {
+            requested: path.to_path_buf(),
+        });
+    }
+
+    let canonical_repo_root = src
+        .canonicalize(repo_root)
+        .map_err(ValidationError::Other)?;
+
+    let canonical_target = if src.exists(path) {
+        src.canonicalize(path).map_err(ValidationError::Other)?
     } else {
-        repo_root.join(path)
+        let parent = path.parent().ok_or_else(|| {
+            ValidationError::Other(
+                format!("path {} has no parent directory", path.display()).into(),
+            )
+        })?;
+        let canonical_parent = src.canonicalize(parent).map_err(ValidationError::Other)?;
+        match path.file_name() {
+            Some(name) => canonical_parent.join(name),
+            None => canonical_parent,
+        }
     };
-    let target_dir = target_path.parent().unwrap_or_else(|| Path::new("."));
+
+    let target_dir = if src.is_dir(&canonical_target) {
+        canonical_target.as_path()
+    } else {
+        canonical_target
+            .parent()
+            .unwrap_or(canonical_target.as_path())
+    };
+
+    let rel = target_dir.strip_prefix(&canonical_repo_root).map_err(|_| {
+        ValidationError::PathOutsideProject {
+            requested: path.to_path_buf(),
+            project_root: canonical_repo_root.clone(),
+        }
+    })?;
 
     let mut dirs = Vec::new();
-    let mut current = repo_root.to_path_buf();
+    let mut current = canonical_repo_root.clone();
     dirs.push(current.clone());
-
-    if let Ok(rel) = target_dir.strip_prefix(repo_root) {
-        for component in rel.components() {
-            current.push(component);
-            dirs.push(current.clone());
-        }
+    for component in rel.components() {
+        current.push(component);
+        dirs.push(current.clone());
     }
-    dirs
+
+    Ok(dirs)
 }
 
 /// Merge every `validation.md` along the path's chain, returning the merged
@@ -220,21 +313,29 @@ fn resolve_validation_with_scope(
     src: &dyn ValidationSource,
     path: &Path,
     repo_root: &Path,
-) -> Result<(BTreeMap<String, String>, PathBuf), Box<dyn Error>> {
+) -> Result<(BTreeMap<String, String>, PathBuf), ValidationError> {
     let mut layers = Vec::new();
     let mut scope_dir = PathBuf::from(".");
 
-    for dir in validation_dirs(path, repo_root) {
+    let dirs = validation_dirs(src, path, repo_root)?;
+    // `validation_dirs` always returns the canonical repo root as its first
+    // element (see its doc comment); reuse it instead of canonicalizing
+    // `repo_root` a second time here.
+    let canonical_repo_root = dirs[0].clone();
+
+    for dir in dirs {
         if let Some(text) = src.read_validation(&dir)? {
             layers.push(parse_sections(&text)?);
-            if let Ok(rel) = dir.strip_prefix(repo_root) {
+            if let Ok(rel) = dir.strip_prefix(&canonical_repo_root) {
                 scope_dir = rel.to_path_buf();
             }
         }
     }
 
     if layers.is_empty() {
-        return Err("no validation.md files found".into());
+        return Err(ValidationError::Other(
+            "no validation.md files found".into(),
+        ));
     }
     let merged = merge(&layers);
     require_sections(&merged)?;
@@ -265,6 +366,7 @@ impl Error for ParseError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapters::validation_fs::ValidationFs;
 
     #[test]
     fn parses_all_six_sections() {
@@ -525,5 +627,270 @@ root notes"#;
         assert_eq!(result["Docs"].trim(), "root docs");
         assert_eq!(result["PR conventions"].trim(), "root pr conventions");
         assert_eq!(result["Notes"].trim(), "root notes");
+    }
+
+    #[test]
+    fn validation_dirs_rejects_relative_path() {
+        let result = validation_dirs(
+            &ValidationFs,
+            Path::new("relative/file.md"),
+            Path::new("/tmp"),
+        );
+        assert!(result.is_err(), "should reject a relative path");
+        match result {
+            Err(ValidationError::PathNotAbsolute { requested }) => {
+                assert_eq!(requested, Path::new("relative/file.md"));
+            }
+            other => panic!("expected PathNotAbsolute error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn validation_dirs_rejects_path_outside_repo_root() {
+        let outer_temp = tempfile::TempDir::new().expect("should create outer temp dir");
+        let repo_root = outer_temp.path().join("repo_root").join("actual_repo");
+        std::fs::create_dir_all(&repo_root).expect("should create repo_root");
+        let outside_dir = outer_temp.path().join("outside");
+        std::fs::create_dir_all(&outside_dir).expect("should create outside_dir");
+
+        let repo_root_canonical = repo_root
+            .canonicalize()
+            .expect("repo_root should canonicalize");
+        let outside_file = outside_dir.join("outside.rs");
+
+        let result = validation_dirs(&ValidationFs, &outside_file, &repo_root_canonical);
+        assert!(result.is_err(), "should reject path outside repo root");
+
+        if let Err(ValidationError::PathOutsideProject {
+            requested,
+            project_root,
+        }) = result
+        {
+            assert_eq!(requested, outside_file);
+            assert_eq!(project_root, repo_root_canonical);
+        } else {
+            panic!("expected PathOutsideProject error, got: {:?}", result);
+        }
+    }
+
+    #[test]
+    fn validation_dirs_resolves_absolute_path_within_repo_root() {
+        let temp_dir = tempfile::TempDir::new().expect("should create temp dir");
+        let repo_root = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_root).expect("should create repo");
+        let subdir = repo_root.join("subdir");
+        std::fs::create_dir_all(&subdir).expect("should create subdir");
+        let file_path = subdir.join("test.md");
+        std::fs::write(&file_path, "content").expect("should write test.md");
+
+        let repo_root_canonical = repo_root
+            .canonicalize()
+            .expect("repo_root should canonicalize");
+
+        let result = validation_dirs(&ValidationFs, &file_path, &repo_root_canonical);
+        assert!(
+            result.is_ok(),
+            "should resolve absolute path within repo root: {:?}",
+            result.err()
+        );
+
+        let dirs = result.unwrap();
+        assert!(!dirs.is_empty(), "should return at least repo_root");
+        assert_eq!(dirs[0], repo_root_canonical);
+    }
+
+    #[test]
+    fn validation_dirs_canonicalizes_not_yet_existing_target_via_parent() {
+        let temp_dir = tempfile::TempDir::new().expect("should create temp dir");
+        let repo_root = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_root).expect("should create repo");
+
+        let repo_root_canonical = repo_root
+            .canonicalize()
+            .expect("repo_root should canonicalize");
+
+        // Path points to a file that doesn't exist yet, but its parent (repo_root) does.
+        let nonexistent_path = repo_root.join("nonexistent.md");
+
+        let result = validation_dirs(&ValidationFs, &nonexistent_path, &repo_root_canonical);
+        assert!(
+            result.is_ok(),
+            "should succeed even if target file doesn't exist yet, as long as its parent exists"
+        );
+    }
+
+    #[test]
+    fn validation_dirs_errors_when_parent_of_nonexistent_target_is_missing() {
+        let temp_dir = tempfile::TempDir::new().expect("should create temp dir");
+        let repo_root = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_root).expect("should create repo");
+
+        let repo_root_canonical = repo_root
+            .canonicalize()
+            .expect("repo_root should canonicalize");
+
+        // Neither `missing-dir` nor the file inside it exist.
+        let nonexistent_path = repo_root.join("missing-dir").join("nonexistent.md");
+
+        let result = validation_dirs(&ValidationFs, &nonexistent_path, &repo_root_canonical);
+        match result {
+            Err(ValidationError::Other(_)) => {}
+            other => panic!("expected ValidationError::Other, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn validation_dirs_resolves_repo_root_itself_as_target() {
+        let temp_dir = tempfile::TempDir::new().expect("should create temp dir");
+        let repo_root = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_root).expect("should create repo");
+
+        let repo_root_canonical = repo_root
+            .canonicalize()
+            .expect("repo_root should canonicalize");
+
+        // The repo root passed as its own target must not be rejected as
+        // "outside" itself.
+        let result = validation_dirs(&ValidationFs, &repo_root_canonical, &repo_root_canonical);
+        assert!(
+            result.is_ok(),
+            "should resolve when target is the repo root itself, got: {:?}",
+            result.err()
+        );
+
+        let dirs = result.unwrap();
+        assert_eq!(
+            dirs,
+            vec![repo_root_canonical.clone()],
+            "should return exactly the repo root"
+        );
+    }
+
+    #[test]
+    fn validation_dirs_scopes_directory_target_to_itself_not_its_parent() {
+        let temp_dir = tempfile::TempDir::new().expect("should create temp dir");
+        let repo_root = temp_dir.path().join("repo");
+        let subdir = repo_root.join("subdir");
+        std::fs::create_dir_all(&subdir).expect("should create subdir");
+
+        let repo_root_canonical = repo_root
+            .canonicalize()
+            .expect("repo_root should canonicalize");
+        let subdir_canonical = subdir.canonicalize().expect("subdir should canonicalize");
+
+        let result = validation_dirs(&ValidationFs, &subdir_canonical, &repo_root_canonical);
+        assert!(
+            result.is_ok(),
+            "should resolve when target is an existing directory, got: {:?}",
+            result.err()
+        );
+
+        let dirs = result.unwrap();
+        assert_eq!(
+            dirs.last(),
+            Some(&subdir_canonical),
+            "an existing directory target should scope to itself, not its parent; got: {:?}",
+            dirs
+        );
+    }
+
+    #[test]
+    fn resolve_validation_with_scope_uses_canonical_repo_root_for_scope_label() {
+        use crate::adapters::testing::InMemoryValidationSource;
+
+        let temp_dir = tempfile::TempDir::new().expect("should create temp dir");
+        // Deliberately keep the non-canonical spelling here (as a real
+        // ValidationSource::repo_root() implementation might return, e.g. via
+        // a symlinked tmp dir on macOS), to catch strip_prefix mismatches
+        // against the canonicalized directories produced by validation_dirs.
+        let repo_root_noncanonical = temp_dir.path().to_path_buf();
+        let repo_root_canonical = repo_root_noncanonical
+            .canonicalize()
+            .expect("repo_root should canonicalize");
+
+        let subdir = repo_root_canonical.join("sub");
+        std::fs::create_dir_all(&subdir).expect("should create subdir");
+        let file_path = subdir.join("file.rs");
+        std::fs::write(&file_path, "stub").expect("should write file");
+
+        let root_validation = "## Build\nroot build\n\n## Lint\nroot lint\n\n## Test\nroot test";
+        let sub_validation = "## Build\nsub build";
+
+        let src = InMemoryValidationSource::new(repo_root_noncanonical.clone())
+            .with_validation(repo_root_canonical.clone(), root_validation)
+            .with_validation(subdir.clone(), sub_validation);
+
+        let (_, scope) = resolve_validation_with_scope(&src, &file_path, &repo_root_noncanonical)
+            .expect("should resolve");
+
+        assert_eq!(
+            scope,
+            Path::new("sub"),
+            "scope label should reflect the actual nested dir, not fall back to '.'"
+        );
+    }
+
+    #[test]
+    fn resolve_validations_propagates_path_not_absolute_for_multiple_paths() {
+        use crate::adapters::testing::InMemoryValidationSource;
+
+        let temp_dir = tempfile::TempDir::new().expect("should create temp dir");
+        let repo_root = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_root).expect("should create repo");
+        let repo_root_canonical = repo_root
+            .canonicalize()
+            .expect("repo_root should canonicalize");
+
+        let root_validation = "## Build\nb\n\n## Lint\nl\n\n## Test\nt";
+        let src = InMemoryValidationSource::new(repo_root_canonical.clone())
+            .with_validation(repo_root_canonical.clone(), root_validation);
+
+        let valid_path = repo_root_canonical.join("file.rs");
+        std::fs::write(&valid_path, "stub").expect("should write file");
+        let relative_path = PathBuf::from("relative/file.rs");
+
+        let result = resolve_validations(&src, &[valid_path, relative_path.clone()]);
+        match result {
+            Err(ValidationError::PathNotAbsolute { requested }) => {
+                assert_eq!(requested, relative_path);
+            }
+            other => panic!("expected PathNotAbsolute error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn resolve_validations_propagates_path_outside_project_for_multiple_paths() {
+        use crate::adapters::testing::InMemoryValidationSource;
+
+        let temp_dir = tempfile::TempDir::new().expect("should create temp dir");
+        let repo_root = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_root).expect("should create repo");
+        let repo_root_canonical = repo_root
+            .canonicalize()
+            .expect("repo_root should canonicalize");
+
+        let outside_dir = temp_dir.path().join("outside");
+        std::fs::create_dir_all(&outside_dir).expect("should create outside dir");
+        let outside_path = outside_dir.join("file.rs");
+        std::fs::write(&outside_path, "stub").expect("should write file");
+
+        let root_validation = "## Build\nb\n\n## Lint\nl\n\n## Test\nt";
+        let src = InMemoryValidationSource::new(repo_root_canonical.clone())
+            .with_validation(repo_root_canonical.clone(), root_validation);
+
+        let valid_path = repo_root_canonical.join("file.rs");
+        std::fs::write(&valid_path, "stub").expect("should write file");
+
+        let result = resolve_validations(&src, &[valid_path, outside_path.clone()]);
+        match result {
+            Err(ValidationError::PathOutsideProject {
+                requested,
+                project_root,
+            }) => {
+                assert_eq!(requested, outside_path);
+                assert_eq!(project_root, repo_root_canonical);
+            }
+            other => panic!("expected PathOutsideProject error, got: {:?}", other),
+        }
     }
 }

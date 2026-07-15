@@ -17,6 +17,13 @@ fn run_git(dir: &Path, args: &[&str]) {
 
 /// Set up a fixture repo with root validation.md, cli/validation.md, and plugin/validation.md.
 /// Returns the repo root path.
+///
+/// On macOS, the returned `TempDir::path()` is the non-canonical `/var/...`
+/// spelling (a symlink to `/private/var/...`). Every test in this file that
+/// passes `repo_root` as `--current-dir` while feeding absolute paths built
+/// from that same non-canonical spelling only resolves because
+/// `validation_dirs` canonicalizes both the repo root and the target before
+/// comparing them.
 fn setup_fixture() -> TempDir {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     let repo_root = temp_dir.path();
@@ -114,7 +121,12 @@ fn single_path_merges_root_and_leaf() {
         .current_dir(repo_root)
         .arg("validation")
         .arg("resolve")
-        .arg("cli/src/main.rs")
+        .arg(
+            repo_root
+                .join("cli/src/main.rs")
+                .to_string_lossy()
+                .to_string(),
+        )
         .output()
         .expect("failed to run validation resolve");
 
@@ -165,8 +177,18 @@ fn multi_path_returns_distinct_scopes() {
         .current_dir(repo_root)
         .arg("validation")
         .arg("resolve")
-        .arg("plugin/skills/heist/pipeline.md")
-        .arg("cli/src/main.rs")
+        .arg(
+            repo_root
+                .join("plugin/skills/heist/pipeline.md")
+                .to_string_lossy()
+                .to_string(),
+        )
+        .arg(
+            repo_root
+                .join("cli/src/main.rs")
+                .to_string_lossy()
+                .to_string(),
+        )
         .output()
         .expect("failed to run validation resolve");
 
@@ -212,8 +234,18 @@ fn multi_path_dedupes_same_scope() {
         .current_dir(repo_root)
         .arg("validation")
         .arg("resolve")
-        .arg("cli/src/main.rs")
-        .arg("cli/tests/validation_resolve.rs")
+        .arg(
+            repo_root
+                .join("cli/src/main.rs")
+                .to_string_lossy()
+                .to_string(),
+        )
+        .arg(
+            repo_root
+                .join("cli/tests/validation_resolve.rs")
+                .to_string_lossy()
+                .to_string(),
+        )
         .output()
         .expect("failed to run validation resolve");
 
@@ -233,6 +265,187 @@ fn multi_path_dedupes_same_scope() {
     assert_eq!(
         build_count, 1,
         "should have exactly 1 Build section (deduped same scope), got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn resolve_fails_hard_on_relative_path() {
+    let temp_dir = setup_fixture();
+    let repo_root = temp_dir.path();
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root.join("cli"))
+        .arg("validation")
+        .arg("resolve")
+        .arg("../../outside.rs")
+        .output()
+        .expect("failed to run validation resolve");
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "command should exit with code 4, got {:?}",
+        output.status.code()
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("../../outside.rs"),
+        "stderr should contain the requested path '../../outside.rs', got: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("must be absolute"),
+        "stderr should say the path must be absolute, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn resolve_fails_hard_on_absolute_path_outside_repo() {
+    let temp_dir = setup_fixture();
+    let repo_root = temp_dir.path();
+
+    let outside_temp = tempfile::TempDir::new().expect("failed to create outside temp dir");
+    let outside_path = outside_temp.path().join("outside.rs");
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root)
+        .arg("validation")
+        .arg("resolve")
+        .arg(outside_path.to_string_lossy().to_string())
+        .output()
+        .expect("failed to run validation resolve");
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "command should exit with code 4, got {:?}",
+        output.status.code()
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(outside_path.display().to_string().as_str()),
+        "stderr should contain the absolute path, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn resolves_absolute_path_to_not_yet_existing_leaf_file() {
+    let temp_dir = setup_fixture();
+    let repo_root = temp_dir.path();
+
+    let planned_leaf = repo_root.join("cli/src/not_yet_created.rs");
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root)
+        .arg("validation")
+        .arg("resolve")
+        .arg(planned_leaf.to_string_lossy().to_string())
+        .output()
+        .expect("failed to run validation resolve");
+
+    assert!(
+        output.status.success(),
+        "should resolve a not-yet-existing leaf file whose parent dir exists, got exit {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("cli build command"),
+        "should merge cli/validation.md for the planned leaf's parent dir, got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn resolve_fails_hard_when_parent_of_nonexistent_target_is_missing() {
+    let temp_dir = setup_fixture();
+    let repo_root = temp_dir.path();
+
+    // Neither `missing-dir` nor the file inside it exist.
+    let nonexistent_path = repo_root.join("missing-dir").join("nonexistent.md");
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root)
+        .arg("validation")
+        .arg("resolve")
+        .arg(nonexistent_path.to_string_lossy().to_string())
+        .output()
+        .expect("failed to run validation resolve");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "should exit 1 (Internal) when the immediate parent directory doesn't exist, got {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn resolves_absolute_path_to_repo_root_itself() {
+    let temp_dir = setup_fixture();
+    let repo_root = temp_dir.path();
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root)
+        .arg("validation")
+        .arg("resolve")
+        .arg(repo_root.to_string_lossy().to_string())
+        .output()
+        .expect("failed to run validation resolve");
+
+    assert!(
+        output.status.success(),
+        "should resolve when the target path is the repo root itself, got exit {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("root build command"),
+        "should return the root validation.md content, got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn resolves_absolute_path_to_existing_directory_scopes_to_itself() {
+    let temp_dir = setup_fixture();
+    let repo_root = temp_dir.path();
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root)
+        .arg("validation")
+        .arg("resolve")
+        .arg(repo_root.join("cli").to_string_lossy().to_string())
+        .output()
+        .expect("failed to run validation resolve");
+
+    assert!(
+        output.status.success(),
+        "should resolve when the target path is an existing directory, got exit {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("cli build command"),
+        "an existing directory target should scope to itself, not its parent, got: {}",
         stdout
     );
 }

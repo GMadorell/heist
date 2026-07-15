@@ -44,11 +44,11 @@ Removes the worktree and local branch, then sets `stage: done`. Refuses if `heis
 
 ### `validation check <path>`
 
-Prints `ok` (exit 0) if a `validation.md` exists in `<path>`'s directory or any ancestor up to the repo root, `missing` (exit 2) otherwise.
+Requires an absolute path; a relative or out-of-project path exits 4. Prints `ok` (exit 0) if a `validation.md` exists in `<path>`'s directory or any ancestor up to the repo root, `missing` (exit 2) otherwise.
 
 ### `validation resolve <path>...`
 
-For each path, merges the nearest `validation.md` with the root `validation.md` (leaf sections override root sections `Build`/`Lint`/`Test`; `Docs`/`PR conventions`/`Notes` come from root). Prints one block per distinct scope, deduped.
+Requires absolute paths; a relative or out-of-project path exits 4. For each path, merges the nearest `validation.md` with the root `validation.md` (leaf sections override root sections `Build`/`Lint`/`Test`; `Docs`/`PR conventions`/`Notes` come from root). Prints one block per distinct scope, deduped.
 
 ### `resume <slug>`
 
@@ -66,6 +66,7 @@ Prints one line per heist under `.heist/` (`slug  stage  next_step  worktree`), 
 | 1 | Internal error (e.g. unreadable file) |
 | 2 | Precondition failed (missing/invalid state, unmerged branch, validation.md missing, bad input) |
 | 3 | Underlying git command failed |
+| 4 | Invalid path argument (not absolute, or outside the project) |
 
 ## Tests
 
