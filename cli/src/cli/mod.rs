@@ -291,25 +291,6 @@ fn run_worktree(
     }
 }
 
-/// Report a `ValidationError` via the appropriate presenter, using a shared
-/// presenter for `PathOutsideProject` and `generic` for everything else.
-fn report_validation_error(
-    e: &ValidationError,
-    default_presenter: impl FnOnce(&ValidationError),
-) -> ExitCode {
-    let code = ExitCode::from(e);
-    if let ValidationError::PathOutsideProject {
-        requested,
-        project_root,
-    } = e
-    {
-        present::validation_path_outside(requested, project_root);
-    } else {
-        default_presenter(e);
-    }
-    code
-}
-
 fn run_validation(
     command: ValidationCommands,
     src: &dyn crate::ports::validation_source::ValidationSource,
@@ -341,6 +322,23 @@ fn run_validation(
             Err(e) => report_validation_error(&e, |e| present::validation_check_failed(e)),
         },
     }
+}
+
+fn report_validation_error(
+    e: &ValidationError,
+    default_presenter: impl FnOnce(&ValidationError),
+) -> ExitCode {
+    let code = ExitCode::from(e);
+    if let ValidationError::PathOutsideProject {
+        requested,
+        project_root,
+    } = e
+    {
+        present::validation_path_outside(requested, project_root);
+    } else {
+        default_presenter(e);
+    }
+    code
 }
 
 fn run_resume(slug: &str, repo: &dyn StateRepository) -> ExitCode {
