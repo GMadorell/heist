@@ -63,7 +63,7 @@ The Mastermind's job ends at approval — forging is a fresh, one-shot transform
 
 1. Spawn `heist:wheelman` (foreground — you need its final report before cleaning). As input, it will receive the task `<slug>`.
 2. Let the Wheelman run its full per-step loop autonomously. Don't intervene per-step.
-3. When it reports done, run `heist state set <slug> stage cleaning` and `heist state set <slug> score_step <final-value>` where `<final-value>` is the Wheelman's final score step.
+3. When it reports done, run `heist state set <slug> stage cleaning`. Wheelman owns `score_step` live via `heist state incr` throughout implementation — don't re-set it here.
 4. Report to the human: steps completed, anything the Wheelman had to do itself and why, final build status.
 5. Continue into cleaning below.
 
