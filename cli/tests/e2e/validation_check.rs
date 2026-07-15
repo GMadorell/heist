@@ -147,7 +147,7 @@ fn reports_missing_when_absent() {
 }
 
 #[test]
-fn check_fails_hard_on_relative_path_outside_repo() {
+fn check_fails_hard_on_relative_path() {
     let temp_dir = setup_fixture_with_root_validation();
     let repo_root = temp_dir.path();
 
@@ -162,8 +162,8 @@ fn check_fails_hard_on_relative_path_outside_repo() {
 
     assert_eq!(
         output.status.code(),
-        Some(2),
-        "command should exit with code 2, got {:?}",
+        Some(4),
+        "command should exit with code 4, got {:?}",
         output.status.code()
     );
 
@@ -178,6 +178,11 @@ fn check_fails_hard_on_relative_path_outside_repo() {
     assert!(
         stderr.contains("../outside.rs"),
         "stderr should contain the requested path '../outside.rs', got: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("must be absolute"),
+        "stderr should say the path must be absolute, got: {}",
         stderr
     );
 }
