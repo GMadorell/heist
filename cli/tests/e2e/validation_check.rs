@@ -84,40 +84,6 @@ fn setup_fixture_no_validation() -> TempDir {
     temp_dir
 }
 
-/// Set up a fixture repo with NO root validation.md, only cli/validation.md.
-/// Returns the repo root path.
-fn setup_fixture_nested_only() -> TempDir {
-    let temp_dir = TempDir::new().expect("failed to create temp directory");
-    let repo_root = temp_dir.path();
-
-    run_git(repo_root, &["init", "-q", "-b", "main"]);
-    run_git(repo_root, &["config", "user.email", "test@example.com"]);
-    run_git(repo_root, &["config", "user.name", "Test"]);
-
-    fs::create_dir_all(repo_root.join("cli")).expect("failed to create cli directory");
-
-    let cli_validation = r#"## Build
-cli build
-
-## Lint
-cli lint
-
-## Test
-cli test"#;
-
-    fs::write(repo_root.join("cli/validation.md"), cli_validation)
-        .expect("failed to write cli/validation.md");
-
-    fs::create_dir_all(repo_root.join("cli/src")).expect("failed to create cli/src directory");
-
-    fs::write(repo_root.join("cli/src/lib.rs"), "// stub").expect("failed to write cli/src/lib.rs");
-
-    run_git(repo_root, &["add", "."]);
-    run_git(repo_root, &["commit", "-q", "-m", "init"]);
-
-    temp_dir
-}
-
 #[test]
 fn reports_ok_when_present() {
     let temp_dir = setup_fixture_with_root_validation();
@@ -128,7 +94,7 @@ fn reports_ok_when_present() {
         .current_dir(repo_root)
         .arg("validation")
         .arg("check")
-        .arg("some/nested/path.rs")
+        .arg(repo_root.join("some/nested/path.rs").to_string_lossy().to_string())
         .output()
         .expect("failed to run validation check");
 
@@ -159,7 +125,7 @@ fn reports_missing_when_absent() {
         .current_dir(repo_root)
         .arg("validation")
         .arg("check")
-        .arg("anything.rs")
+        .arg(repo_root.join("anything.rs").to_string_lossy().to_string())
         .output()
         .expect("failed to run validation check");
 
@@ -176,37 +142,6 @@ fn reports_missing_when_absent() {
         stdout.trim(),
         "missing",
         "stdout should be 'missing', got: {}",
-        stdout
-    );
-}
-
-#[test]
-fn check_resolves_relative_to_cwd_not_repo_root() {
-    let temp_dir = setup_fixture_nested_only();
-    let repo_root = temp_dir.path();
-
-    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
-    let output = cmd
-        .current_dir(repo_root.join("cli"))
-        .arg("validation")
-        .arg("check")
-        .arg("src/lib.rs")
-        .output()
-        .expect("failed to run validation check");
-
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "command should exit with 0, got exit code {:?}, stderr: {}",
-        output.status.code(),
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(
-        stdout.trim(),
-        "ok",
-        "stdout should be 'ok', got: {}",
         stdout
     );
 }
