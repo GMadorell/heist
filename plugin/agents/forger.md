@@ -42,6 +42,6 @@ Two step templates. Pick per step — don't force a fake test onto a step that i
 - Depends on: step M / none
 ```
 
-Pull the single-test, build, and lint commands from `heist validation resolve <path>` (`<path>` = the file/directory a step touches; run from the worktree root, or pass an absolute path) — don't invent them. `heist validation resolve` errors if the effective Build/Lint/Test sections are missing for a path — if that happens, say so in your reply instead of guessing.
+Pull the single-test, build, and lint commands from `heist validation resolve <path>`.
 
 After writing `score.md`, reply with a short summary: step count, and anything in the blueprint you had to make an implicit call on.
