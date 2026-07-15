@@ -7,6 +7,7 @@ use crate::adapters::real_git::RealGit;
 use crate::adapters::system_clock::SystemClock;
 use crate::adapters::validation_fs::ValidationFs;
 use crate::app;
+use crate::domain::validation::ValidationError;
 use crate::ports::state_repository::StateRepository;
 use clap::{Parser, Subcommand};
 use exit_code::ExitCode;
@@ -307,8 +308,17 @@ fn run_validation(
                     ExitCode::Success
                 }
                 Err(e) => {
-                    present::validation_resolve_failed(e);
-                    ExitCode::Internal
+                    let code = ExitCode::from(&e);
+                    if let ValidationError::PathOutsideProject {
+                        requested,
+                        project_root,
+                    } = &e
+                    {
+                        present::validation_path_outside(requested, project_root);
+                    } else {
+                        present::validation_resolve_failed(&e);
+                    }
+                    code
                 }
             }
         }
@@ -322,8 +332,17 @@ fn run_validation(
                 ExitCode::Precondition
             }
             Err(e) => {
-                present::validation_check_failed(e);
-                ExitCode::Internal
+                let code = ExitCode::from(&e);
+                if let ValidationError::PathOutsideProject {
+                    requested,
+                    project_root,
+                } = &e
+                {
+                    present::validation_path_outside(requested, project_root);
+                } else {
+                    present::validation_check_failed(&e);
+                }
+                code
             }
         },
     }

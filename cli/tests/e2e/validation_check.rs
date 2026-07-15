@@ -110,8 +110,7 @@ cli test"#;
 
     fs::create_dir_all(repo_root.join("cli/src")).expect("failed to create cli/src directory");
 
-    fs::write(repo_root.join("cli/src/lib.rs"), "// stub")
-        .expect("failed to write cli/src/lib.rs");
+    fs::write(repo_root.join("cli/src/lib.rs"), "// stub").expect("failed to write cli/src/lib.rs");
 
     run_git(repo_root, &["add", "."]);
     run_git(repo_root, &["commit", "-q", "-m", "init"]);
@@ -208,6 +207,74 @@ fn check_resolves_relative_to_cwd_not_repo_root() {
         stdout.trim(),
         "ok",
         "stdout should be 'ok', got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn check_fails_hard_on_relative_path_outside_repo() {
+    let temp_dir = setup_fixture_with_root_validation();
+    let repo_root = temp_dir.path();
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root)
+        .arg("validation")
+        .arg("check")
+        .arg("../outside.rs")
+        .output()
+        .expect("failed to run validation check");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "command should exit with code 2, got {:?}",
+        output.status.code()
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("missing"),
+        "stdout should not contain 'missing', got: {}",
+        stdout
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("../outside.rs"),
+        "stderr should contain the requested path '../outside.rs', got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn check_fails_hard_on_absolute_path_outside_repo() {
+    let temp_dir = setup_fixture_with_root_validation();
+    let repo_root = temp_dir.path();
+
+    let outside_temp = tempfile::TempDir::new().expect("failed to create outside temp dir");
+    let outside_path = outside_temp.path().join("outside.rs");
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root)
+        .arg("validation")
+        .arg("check")
+        .arg(outside_path.to_string_lossy().to_string())
+        .output()
+        .expect("failed to run validation check");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "command should exit with code 2, got {:?}",
+        output.status.code()
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("missing"),
+        "stdout should not contain 'missing', got: {}",
         stdout
     );
 }

@@ -266,3 +266,69 @@ fn resolves_using_cwd_not_repo_root_relative_path() {
         stdout
     );
 }
+
+#[test]
+fn resolve_fails_hard_on_relative_path_outside_repo() {
+    let temp_dir = setup_fixture();
+    let repo_root = temp_dir.path();
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root.join("cli"))
+        .arg("validation")
+        .arg("resolve")
+        .arg("../../outside.rs")
+        .output()
+        .expect("failed to run validation resolve");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "command should exit with code 2, got {:?}",
+        output.status.code()
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("../../outside.rs"),
+        "stderr should contain the requested path '../../outside.rs', got: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains(repo_root.display().to_string().as_str()),
+        "stderr should contain the repo root path, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn resolve_fails_hard_on_absolute_path_outside_repo() {
+    let temp_dir = setup_fixture();
+    let repo_root = temp_dir.path();
+
+    let outside_temp = tempfile::TempDir::new().expect("failed to create outside temp dir");
+    let outside_path = outside_temp.path().join("outside.rs");
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root)
+        .arg("validation")
+        .arg("resolve")
+        .arg(outside_path.to_string_lossy().to_string())
+        .output()
+        .expect("failed to run validation resolve");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "command should exit with code 2, got {:?}",
+        output.status.code()
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(outside_path.display().to_string().as_str()),
+        "stderr should contain the absolute path, got: {}",
+        stderr
+    );
+}

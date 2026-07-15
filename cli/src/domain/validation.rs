@@ -6,14 +6,20 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub enum ValidationError {
-    PathOutsideProject { requested: PathBuf, project_root: PathBuf },
+    PathOutsideProject {
+        requested: PathBuf,
+        project_root: PathBuf,
+    },
     Other(Box<dyn Error>),
 }
 
 impl fmt::Display for ValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ValidationError::PathOutsideProject { requested, project_root } => write!(
+            ValidationError::PathOutsideProject {
+                requested,
+                project_root,
+            } => write!(
                 f,
                 "path {} is outside the project root {}",
                 requested.display(),
@@ -56,8 +62,8 @@ pub fn resolve_validation(
     src: &dyn ValidationSource,
     path: &Path,
 ) -> Result<String, ValidationError> {
-    let repo_root = src.repo_root().map_err(|e| ValidationError::Other(e))?;
-    let cwd = src.cwd().map_err(|e| ValidationError::Other(e))?;
+    let repo_root = src.repo_root().map_err(ValidationError::Other)?;
+    let cwd = src.cwd().map_err(ValidationError::Other)?;
     let (merged, _scope) = resolve_validation_with_scope(src, path, &repo_root, &cwd)?;
 
     let mut output = String::new();
@@ -80,8 +86,8 @@ pub fn resolve_validations(
     src: &dyn ValidationSource,
     paths: &[PathBuf],
 ) -> Result<String, ValidationError> {
-    let repo_root = src.repo_root().map_err(|e| ValidationError::Other(e))?;
-    let cwd = src.cwd().map_err(|e| ValidationError::Other(e))?;
+    let repo_root = src.repo_root().map_err(ValidationError::Other)?;
+    let cwd = src.cwd().map_err(ValidationError::Other)?;
 
     let mut scope_to_sections: BTreeMap<PathBuf, BTreeMap<String, String>> = BTreeMap::new();
     for path in paths {
@@ -119,10 +125,14 @@ pub fn check_validation_exists(
     src: &dyn ValidationSource,
     path: &Path,
 ) -> Result<bool, ValidationError> {
-    let repo_root = src.repo_root().map_err(|e| ValidationError::Other(e))?;
-    let cwd = src.cwd().map_err(|e| ValidationError::Other(e))?;
+    let repo_root = src.repo_root().map_err(ValidationError::Other)?;
+    let cwd = src.cwd().map_err(ValidationError::Other)?;
     for dir in validation_dirs(path, &repo_root, &cwd)? {
-        if src.read_validation(&dir).map_err(|e| ValidationError::Other(e))?.is_some() {
+        if src
+            .read_validation(&dir)
+            .map_err(ValidationError::Other)?
+            .is_some()
+        {
             return Ok(true);
         }
     }
@@ -268,7 +278,11 @@ fn canonicalize_lenient(path: &Path) -> std::io::Result<PathBuf> {
 
 /// Candidate `validation.md` directories from repo root down to the path's
 /// directory.
-fn validation_dirs(path: &Path, repo_root: &Path, cwd: &Path) -> Result<Vec<PathBuf>, ValidationError> {
+fn validation_dirs(
+    path: &Path,
+    repo_root: &Path,
+    cwd: &Path,
+) -> Result<Vec<PathBuf>, ValidationError> {
     let target_path = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -276,10 +290,10 @@ fn validation_dirs(path: &Path, repo_root: &Path, cwd: &Path) -> Result<Vec<Path
     };
     let target_dir = target_path.parent().unwrap_or_else(|| Path::new("."));
 
-    let canonical_repo_root = canonicalize_lenient(repo_root)
-        .map_err(|e| ValidationError::Other(Box::new(e)))?;
-    let canonical_target_dir = canonicalize_lenient(target_dir)
-        .map_err(|e| ValidationError::Other(Box::new(e)))?;
+    let canonical_repo_root =
+        canonicalize_lenient(repo_root).map_err(|e| ValidationError::Other(Box::new(e)))?;
+    let canonical_target_dir =
+        canonicalize_lenient(target_dir).map_err(|e| ValidationError::Other(Box::new(e)))?;
 
     let rel = canonical_target_dir
         .strip_prefix(&canonical_repo_root)
@@ -312,7 +326,7 @@ fn resolve_validation_with_scope(
     let mut scope_dir = PathBuf::from(".");
 
     for dir in validation_dirs(path, repo_root, cwd)? {
-        if let Some(text) = src.read_validation(&dir).map_err(|e| ValidationError::Other(e))? {
+        if let Some(text) = src.read_validation(&dir).map_err(ValidationError::Other)? {
             layers.push(parse_sections(&text)?);
             if let Ok(rel) = dir.strip_prefix(repo_root) {
                 scope_dir = rel.to_path_buf();
@@ -618,8 +632,14 @@ root notes"#;
     fn canonicalize_lenient_returns_canonical_path_for_existing_dir() {
         let temp_dir = tempfile::TempDir::new().expect("should create temp dir");
         let result = canonicalize_lenient(temp_dir.path());
-        assert!(result.is_ok(), "canonicalize_lenient should succeed for existing dir");
-        let canonical_result = temp_dir.path().canonicalize().expect("should canonicalize temp dir");
+        assert!(
+            result.is_ok(),
+            "canonicalize_lenient should succeed for existing dir"
+        );
+        let canonical_result = temp_dir
+            .path()
+            .canonicalize()
+            .expect("should canonicalize temp dir");
         assert_eq!(result.unwrap(), canonical_result);
     }
 
@@ -628,8 +648,14 @@ root notes"#;
         let temp_dir = tempfile::TempDir::new().expect("should create temp dir");
         let nonexistent_path = temp_dir.path().join("does-not-exist/also-missing.rs");
         let result = canonicalize_lenient(&nonexistent_path);
-        assert!(result.is_ok(), "canonicalize_lenient should succeed for nonexistent path");
-        let expected = temp_dir.path().canonicalize().expect("should canonicalize temp dir")
+        assert!(
+            result.is_ok(),
+            "canonicalize_lenient should succeed for nonexistent path"
+        );
+        let expected = temp_dir
+            .path()
+            .canonicalize()
+            .expect("should canonicalize temp dir")
             .join("does-not-exist/also-missing.rs");
         assert_eq!(result.unwrap(), expected);
     }
@@ -642,13 +668,23 @@ root notes"#;
         let cwd_dir = repo_root.join("sub");
         std::fs::create_dir_all(&cwd_dir).expect("should create cwd_dir");
 
-        let repo_root_canonical = repo_root.canonicalize().expect("repo_root should canonicalize");
+        let repo_root_canonical = repo_root
+            .canonicalize()
+            .expect("repo_root should canonicalize");
         let cwd_dir_canonical = cwd_dir.canonicalize().expect("cwd_dir should canonicalize");
 
-        let result = validation_dirs(Path::new("../../outside.rs"), &repo_root_canonical, &cwd_dir_canonical);
+        let result = validation_dirs(
+            Path::new("../../outside.rs"),
+            &repo_root_canonical,
+            &cwd_dir_canonical,
+        );
         assert!(result.is_err(), "should reject path outside repo root");
 
-        if let Err(ValidationError::PathOutsideProject { requested, project_root }) = result {
+        if let Err(ValidationError::PathOutsideProject {
+            requested,
+            project_root,
+        }) = result
+        {
             assert_eq!(requested, Path::new("../../outside.rs"));
             assert_eq!(project_root, repo_root_canonical);
         } else {
@@ -664,11 +700,20 @@ root notes"#;
         let subdir = repo_root.join("subdir");
         std::fs::create_dir_all(&subdir).expect("should create subdir");
 
-        let repo_root_canonical = repo_root.canonicalize().expect("repo_root should canonicalize");
+        let repo_root_canonical = repo_root
+            .canonicalize()
+            .expect("repo_root should canonicalize");
         let subdir_canonical = subdir.canonicalize().expect("subdir should canonicalize");
 
-        let result = validation_dirs(Path::new("test.md"), &repo_root_canonical, &subdir_canonical);
-        assert!(result.is_ok(), "should resolve relative path within repo root");
+        let result = validation_dirs(
+            Path::new("test.md"),
+            &repo_root_canonical,
+            &subdir_canonical,
+        );
+        assert!(
+            result.is_ok(),
+            "should resolve relative path within repo root"
+        );
 
         let dirs = result.unwrap();
         assert!(!dirs.is_empty(), "should return at least repo_root");
@@ -683,11 +728,20 @@ root notes"#;
         let cwd_dir = repo_root.join("cwd");
         std::fs::create_dir_all(&cwd_dir).expect("should create cwd");
 
-        let repo_root_canonical = repo_root.canonicalize().expect("repo_root should canonicalize");
+        let repo_root_canonical = repo_root
+            .canonicalize()
+            .expect("repo_root should canonicalize");
         let cwd_dir_canonical = cwd_dir.canonicalize().expect("cwd_dir should canonicalize");
 
         // Path points to a file that doesn't exist yet
-        let result = validation_dirs(Path::new("nonexistent.md"), &repo_root_canonical, &cwd_dir_canonical);
-        assert!(result.is_ok(), "should succeed even if target file doesn't exist yet");
+        let result = validation_dirs(
+            Path::new("nonexistent.md"),
+            &repo_root_canonical,
+            &cwd_dir_canonical,
+        );
+        assert!(
+            result.is_ok(),
+            "should succeed even if target file doesn't exist yet"
+        );
     }
 }
