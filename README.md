@@ -27,7 +27,7 @@ flowchart TD
     B -- no --> C["/heist:casing → validation.md"]
     B -- yes --> S[Slugger: pick slug]
     C --> S
-    S --> I["heist-cli worktree add → planning"]
+    S --> I["heist worktree add → planning"]
     I --> D[Mastermind: relay interview → blueprint.md]
     D --> E[Fence: contrarian review]
     E --> F{findings?}
@@ -62,7 +62,7 @@ flowchart TD
 ## Quickstart
 
 ```bash
-# install the heist-cli binary
+# install the heist binary
 cargo install --path `path_to_this_project`/cli 
 
 # add this repo as a local marketplace, then install the plugin
@@ -79,14 +79,14 @@ Then, inside any project:
 /heist:heist <describe the change you want>
 ```
 
-Note: plugin skills are always namespaced (`/heist:heist`, `/heist:casing`), there's no unprefixed shorthand. Worktree and state management is handled by the `heist-cli` binary.
+Note: plugin skills are always namespaced (`/heist:heist`, `/heist:casing`), there's no unprefixed shorthand. Worktree and state management is handled by the `heist` binary.
 
 ## Layout
 
 Heist is organized as a monorepo with two main components:
 
 - **`plugin/`**: The Claude Code plugin. Contains the crew of specialized agents and assets. This is what's installed via `claude plugin install heist@...`.
-- **`cli/`**: The Rust crate `heist-cli`, a binary that handles deterministic parts of the flow to be token-efficient.
+- **`cli/`**: The Rust crate `heist`, a binary that handles deterministic parts of the flow to be token-efficient.
 
 Docs live in `.heist/<slug>/` inside your project. Gitignoring those files is recommended.
 

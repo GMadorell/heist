@@ -1,4 +1,4 @@
-# heist-cli
+# heist
 
 Deterministic, token-free half of the [Heist](../README.md) pipeline: state tracking, worktree setup/teardown, and validation.md lookup. The plugin's agents shell out to this binary instead of doing this bookkeeping themselves.
 

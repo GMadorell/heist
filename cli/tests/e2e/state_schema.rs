@@ -2,8 +2,8 @@ use assert_cmd::Command;
 
 #[test]
 fn prints_field_list_and_example() {
-    // Run heist-cli state schema
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    // Run heist state schema
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .arg("state")
         .arg("schema")

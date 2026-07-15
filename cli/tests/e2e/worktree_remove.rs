@@ -38,12 +38,12 @@ fn setup_repo_with_worktree() -> (TempDir, TempDir, std::path::PathBuf) {
     run_git(main_repo, &["commit", "-q", "-m", "init"]);
     run_git(main_repo, &["push", "-u", "origin", "main"]);
 
-    let mut init_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut init_cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     init_cmd.current_dir(main_repo);
     init_cmd.arg("state").arg("init").arg("my-slug");
     init_cmd.assert().success();
 
-    let mut add_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut add_cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = add_cmd
         .current_dir(main_repo)
         .arg("worktree")
@@ -80,7 +80,7 @@ fn removes_merged_worktree_and_branch() {
     run_git(main_repo, &["merge", "--ff-only", "heist/my-slug"]);
     run_git(main_repo, &["push", "origin", "main"]);
 
-    let mut remove_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut remove_cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = remove_cmd
         .current_dir(main_repo)
         .arg("worktree")
@@ -158,7 +158,7 @@ fn succeeds_when_branch_was_never_pushed_to_origin() {
     run_git(main_repo, &["merge", "--ff-only", "heist/my-slug"]);
     run_git(main_repo, &["push", "origin", "main"]);
 
-    let mut remove_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut remove_cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = remove_cmd
         .current_dir(main_repo)
         .arg("worktree")
@@ -203,7 +203,7 @@ fn refuses_unmerged_branch() {
 
     // Key difference from the happy path: heist/my-slug is never merged into main.
 
-    let mut remove_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut remove_cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = remove_cmd
         .current_dir(main_repo)
         .arg("worktree")

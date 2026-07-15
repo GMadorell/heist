@@ -26,7 +26,7 @@ fn prints_slug_stage_next_step_and_worktree() {
     fs::write(temp_path.join(".heist/my-slug/state.json"), state_json)
         .expect("failed to write state.json");
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("resume")
@@ -58,7 +58,7 @@ fn missing_state_file_exits_precondition() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     let temp_path = temp_dir.path();
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("resume")
@@ -100,7 +100,7 @@ fn unparseable_state_file_exits_precondition() {
     )
     .expect("failed to write state.json");
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("resume")
@@ -153,7 +153,7 @@ fn missing_stage_field_exits_precondition_instead_of_guessing() {
     fs::write(temp_path.join(".heist/my-slug/state.json"), state_json)
         .expect("failed to write state.json");
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("resume")

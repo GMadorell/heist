@@ -13,7 +13,7 @@ use exit_code::ExitCode;
 use std::path::Path;
 
 #[derive(Parser)]
-#[command(name = "heist-cli")]
+#[command(name = "heist")]
 #[command(about = "Heist CLI tool", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]

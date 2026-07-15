@@ -89,7 +89,7 @@ fn reports_ok_when_present() {
     let temp_dir = setup_fixture_with_root_validation();
     let repo_root = temp_dir.path();
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(repo_root)
         .arg("validation")
@@ -120,7 +120,7 @@ fn reports_missing_when_absent() {
     let temp_dir = setup_fixture_no_validation();
     let repo_root = temp_dir.path();
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(repo_root)
         .arg("validation")

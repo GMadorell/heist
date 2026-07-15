@@ -7,7 +7,7 @@ fn creates_state_json_with_defaults() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     let temp_path = temp_dir.path();
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let assert = cmd
         .current_dir(temp_path)
         .arg("state")
@@ -60,7 +60,7 @@ fn rejects_existing_slug_directory() {
     fs::create_dir_all(temp_path.join(".heist/my-slug"))
         .expect("failed to create existing slug directory");
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("state")

@@ -109,7 +109,7 @@ fn single_path_merges_root_and_leaf() {
     let temp_dir = setup_fixture();
     let repo_root = temp_dir.path();
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(repo_root)
         .arg("validation")
@@ -160,7 +160,7 @@ fn multi_path_returns_distinct_scopes() {
 
     // plugin/skills/heist/pipeline.md resolves to the plugin scope,
     // cli/src/main.rs resolves to the cli scope: two distinct labeled blocks expected.
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(repo_root)
         .arg("validation")
@@ -207,7 +207,7 @@ fn multi_path_dedupes_same_scope() {
     let repo_root = temp_dir.path();
 
     // Both paths resolve to the same cli scope, so the block should be deduped.
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(repo_root)
         .arg("validation")

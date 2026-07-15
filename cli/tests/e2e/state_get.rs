@@ -30,7 +30,7 @@ fn prints_requested_field() {
     let temp_path = temp_dir.path();
     write_fixture(temp_path, 1);
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("state")
@@ -60,7 +60,7 @@ fn prints_null_for_unset_optional_field() {
     let temp_path = temp_dir.path();
     write_fixture(temp_path, 1);
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("state")
@@ -89,7 +89,7 @@ fn missing_state_file_exits_precondition() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     let temp_path = temp_dir.path();
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("state")
@@ -120,7 +120,7 @@ fn rejects_unknown_field() {
     let temp_path = temp_dir.path();
     write_fixture(temp_path, 1);
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("state")
@@ -151,7 +151,7 @@ fn rejects_schema_version_mismatch() {
     let temp_path = temp_dir.path();
     write_fixture(temp_path, 99);
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("state")

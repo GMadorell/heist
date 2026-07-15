@@ -1,5 +1,5 @@
 [package]
-name = "heist-cli"
+name = "heist"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,7 @@ name = "heist_cli"
 path = "src/lib.rs"
 
 [[bin]]
-name = "heist-cli"
+name = "heist"
 path = "src/main.rs"
 
 [dependencies]

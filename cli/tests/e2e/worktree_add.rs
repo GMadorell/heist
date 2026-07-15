@@ -37,7 +37,7 @@ fn setup_repo_with_state() -> (TempDir, TempDir) {
     run_git(main_repo, &["commit", "-q", "-m", "init"]);
     run_git(main_repo, &["push", "-u", "origin", "main"]);
 
-    let mut init_cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut init_cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     init_cmd.current_dir(main_repo);
     init_cmd.arg("state").arg("init").arg("my-slug");
     init_cmd.assert().success();
@@ -58,7 +58,7 @@ fn creates_worktree_symlink_and_updates_state() {
         .as_str()
         .expect("stage should be string");
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(main_repo)
         .arg("worktree")
@@ -161,7 +161,7 @@ fn is_idempotent_on_reentry() {
     let (main_temp, _bare_temp) = setup_repo_with_state();
     let main_repo = main_temp.path();
 
-    let mut cmd1 = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd1 = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output1 = cmd1
         .current_dir(main_repo)
         .arg("worktree")
@@ -202,7 +202,7 @@ fn is_idempotent_on_reentry() {
         .expect("failed to canonicalize expected target");
 
     // Second call must be idempotent: same output, symlink untouched.
-    let mut cmd2 = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd2 = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output2 = cmd2
         .current_dir(main_repo)
         .arg("worktree")
@@ -239,7 +239,7 @@ fn is_idempotent_on_reentry() {
     fs::remove_file(&symlink_path).expect("failed to delete symlink");
     assert!(!symlink_path.exists(), "symlink should be deleted");
 
-    let mut cmd3 = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd3 = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output3 = cmd3
         .current_dir(main_repo)
         .arg("worktree")
@@ -280,7 +280,7 @@ fn branch_conflict_exits_git_error_code() {
     // so `worktree add` collides with it instead of creating cleanly.
     run_git(main_repo, &["branch", "heist/my-slug"]);
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(main_repo)
         .arg("worktree")

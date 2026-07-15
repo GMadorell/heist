@@ -32,7 +32,7 @@ fn updates_field_and_bumps_updated() {
 
     let today = get_today_date();
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("state")
@@ -100,7 +100,7 @@ fn numeric_field_is_stored_as_a_number() {
     let temp_path = temp_dir.path();
     write_fixture(temp_path, "implementing", 1);
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("state")
@@ -137,7 +137,7 @@ fn rejects_unknown_field() {
     let temp_path = temp_dir.path();
     write_fixture(temp_path, "planning", 1);
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("state")
@@ -169,7 +169,7 @@ fn rejects_schema_version_mismatch() {
     let temp_path = temp_dir.path();
     write_fixture(temp_path, "planning", 99);
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("state")
@@ -232,7 +232,7 @@ fn assert_rejects_value(field: &str, value: &str, expected_stderr_substring: &st
     let state_json = fs::read_to_string(temp_path.join(".heist/my-slug/state.json"))
         .expect("failed to read fixture back");
 
-    let mut cmd = Command::cargo_bin("heist-cli").expect("failed to get cargo bin");
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
     let output = cmd
         .current_dir(temp_path)
         .arg("state")
