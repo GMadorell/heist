@@ -32,6 +32,7 @@ pub enum FieldError {
         value: String,
         expected: String,
     },
+    NotIncrementable(String),
 }
 
 impl fmt::Display for FieldError {
@@ -53,6 +54,23 @@ impl fmt::Display for FieldError {
                 "invalid value for field '{}': {} (expected {})",
                 field, value, expected
             ),
+            FieldError::NotIncrementable(field) => {
+                write!(f, "field '{}' is not incrementable (not a number)", field)
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn not_incrementable_display_names_the_field() {
+        let err = FieldError::NotIncrementable("stage".to_string());
+        assert_eq!(
+            err.to_string(),
+            "field 'stage' is not incrementable (not a number)"
+        );
     }
 }

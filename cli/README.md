@@ -26,6 +26,10 @@ Prints one field's value (or `null`). Fails on unknown field or missing/corrupt 
 
 Updates one field and bumps `updated` to today. Validates the value (e.g. `stage` must be a known stage, dates must parse, `slug`/`worktree`/`branch` can't be blank).
 
+### `state incr <slug> <field>`
+
+Reads a numeric field, adds 1, and writes it back (bumping `updated` to today). Fails on a non-numeric field, an unknown field, or overflow past `u32::MAX`. Not atomic: same single-writer contract as `state set`.
+
 ### `state schema`
 
 Prints the field list and an example `state.json`. No slug required, deterministic output.

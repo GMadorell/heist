@@ -37,7 +37,7 @@ Run `heist validation check .` at the repo root. If it prints `missing`, invoke 
 
 1. Spawn `heist:fence` (foreground, one-shot — no relay loop for Fence itself) with the worktree's absolute path and an explicit `cd <worktree-path>` instruction in the task message. Read its findings.
 2. **No findings above `low`, or Fence explicitly says the blueprint holds up**: Run `heist state set <slug> stage human_review`. Tell the human the blueprint passed contrarian review clean, then continue into human review below.
-3. **Findings exist**: relay them to the Mastermind (see "Talking to the Mastermind after turn 1" above) and ask it to revise `blueprint.md`. Increment `fence_rounds` in `state.json`.
+3. **Findings exist**: relay them to the Mastermind (see "Talking to the Mastermind after turn 1" above) and ask it to revise `blueprint.md`. Run `heist state incr <slug> fence_rounds`.
 4. The Mastermind revises and replies with a short summary of what changed, plus any finding it explicitly disagreed with and why.
 5. **This is the one auto-revision round — do not send the revised blueprint back to Fence again.** Regardless of whether Fence would still object, move on: Run `heist state set <slug> stage human_review`.
 6. Report to the human in one place: Fence's original findings, the Mastermind's revision summary, and any disagreement the Mastermind raised with a Fence finding it chose not to apply. Then continue into human review below.
@@ -63,7 +63,7 @@ The Mastermind's job ends at approval — forging is a fresh, one-shot transform
 
 1. Spawn `heist:wheelman` (foreground — you need its final report before cleaning). As input, it will receive the task `<slug>`.
 2. Let the Wheelman run its full per-step loop autonomously. Don't intervene per-step.
-3. When it reports done, run `heist state set <slug> stage cleaning` and `heist state set <slug> score_step <final-value>` where `<final-value>` is the Wheelman's final score step.
+3. When it reports done, run `heist state set <slug> stage cleaning`. Wheelman owns `score_step` live via `heist state incr` throughout implementation — don't re-set it here.
 4. Report to the human: steps completed, anything the Wheelman had to do itself and why, final build status.
 5. Continue into cleaning below.
 
