@@ -62,8 +62,8 @@ pub fn resolve_validation(
     src: &dyn ValidationSource,
     path: &Path,
 ) -> Result<String, ValidationError> {
-    let repo_root = src.repo_root().map_err(ValidationError::Other)?;
-    let cwd = src.cwd().map_err(ValidationError::Other)?;
+    let repo_root = src.repo_root()?;
+    let cwd = src.cwd()?;
     let (merged, _scope) = resolve_validation_with_scope(src, path, &repo_root, &cwd)?;
 
     let mut output = String::new();
@@ -86,8 +86,8 @@ pub fn resolve_validations(
     src: &dyn ValidationSource,
     paths: &[PathBuf],
 ) -> Result<String, ValidationError> {
-    let repo_root = src.repo_root().map_err(ValidationError::Other)?;
-    let cwd = src.cwd().map_err(ValidationError::Other)?;
+    let repo_root = src.repo_root()?;
+    let cwd = src.cwd()?;
 
     let mut scope_to_sections: BTreeMap<PathBuf, BTreeMap<String, String>> = BTreeMap::new();
     for path in paths {
@@ -125,14 +125,10 @@ pub fn check_validation_exists(
     src: &dyn ValidationSource,
     path: &Path,
 ) -> Result<bool, ValidationError> {
-    let repo_root = src.repo_root().map_err(ValidationError::Other)?;
-    let cwd = src.cwd().map_err(ValidationError::Other)?;
+    let repo_root = src.repo_root()?;
+    let cwd = src.cwd()?;
     for dir in validation_dirs(path, &repo_root, &cwd)? {
-        if src
-            .read_validation(&dir)
-            .map_err(ValidationError::Other)?
-            .is_some()
-        {
+        if src.read_validation(&dir)?.is_some() {
             return Ok(true);
         }
     }
@@ -302,6 +298,10 @@ fn validation_dirs(
             project_root: canonical_repo_root.clone(),
         })?;
 
+    // Rebuild the returned dirs from the original (non-canonical) `repo_root`,
+    // not `canonical_repo_root`: canonicalization above is only for the
+    // containment check (`strip_prefix`) above, since callers key
+    // `read_validation` lookups off the caller-supplied `repo_root`.
     let mut dirs = Vec::new();
     let mut current = repo_root.to_path_buf();
     dirs.push(current.clone());
@@ -326,7 +326,7 @@ fn resolve_validation_with_scope(
     let mut scope_dir = PathBuf::from(".");
 
     for dir in validation_dirs(path, repo_root, cwd)? {
-        if let Some(text) = src.read_validation(&dir).map_err(ValidationError::Other)? {
+        if let Some(text) = src.read_validation(&dir)? {
             layers.push(parse_sections(&text)?);
             if let Ok(rel) = dir.strip_prefix(repo_root) {
                 scope_dir = rel.to_path_buf();

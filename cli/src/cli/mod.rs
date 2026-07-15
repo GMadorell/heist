@@ -291,6 +291,25 @@ fn run_worktree(
     }
 }
 
+/// Report a `ValidationError` via the appropriate presenter, using a shared
+/// presenter for `PathOutsideProject` and `generic` for everything else.
+fn report_validation_error(
+    e: &ValidationError,
+    generic: impl FnOnce(&ValidationError),
+) -> ExitCode {
+    let code = ExitCode::from(e);
+    if let ValidationError::PathOutsideProject {
+        requested,
+        project_root,
+    } = e
+    {
+        present::validation_path_outside(requested, project_root);
+    } else {
+        generic(e);
+    }
+    code
+}
+
 fn run_validation(
     command: ValidationCommands,
     src: &dyn crate::ports::validation_source::ValidationSource,
@@ -307,19 +326,7 @@ fn run_validation(
                     present::validation_output(&output);
                     ExitCode::Success
                 }
-                Err(e) => {
-                    let code = ExitCode::from(&e);
-                    if let ValidationError::PathOutsideProject {
-                        requested,
-                        project_root,
-                    } = &e
-                    {
-                        present::validation_path_outside(requested, project_root);
-                    } else {
-                        present::validation_resolve_failed(&e);
-                    }
-                    code
-                }
+                Err(e) => report_validation_error(&e, |e| present::validation_resolve_failed(e)),
             }
         }
         ValidationCommands::Check { path } => match app::validation::check(src, &path) {
@@ -331,19 +338,7 @@ fn run_validation(
                 present::validation_missing();
                 ExitCode::Precondition
             }
-            Err(e) => {
-                let code = ExitCode::from(&e);
-                if let ValidationError::PathOutsideProject {
-                    requested,
-                    project_root,
-                } = &e
-                {
-                    present::validation_path_outside(requested, project_root);
-                } else {
-                    present::validation_check_failed(&e);
-                }
-                code
-            }
+            Err(e) => report_validation_error(&e, |e| present::validation_check_failed(e)),
         },
     }
 }

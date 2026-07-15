@@ -277,4 +277,12 @@ fn check_fails_hard_on_absolute_path_outside_repo() {
         "stdout should not contain 'missing', got: {}",
         stdout
     );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&outside_path.to_string_lossy().to_string()),
+        "stderr should contain the requested path '{}', got: {}",
+        outside_path.to_string_lossy(),
+        stderr
+    );
 }
