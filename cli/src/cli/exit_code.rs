@@ -10,6 +10,7 @@ pub enum ExitCode {
     Internal = 1,
     Precondition = 2,
     Git = 3,
+    Usage = 4,
 }
 
 impl ExitCode {
@@ -39,8 +40,8 @@ impl From<&GitError> for ExitCode {
 impl From<&ValidationError> for ExitCode {
     fn from(e: &ValidationError) -> Self {
         match e {
-            ValidationError::PathNotAbsolute { .. } => ExitCode::Precondition,
-            ValidationError::PathOutsideProject { .. } => ExitCode::Precondition,
+            ValidationError::PathNotAbsolute { .. } => ExitCode::Usage,
+            ValidationError::PathOutsideProject { .. } => ExitCode::Usage,
             ValidationError::Other(_) => ExitCode::Internal,
         }
     }
@@ -52,12 +53,20 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn path_outside_project_maps_to_precondition() {
+    fn path_not_absolute_maps_to_usage() {
+        let e = ValidationError::PathNotAbsolute {
+            path: PathBuf::from("relative/path.rs"),
+        };
+        assert_eq!(ExitCode::from(&e), ExitCode::Usage);
+    }
+
+    #[test]
+    fn path_outside_project_maps_to_usage() {
         let e = ValidationError::PathOutsideProject {
             requested: PathBuf::from("x"),
             project_root: PathBuf::from("/y"),
         };
-        assert_eq!(ExitCode::from(&e), ExitCode::Precondition);
+        assert_eq!(ExitCode::from(&e), ExitCode::Usage);
     }
 
     #[test]
