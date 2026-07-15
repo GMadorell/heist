@@ -115,7 +115,12 @@ fn single_path_merges_root_and_leaf() {
         .current_dir(repo_root)
         .arg("validation")
         .arg("resolve")
-        .arg(repo_root.join("cli/src/main.rs").to_string_lossy().to_string())
+        .arg(
+            repo_root
+                .join("cli/src/main.rs")
+                .to_string_lossy()
+                .to_string(),
+        )
         .output()
         .expect("failed to run validation resolve");
 
@@ -166,8 +171,18 @@ fn multi_path_returns_distinct_scopes() {
         .current_dir(repo_root)
         .arg("validation")
         .arg("resolve")
-        .arg(repo_root.join("plugin/skills/heist/pipeline.md").to_string_lossy().to_string())
-        .arg(repo_root.join("cli/src/main.rs").to_string_lossy().to_string())
+        .arg(
+            repo_root
+                .join("plugin/skills/heist/pipeline.md")
+                .to_string_lossy()
+                .to_string(),
+        )
+        .arg(
+            repo_root
+                .join("cli/src/main.rs")
+                .to_string_lossy()
+                .to_string(),
+        )
         .output()
         .expect("failed to run validation resolve");
 
@@ -213,8 +228,18 @@ fn multi_path_dedupes_same_scope() {
         .current_dir(repo_root)
         .arg("validation")
         .arg("resolve")
-        .arg(repo_root.join("cli/src/main.rs").to_string_lossy().to_string())
-        .arg(repo_root.join("cli/tests/validation_resolve.rs").to_string_lossy().to_string())
+        .arg(
+            repo_root
+                .join("cli/src/main.rs")
+                .to_string_lossy()
+                .to_string(),
+        )
+        .arg(
+            repo_root
+                .join("cli/tests/validation_resolve.rs")
+                .to_string_lossy()
+                .to_string(),
+        )
         .output()
         .expect("failed to run validation resolve");
 

@@ -278,12 +278,12 @@ fn validation_dirs(path: &Path, repo_root: &Path) -> Result<Vec<PathBuf>, Valida
         .parent()
         .unwrap_or(canonical_target.as_path());
 
-    let rel = target_dir
-        .strip_prefix(&canonical_repo_root)
-        .map_err(|_| ValidationError::PathOutsideProject {
+    let rel = target_dir.strip_prefix(&canonical_repo_root).map_err(|_| {
+        ValidationError::PathOutsideProject {
             requested: path.to_path_buf(),
             project_root: canonical_repo_root.clone(),
-        })?;
+        }
+    })?;
 
     let mut dirs = Vec::new();
     let mut current = canonical_repo_root.clone();

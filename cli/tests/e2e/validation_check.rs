@@ -94,7 +94,12 @@ fn reports_ok_when_present() {
         .current_dir(repo_root)
         .arg("validation")
         .arg("check")
-        .arg(repo_root.join("some/nested/path.rs").to_string_lossy().to_string())
+        .arg(
+            repo_root
+                .join("some/nested/path.rs")
+                .to_string_lossy()
+                .to_string(),
+        )
         .output()
         .expect("failed to run validation check");
 
