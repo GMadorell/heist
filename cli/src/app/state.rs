@@ -157,4 +157,31 @@ mod tests {
             _ => panic!("expected IncrError::Field(Unknown), got a different variant"),
         }
     }
+
+    #[test]
+    fn incr_rejects_overflow_at_u32_max() {
+        let mut state = State::new("foo", created_date()).expect("valid slug");
+        state
+            .set_field("score_step", &u32::MAX.to_string())
+            .expect("u32::MAX is a valid score_step value");
+        let repo = InMemoryStateRepository::new().with_state("foo", state);
+        let clock = FixedClock(today_date());
+
+        let err = incr(&repo, &clock, "foo", "score_step")
+            .expect_err("should reject increment past u32::MAX");
+        match err {
+            IncrError::Field(FieldError::InvalidNumeric { field, value }) => {
+                assert_eq!(field, "score_step");
+                assert_eq!(value, u32::MAX.to_string());
+            }
+            _ => panic!("expected IncrError::Field(InvalidNumeric), got a different variant"),
+        }
+
+        let state = repo.get("foo").expect("state should exist");
+        assert_eq!(
+            state.score_step,
+            ScoreStep::new(u32::MAX),
+            "state must be unchanged on overflow rejection"
+        );
+    }
 }
