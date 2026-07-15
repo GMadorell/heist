@@ -239,7 +239,7 @@ fn multi_path_dedupes_same_scope() {
 }
 
 #[test]
-fn resolve_fails_hard_on_relative_path_outside_repo() {
+fn resolve_fails_hard_on_relative_path() {
     let temp_dir = setup_fixture();
     let repo_root = temp_dir.path();
 
@@ -254,8 +254,8 @@ fn resolve_fails_hard_on_relative_path_outside_repo() {
 
     assert_eq!(
         output.status.code(),
-        Some(2),
-        "command should exit with code 2, got {:?}",
+        Some(4),
+        "command should exit with code 4, got {:?}",
         output.status.code()
     );
 
@@ -266,8 +266,8 @@ fn resolve_fails_hard_on_relative_path_outside_repo() {
         stderr
     );
     assert!(
-        stderr.contains(repo_root.display().to_string().as_str()),
-        "stderr should contain the repo root path, got: {}",
+        stderr.contains("must be absolute"),
+        "stderr should say the path must be absolute, got: {}",
         stderr
     );
 }
