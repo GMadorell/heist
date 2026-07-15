@@ -303,3 +303,34 @@ fn resolve_fails_hard_on_absolute_path_outside_repo() {
         stderr
     );
 }
+
+#[test]
+fn resolves_absolute_path_to_not_yet_existing_leaf_file() {
+    let temp_dir = setup_fixture();
+    let repo_root = temp_dir.path();
+
+    let planned_leaf = repo_root.join("cli/src/not_yet_created.rs");
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root)
+        .arg("validation")
+        .arg("resolve")
+        .arg(planned_leaf.to_string_lossy().to_string())
+        .output()
+        .expect("failed to run validation resolve");
+
+    assert!(
+        output.status.success(),
+        "should resolve a not-yet-existing leaf file whose parent dir exists, got exit {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("cli build command"),
+        "should merge cli/validation.md for the planned leaf's parent dir, got: {}",
+        stdout
+    );
+}
