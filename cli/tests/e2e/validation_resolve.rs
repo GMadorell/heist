@@ -291,8 +291,8 @@ fn resolve_fails_hard_on_absolute_path_outside_repo() {
 
     assert_eq!(
         output.status.code(),
-        Some(2),
-        "command should exit with code 2, got {:?}",
+        Some(4),
+        "command should exit with code 4, got {:?}",
         output.status.code()
     );
 
