@@ -103,9 +103,8 @@ pub fn remove(
     git.delete_branch(repo_root, branch.as_ref())
         .map_err(RemoveError::Git)?;
 
-    // Remote branch deletion is intentionally out of scope: the branch is
-    // often never pushed, or GitHub's auto-delete-on-merge already handled
-    // it, and failing there would strand state.json short of "done".
+    // Remote branch deletion is intentionally out of scope: rely
+    // on GH auto-delete after merge
 
     let mut state = state_repo.load(slug).map_err(RemoveError::Load)?;
     state.stage = Stage::Done;

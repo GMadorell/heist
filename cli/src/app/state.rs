@@ -60,8 +60,6 @@ created: string\n\
 updated: string";
 
 pub fn schema() -> Result<String, SchemaError> {
-    // The schema output shows example strings, so a constant date keeps it
-    // deterministic rather than reflecting the day the command runs.
     let example_date = DateValue::parse("created", "2026-01-01").expect("constant date is valid");
     let example = State::new("example", example_date).map_err(SchemaError::InvalidExample)?;
     let json = serde_json::to_string_pretty(&example).map_err(SchemaError::Serialize)?;

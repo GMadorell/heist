@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 pub trait WorktreeFs {
-    /// Ensure `.worktrees/` is in .gitignore. Returns true if it added it.
+    /// Returns true if it added the ignore rule.
     fn ensure_worktrees_ignored(&self, repo_root: &Path) -> std::io::Result<bool>;
 
     /// Symlink the worktree's `.heist/<slug>` back to the main `.heist/<slug>`.
