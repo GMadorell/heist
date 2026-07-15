@@ -17,7 +17,8 @@ pub fn resolve_validation(
     path: &Path,
 ) -> Result<String, Box<dyn Error>> {
     let repo_root = src.repo_root()?;
-    let (merged, _scope) = resolve_validation_with_scope(src, path, &repo_root)?;
+    let cwd = src.cwd()?;
+    let (merged, _scope) = resolve_validation_with_scope(src, path, &repo_root, &cwd)?;
 
     let mut output = String::new();
     for section in SECTION_ORDER {
@@ -40,10 +41,11 @@ pub fn resolve_validations(
     paths: &[PathBuf],
 ) -> Result<String, Box<dyn Error>> {
     let repo_root = src.repo_root()?;
+    let cwd = src.cwd()?;
 
     let mut scope_to_sections: BTreeMap<PathBuf, BTreeMap<String, String>> = BTreeMap::new();
     for path in paths {
-        let (merged, scope) = resolve_validation_with_scope(src, path, &repo_root)?;
+        let (merged, scope) = resolve_validation_with_scope(src, path, &repo_root, &cwd)?;
         scope_to_sections.insert(scope, merged);
     }
 
@@ -78,7 +80,8 @@ pub fn check_validation_exists(
     path: &Path,
 ) -> Result<bool, Box<dyn Error>> {
     let repo_root = src.repo_root()?;
-    for dir in validation_dirs(path, &repo_root) {
+    let cwd = src.cwd()?;
+    for dir in validation_dirs(path, &repo_root, &cwd) {
         if src.read_validation(&dir)?.is_some() {
             return Ok(true);
         }
@@ -193,11 +196,11 @@ pub fn merge(layers: &[BTreeMap<String, String>]) -> BTreeMap<String, String> {
 
 /// Candidate `validation.md` directories from repo root down to the path's
 /// directory.
-fn validation_dirs(path: &Path, repo_root: &Path) -> Vec<PathBuf> {
+fn validation_dirs(path: &Path, repo_root: &Path, cwd: &Path) -> Vec<PathBuf> {
     let target_path = if path.is_absolute() {
         path.to_path_buf()
     } else {
-        repo_root.join(path)
+        cwd.join(path)
     };
     let target_dir = target_path.parent().unwrap_or_else(|| Path::new("."));
 
@@ -220,11 +223,12 @@ fn resolve_validation_with_scope(
     src: &dyn ValidationSource,
     path: &Path,
     repo_root: &Path,
+    cwd: &Path,
 ) -> Result<(BTreeMap<String, String>, PathBuf), Box<dyn Error>> {
     let mut layers = Vec::new();
     let mut scope_dir = PathBuf::from(".");
 
-    for dir in validation_dirs(path, repo_root) {
+    for dir in validation_dirs(path, repo_root, cwd) {
         if let Some(text) = src.read_validation(&dir)? {
             layers.push(parse_sections(&text)?);
             if let Ok(rel) = dir.strip_prefix(repo_root) {

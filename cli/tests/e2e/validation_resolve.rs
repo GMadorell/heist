@@ -236,3 +236,33 @@ fn multi_path_dedupes_same_scope() {
         stdout
     );
 }
+
+#[test]
+fn resolves_using_cwd_not_repo_root_relative_path() {
+    let temp_dir = setup_fixture();
+    let repo_root = temp_dir.path();
+
+    // Run from cli/ directory with a relative path that only exists relative to cwd
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root.join("cli"))
+        .arg("validation")
+        .arg("resolve")
+        .arg("src/main.rs")
+        .output()
+        .expect("failed to run validation resolve");
+
+    assert!(
+        output.status.success(),
+        "command should succeed, got exit code {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("cli build command"),
+        "stdout should contain 'cli build command', got: {}",
+        stdout
+    );
+}
