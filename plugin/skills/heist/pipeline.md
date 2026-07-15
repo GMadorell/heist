@@ -10,7 +10,7 @@ If `heist` isn't on `PATH`, halt and point the user to the README's install sect
 
 ### 1. Casing gate
 
-Run `heist validation check .` at the repo root. If it prints `missing`, invoke the `heist:casing` skill's instructions yourself before continuing (don't ask the human to do it as a separate step — this is the "auto-triggered by /heist when validation.md missing" behavior). If it prints `ok`, proceed directly.
+Run `heist validation check <repo-root-absolute-path>` (the repo's absolute root, since `.` is relative and now exits 4). Branch on the exit code: exit 0 → proceed directly; exit 2 → invoke the `heist:casing` skill's instructions yourself before continuing (don't ask the human to do it as a separate step, this is the "auto-triggered by /heist when validation.md missing" behavior); any other nonzero exit (e.g. 4, meaning the path argument itself was invalid) → halt and surface the raw stderr to the human, do NOT auto-run the casing skill in that case.
 
 ### 2. Planning: relay loop with the Mastermind
 
