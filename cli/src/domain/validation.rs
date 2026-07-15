@@ -124,7 +124,7 @@ pub fn check_validation_exists(
     path: &Path,
 ) -> Result<bool, ValidationError> {
     let repo_root = src.repo_root()?;
-    for dir in validation_dirs(path, &repo_root)? {
+    for dir in validation_dirs(src, path, &repo_root)? {
         if src.read_validation(&dir)?.is_some() {
             return Ok(true);
         }
@@ -251,36 +251,37 @@ pub fn merge(layers: &[BTreeMap<String, String>]) -> BTreeMap<String, String> {
 /// If `path` refers to an existing file, its parent directory is the scope.
 /// A target outside `repo_root` (after canonicalization) is rejected with
 /// `PathOutsideProject`.
-fn validation_dirs(path: &Path, repo_root: &Path) -> Result<Vec<PathBuf>, ValidationError> {
+fn validation_dirs(
+    src: &dyn ValidationSource,
+    path: &Path,
+    repo_root: &Path,
+) -> Result<Vec<PathBuf>, ValidationError> {
     if !path.is_absolute() {
         return Err(ValidationError::PathNotAbsolute {
             requested: path.to_path_buf(),
         });
     }
 
-    let canonical_repo_root = repo_root
-        .canonicalize()
-        .map_err(|e| ValidationError::Other(Box::new(e)))?;
+    let canonical_repo_root = src
+        .canonicalize(repo_root)
+        .map_err(ValidationError::Other)?;
 
-    let canonical_target = if path.exists() {
-        path.canonicalize()
-            .map_err(|e| ValidationError::Other(Box::new(e)))?
+    let canonical_target = if src.exists(path) {
+        src.canonicalize(path).map_err(ValidationError::Other)?
     } else {
         let parent = path.parent().ok_or_else(|| {
             ValidationError::Other(
                 format!("path {} has no parent directory", path.display()).into(),
             )
         })?;
-        let canonical_parent = parent
-            .canonicalize()
-            .map_err(|e| ValidationError::Other(Box::new(e)))?;
+        let canonical_parent = src.canonicalize(parent).map_err(ValidationError::Other)?;
         match path.file_name() {
             Some(name) => canonical_parent.join(name),
             None => canonical_parent,
         }
     };
 
-    let target_dir = if canonical_target.is_dir() {
+    let target_dir = if src.is_dir(&canonical_target) {
         canonical_target.as_path()
     } else {
         canonical_target
@@ -316,7 +317,7 @@ fn resolve_validation_with_scope(
     let mut layers = Vec::new();
     let mut scope_dir = PathBuf::from(".");
 
-    let dirs = validation_dirs(path, repo_root)?;
+    let dirs = validation_dirs(src, path, repo_root)?;
     // `validation_dirs` always returns the canonical repo root as its first
     // element (see its doc comment); reuse it instead of canonicalizing
     // `repo_root` a second time here.
@@ -365,6 +366,7 @@ impl Error for ParseError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapters::validation_fs::ValidationFs;
 
     #[test]
     fn parses_all_six_sections() {
@@ -629,7 +631,11 @@ root notes"#;
 
     #[test]
     fn validation_dirs_rejects_relative_path() {
-        let result = validation_dirs(Path::new("relative/file.md"), Path::new("/tmp"));
+        let result = validation_dirs(
+            &ValidationFs,
+            Path::new("relative/file.md"),
+            Path::new("/tmp"),
+        );
         assert!(result.is_err(), "should reject a relative path");
         match result {
             Err(ValidationError::PathNotAbsolute { requested }) => {
@@ -652,7 +658,7 @@ root notes"#;
             .expect("repo_root should canonicalize");
         let outside_file = outside_dir.join("outside.rs");
 
-        let result = validation_dirs(&outside_file, &repo_root_canonical);
+        let result = validation_dirs(&ValidationFs, &outside_file, &repo_root_canonical);
         assert!(result.is_err(), "should reject path outside repo root");
 
         if let Err(ValidationError::PathOutsideProject {
@@ -681,7 +687,7 @@ root notes"#;
             .canonicalize()
             .expect("repo_root should canonicalize");
 
-        let result = validation_dirs(&file_path, &repo_root_canonical);
+        let result = validation_dirs(&ValidationFs, &file_path, &repo_root_canonical);
         assert!(
             result.is_ok(),
             "should resolve absolute path within repo root: {:?}",
@@ -706,7 +712,7 @@ root notes"#;
         // Path points to a file that doesn't exist yet, but its parent (repo_root) does.
         let nonexistent_path = repo_root.join("nonexistent.md");
 
-        let result = validation_dirs(&nonexistent_path, &repo_root_canonical);
+        let result = validation_dirs(&ValidationFs, &nonexistent_path, &repo_root_canonical);
         assert!(
             result.is_ok(),
             "should succeed even if target file doesn't exist yet, as long as its parent exists"
@@ -726,7 +732,7 @@ root notes"#;
         // Neither `missing-dir` nor the file inside it exist.
         let nonexistent_path = repo_root.join("missing-dir").join("nonexistent.md");
 
-        let result = validation_dirs(&nonexistent_path, &repo_root_canonical);
+        let result = validation_dirs(&ValidationFs, &nonexistent_path, &repo_root_canonical);
         match result {
             Err(ValidationError::Other(_)) => {}
             other => panic!("expected ValidationError::Other, got: {:?}", other),
@@ -745,7 +751,7 @@ root notes"#;
 
         // The repo root passed as its own target must not be rejected as
         // "outside" itself.
-        let result = validation_dirs(&repo_root_canonical, &repo_root_canonical);
+        let result = validation_dirs(&ValidationFs, &repo_root_canonical, &repo_root_canonical);
         assert!(
             result.is_ok(),
             "should resolve when target is the repo root itself, got: {:?}",
@@ -772,7 +778,7 @@ root notes"#;
             .expect("repo_root should canonicalize");
         let subdir_canonical = subdir.canonicalize().expect("subdir should canonicalize");
 
-        let result = validation_dirs(&subdir_canonical, &repo_root_canonical);
+        let result = validation_dirs(&ValidationFs, &subdir_canonical, &repo_root_canonical);
         assert!(
             result.is_ok(),
             "should resolve when target is an existing directory, got: {:?}",
