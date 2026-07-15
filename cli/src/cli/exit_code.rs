@@ -55,7 +55,7 @@ mod tests {
     #[test]
     fn path_not_absolute_maps_to_usage() {
         let e = ValidationError::PathNotAbsolute {
-            path: PathBuf::from("relative/path.rs"),
+            requested: PathBuf::from("relative/path.rs"),
         };
         assert_eq!(ExitCode::from(&e), ExitCode::Usage);
     }
