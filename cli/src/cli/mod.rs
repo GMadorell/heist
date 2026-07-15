@@ -37,6 +37,7 @@ enum Commands {
     Resume {
         slug: String,
     },
+    List,
 }
 
 #[derive(Subcommand)]
@@ -83,6 +84,7 @@ pub fn run(cli: Cli) -> ExitCode {
         }
         Commands::Validation { command } => run_validation(command, &validation_src),
         Commands::Resume { slug } => run_resume(&slug, &state_repo),
+        Commands::List => run_list(&state_repo),
     }
 }
 
@@ -276,6 +278,23 @@ fn run_resume(slug: &str, repo: &dyn StateRepository) -> ExitCode {
         Err(e) => {
             present::state_load_failed(slug, &e);
             ExitCode::from(&e)
+        }
+    }
+}
+
+fn run_list(repo: &dyn StateRepository) -> ExitCode {
+    match app::list::list(repo) {
+        Ok(rows) => {
+            present::list_summary(&rows);
+            ExitCode::Success
+        }
+        Err(app::list::ListError::ListSlugs(e)) => {
+            present::error(&e);
+            ExitCode::from(&e)
+        }
+        Err(app::list::ListError::Load { slug, error }) => {
+            present::state_load_failed(slug.as_ref(), &error);
+            ExitCode::from(&error)
         }
     }
 }

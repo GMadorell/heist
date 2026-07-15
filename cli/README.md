@@ -50,6 +50,10 @@ For each path, merges the nearest `validation.md` with the root `validation.md` 
 
 Prints a short summary (`slug`, `stage`, `next_step`, `worktree`) for picking a heist back up.
 
+### `list`
+
+Prints one line per heist under `.heist/` (`slug  stage  next_step  worktree`), sorted by slug, including `done` heists. Empty or missing `.heist/` prints nothing and exits 0.
+
 ## Exit codes
 
 | Code | Meaning |

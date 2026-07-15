@@ -1,5 +1,6 @@
 use crate::domain::error::StateError;
 use crate::domain::state::State;
+use crate::domain::value::SlugValue;
 use crate::ports::state_repository::StateRepository;
 use std::path::{Path, PathBuf};
 
@@ -29,6 +30,32 @@ impl StateRepository for FileStateRepository {
 
     fn save(&self, slug: &str, state: &State) -> Result<(), StateError> {
         save_state_file(state, &state_file_path(slug))
+    }
+
+    fn list_slugs(&self) -> Result<Vec<SlugValue>, StateError> {
+        let heist_dir = Path::new(".heist");
+        if !heist_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut slugs = Vec::new();
+        for entry in std::fs::read_dir(heist_dir).map_err(StateError::Unreadable)? {
+            let entry = entry.map_err(StateError::Unreadable)?;
+            if !entry.path().is_dir() {
+                continue;
+            }
+            let dir_name = entry.file_name().to_string_lossy().into_owned();
+            if !state_file_path(&dir_name).exists() {
+                continue;
+            }
+            // A directory name that isn't a valid slug can't have been created
+            // by `state init`, so it isn't a heist: skip it rather than error.
+            if let Ok(slug) = SlugValue::parse(&dir_name) {
+                slugs.push(slug);
+            }
+        }
+        slugs.sort_by(|a, b| a.as_ref().cmp(b.as_ref()));
+        Ok(slugs)
     }
 }
 

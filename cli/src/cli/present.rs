@@ -1,3 +1,4 @@
+use crate::app::list::ListRow;
 use crate::domain::state::State;
 use std::fmt::Display;
 
@@ -51,6 +52,24 @@ pub fn validation_missing() {
 
 pub fn validation_check_failed(e: impl Display) {
     eprintln!("failed to check validation: {}", e);
+}
+
+pub fn list_summary(rows: &[ListRow]) {
+    for row in rows {
+        let next_step = row
+            .next_step
+            .map(|stage| stage.as_str().to_string())
+            .unwrap_or_else(|| "none".to_string());
+        let worktree = row.worktree.as_ref().map(AsRef::as_ref).unwrap_or("none");
+
+        println!(
+            "{}  {}  {}  {}",
+            row.slug,
+            row.stage.as_str(),
+            next_step,
+            worktree
+        );
+    }
 }
 
 pub fn resume_summary(state: &State) {
