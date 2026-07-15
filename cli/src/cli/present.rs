@@ -54,14 +54,6 @@ pub fn validation_check_failed(e: impl Display) {
     eprintln!("failed to check validation: {}", e);
 }
 
-pub fn validation_path_outside(requested: &std::path::Path, project_root: &std::path::Path) {
-    eprintln!(
-        "path {} is outside the project root {}",
-        requested.display(),
-        project_root.display()
-    );
-}
-
 pub fn list_summary(rows: &[ListRow]) {
     for row in rows {
         let next_step = row

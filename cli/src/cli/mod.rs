@@ -7,7 +7,6 @@ use crate::adapters::real_git::RealGit;
 use crate::adapters::system_clock::SystemClock;
 use crate::adapters::validation_fs::ValidationFs;
 use crate::app;
-use crate::domain::validation::ValidationError;
 use crate::ports::state_repository::StateRepository;
 use clap::{Parser, Subcommand};
 use exit_code::ExitCode;
@@ -307,7 +306,10 @@ fn run_validation(
                     present::validation_output(&output);
                     ExitCode::Success
                 }
-                Err(e) => report_validation_error(&e, |e| present::validation_resolve_failed(e)),
+                Err(e) => {
+                    present::validation_resolve_failed(&e);
+                    ExitCode::from(&e)
+                }
             }
         }
         ValidationCommands::Check { path } => match app::validation::check(src, &path) {
@@ -319,26 +321,12 @@ fn run_validation(
                 present::validation_missing();
                 ExitCode::Precondition
             }
-            Err(e) => report_validation_error(&e, |e| present::validation_check_failed(e)),
+            Err(e) => {
+                present::validation_check_failed(&e);
+                ExitCode::from(&e)
+            }
         },
     }
-}
-
-fn report_validation_error(
-    e: &ValidationError,
-    default_presenter: impl FnOnce(&ValidationError),
-) -> ExitCode {
-    let code = ExitCode::from(e);
-    if let ValidationError::PathOutsideProject {
-        requested,
-        project_root,
-    } = e
-    {
-        present::validation_path_outside(requested, project_root);
-    } else {
-        default_presenter(e);
-    }
-    code
 }
 
 fn run_resume(slug: &str, repo: &dyn StateRepository) -> ExitCode {
