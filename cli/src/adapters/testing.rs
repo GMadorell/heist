@@ -220,15 +220,23 @@ impl GitRepository for FakeGit {
 /// root plus a map of directory -> validation.md contents.
 pub struct InMemoryValidationSource {
     repo_root: PathBuf,
+    cwd: PathBuf,
     files: BTreeMap<PathBuf, String>,
 }
 
 impl InMemoryValidationSource {
     pub fn new(repo_root: impl Into<PathBuf>) -> Self {
+        let repo_root_buf = repo_root.into();
         InMemoryValidationSource {
-            repo_root: repo_root.into(),
+            cwd: repo_root_buf.clone(),
+            repo_root: repo_root_buf,
             files: BTreeMap::new(),
         }
+    }
+
+    pub fn with_cwd(mut self, cwd: impl Into<PathBuf>) -> Self {
+        self.cwd = cwd.into();
+        self
     }
 
     pub fn with_validation(mut self, dir: impl Into<PathBuf>, contents: impl Into<String>) -> Self {
@@ -240,6 +248,10 @@ impl InMemoryValidationSource {
 impl ValidationSource for InMemoryValidationSource {
     fn repo_root(&self) -> Result<PathBuf, Box<dyn Error>> {
         Ok(self.repo_root.clone())
+    }
+
+    fn cwd(&self) -> Result<PathBuf, Box<dyn Error>> {
+        Ok(self.cwd.clone())
     }
 
     fn read_validation(&self, dir: &Path) -> Result<Option<String>, Box<dyn Error>> {
