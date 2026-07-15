@@ -14,7 +14,13 @@ use std::path::Path;
 
 #[derive(Parser)]
 #[command(name = "heist")]
-#[command(about = "Heist CLI tool", long_about = None)]
+#[command(
+    about = "Deterministic bookkeeping for the Heist pipeline: state, worktrees, validation.md lookup",
+    long_about = "Deterministic, token-free half of the Heist pipeline: state tracking, worktree \
+setup/teardown, and validation.md lookup. All commands read/write `.heist/<slug>/state.json` \
+relative to the current directory unless noted.\n\n\
+Exit codes: 0 success, 1 internal error, 2 precondition failed, 3 git command failed."
+)]
 pub struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -22,55 +28,90 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Manage heist state.json (init, get, set, incr, schema)
     State {
         #[command(subcommand)]
         command: StateCommands,
     },
+    /// Create or remove the git worktree/branch for a heist
     Worktree {
         #[command(subcommand)]
         command: WorktreeCommands,
     },
+    /// Look up and merge validation.md files
     Validation {
         #[command(subcommand)]
         command: ValidationCommands,
     },
+    /// Print a short summary (stage, next_step, worktree) for picking a heist back up
     Resume {
+        /// Heist slug (directory name under .heist/)
         slug: String,
     },
+    /// Print one line per heist under .heist/, sorted by slug
     List,
 }
 
 #[derive(Subcommand)]
 enum StateCommands {
+    /// Create .heist/<slug>/state.json with defaults; fails if it already exists
     Init {
+        /// Heist slug (directory name under .heist/)
         slug: String,
     },
+    /// Print one field's value (or `null`)
     Get {
+        /// Heist slug (directory name under .heist/)
         slug: String,
+        /// State field name, e.g. stage, worktree, branch, score_step
         field: String,
     },
+    /// Update one field and bump `updated` to today; validates the value
     Set {
+        /// Heist slug (directory name under .heist/)
         slug: String,
+        /// State field name, e.g. stage, worktree, branch, score_step
         field: String,
+        /// New value for the field
         value: String,
     },
+    /// Add 1 to a numeric field and bump `updated` to today
     Incr {
+        /// Heist slug (directory name under .heist/)
         slug: String,
+        /// Numeric state field name, e.g. score_step
         field: String,
     },
+    /// Print the field list and an example state.json (no slug required)
     Schema,
 }
 
 #[derive(Subcommand)]
 enum WorktreeCommands {
-    Add { slug: String },
-    Remove { slug: String },
+    /// Create .worktrees/<slug> on branch heist/<slug>; requires `state init` first
+    Add {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
+    /// Remove the worktree and branch, then set stage: done; refuses if unmerged
+    Remove {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
 }
 
 #[derive(Subcommand)]
 enum ValidationCommands {
-    Resolve { paths: Vec<std::path::PathBuf> },
-    Check { path: std::path::PathBuf },
+    /// Merge the nearest validation.md with the root one for each path, deduped
+    Resolve {
+        /// One or more file/directory paths to resolve validation.md for
+        paths: Vec<std::path::PathBuf>,
+    },
+    /// Exit 0 (prints `ok`) if a validation.md covers path, exit 2 (prints `missing`) otherwise
+    Check {
+        /// File/directory path to check
+        path: std::path::PathBuf,
+    },
 }
 
 pub fn run(cli: Cli) -> ExitCode {
