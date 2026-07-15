@@ -313,14 +313,16 @@ fn resolve_validation_with_scope(
     path: &Path,
     repo_root: &Path,
 ) -> Result<(BTreeMap<String, String>, PathBuf), ValidationError> {
-    let canonical_repo_root = repo_root
-        .canonicalize()
-        .map_err(|e| ValidationError::Other(Box::new(e)))?;
-
     let mut layers = Vec::new();
     let mut scope_dir = PathBuf::from(".");
 
-    for dir in validation_dirs(path, repo_root)? {
+    let dirs = validation_dirs(path, repo_root)?;
+    // `validation_dirs` always returns the canonical repo root as its first
+    // element (see its doc comment); reuse it instead of canonicalizing
+    // `repo_root` a second time here.
+    let canonical_repo_root = dirs[0].clone();
+
+    for dir in dirs {
         if let Some(text) = src.read_validation(&dir)? {
             layers.push(parse_sections(&text)?);
             if let Ok(rel) = dir.strip_prefix(&canonical_repo_root) {

@@ -264,3 +264,36 @@ fn checks_not_yet_existing_leaf_file_with_existing_parent() {
         stdout
     );
 }
+
+#[test]
+fn check_fails_hard_when_parent_of_nonexistent_target_is_missing() {
+    let temp_dir = setup_fixture_with_root_validation();
+    let repo_root = temp_dir.path();
+
+    // Neither `missing-dir` nor the file inside it exist.
+    let nonexistent_path = repo_root.join("missing-dir").join("nonexistent.rs");
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(repo_root)
+        .arg("validation")
+        .arg("check")
+        .arg(nonexistent_path.to_string_lossy().to_string())
+        .output()
+        .expect("failed to run validation check");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "should exit 1 (Internal) when the immediate parent directory doesn't exist, got {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("failed to check validation"),
+        "stderr should come through the check-specific presenter, got: {}",
+        stderr
+    );
+}

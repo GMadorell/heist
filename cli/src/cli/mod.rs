@@ -295,7 +295,7 @@ fn run_worktree(
 /// presenter for `PathOutsideProject` and `generic` for everything else.
 fn report_validation_error(
     e: &ValidationError,
-    generic: impl FnOnce(&ValidationError),
+    default_presenter: impl FnOnce(&ValidationError),
 ) -> ExitCode {
     let code = ExitCode::from(e);
     if let ValidationError::PathOutsideProject {
@@ -305,7 +305,7 @@ fn report_validation_error(
     {
         present::validation_path_outside(requested, project_root);
     } else {
-        generic(e);
+        default_presenter(e);
     }
     code
 }
