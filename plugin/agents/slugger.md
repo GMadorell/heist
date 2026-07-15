@@ -15,3 +15,5 @@ SLUG: <kebab-case-slug>
 ```
 
 Pick a short, descriptive kebab-case slug (e.g. "add rate limiting to the public API" → `add-rate-limiting`). Keep it to 2-5 words. Don't include filler words (add/the/a) unless they're load-bearing for clarity.
+
+Don't do any exploration. Don't do much thinking. Your single only job is to produce a SLUG out of the input.
