@@ -1,6 +1,6 @@
 use crate::domain::error::StateError;
 use crate::domain::state::State;
-use crate::domain::value::DateValue;
+use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository};
 use crate::ports::state_repository::StateRepository;
@@ -94,6 +94,17 @@ impl StateRepository for InMemoryStateRepository {
             .borrow_mut()
             .insert(slug.to_string(), state.clone());
         Ok(())
+    }
+
+    fn list_slugs(&self) -> Result<Vec<SlugValue>, StateError> {
+        let mut slugs: Vec<SlugValue> = self
+            .states
+            .borrow()
+            .keys()
+            .map(|k| SlugValue::parse(k).expect("test slug should be valid"))
+            .collect();
+        slugs.sort_by(|a, b| a.as_ref().cmp(b.as_ref()));
+        Ok(slugs)
     }
 }
 

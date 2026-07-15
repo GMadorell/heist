@@ -133,6 +133,59 @@ fn save_then_load_roundtrips() {
 }
 
 #[test]
+fn list_slugs_is_empty_when_dot_heist_is_missing() {
+    let _cwd = TempCwd::new();
+    let repo = FileStateRepository;
+    assert_eq!(
+        repo.list_slugs().expect("list_slugs should succeed"),
+        vec![]
+    );
+}
+
+#[test]
+fn list_slugs_returns_initialised_slugs_sorted() {
+    let _cwd = TempCwd::new();
+    let repo = FileStateRepository;
+    repo.init(
+        "zeta",
+        &State::new("zeta", fixed_date()).expect("valid slug"),
+    )
+    .expect("init should succeed");
+    repo.init(
+        "alpha",
+        &State::new("alpha", fixed_date()).expect("valid slug"),
+    )
+    .expect("init should succeed");
+
+    let slugs: Vec<String> = repo
+        .list_slugs()
+        .expect("list_slugs should succeed")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+    assert_eq!(slugs, vec!["alpha".to_string(), "zeta".to_string()]);
+}
+
+#[test]
+fn list_slugs_ignores_directories_without_a_state_file() {
+    let _cwd = TempCwd::new();
+    let repo = FileStateRepository;
+    repo.init("foo", &State::new("foo", fixed_date()).expect("valid slug"))
+        .expect("init should succeed");
+    std::fs::create_dir_all(".heist/empty-dir").expect("create dir without state.json");
+
+    let slugs: Vec<String> = repo
+        .list_slugs()
+        .expect("list_slugs should succeed")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+    assert_eq!(slugs, vec!["foo".to_string()]);
+}
+
+#[test]
 fn save_without_slug_dir_is_unreadable() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
