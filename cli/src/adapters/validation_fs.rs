@@ -13,10 +13,6 @@ impl ValidationSource for ValidationFs {
         Ok(workdir.to_path_buf())
     }
 
-    fn cwd(&self) -> Result<PathBuf, Box<dyn Error>> {
-        Ok(std::env::current_dir()?)
-    }
-
     fn read_validation(&self, dir: &Path) -> Result<Option<String>, Box<dyn Error>> {
         let file = dir.join("validation.md");
         if !file.exists() {

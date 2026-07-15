@@ -39,6 +39,7 @@ impl From<&GitError> for ExitCode {
 impl From<&ValidationError> for ExitCode {
     fn from(e: &ValidationError) -> Self {
         match e {
+            ValidationError::PathNotAbsolute { .. } => ExitCode::Precondition,
             ValidationError::PathOutsideProject { .. } => ExitCode::Precondition,
             ValidationError::Other(_) => ExitCode::Internal,
         }
