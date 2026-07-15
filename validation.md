@@ -1,16 +1,6 @@
 # Validation
 
-## Build
-None — this is a Claude Code plugin: markdown skill/agent definitions plus JSON manifests (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `templates/state.json`). No compile step.
-
-## Lint
-None. Sanity-check any edited JSON parses (e.g. `jq . <file>`); no linter configured for markdown.
-
-## Test
-No automated test suite (no CI, no test scripts). Validate changes by reading the edited skill/agent/template files for internal consistency (cross-references between `pipeline.md`, `resume-by-stage.md`, `SKILL.md` files, and `templates/state.json` must stay in sync) and, where practical, by walking through the `/heist:heist` flow manually.
-
-## Docs
-`README.md` documents the pipeline (including a mermaid diagram) and the terms table — keep it in sync with `skills/heist/pipeline.md` when stage names, order, or agent responsibilities change.
+Repo root scope. This is a monorepo split into `plugin/` (the Claude Code plugin, markdown/JSON, no build step) and `cli/` (the Rust crate `heist`). Build/Lint/Test/Docs are defined by the nested `validation.md` in each of those directories and resolved per path by `heist validation resolve` (nested-validation whole-section-replace, nearest file wins per section). This root file carries only repo-global conventions; every real source path lives under `plugin/` or `cli/`, which supply the required Build/Lint/Test sections.
 
 ## PR conventions
 - Main branch: `main`
@@ -18,4 +8,4 @@ No automated test suite (no CI, no test scripts). Validate changes by reading th
 - No PR template found.
 
 ## Notes
-No CI configured (no `.github/workflows/`). No flaky tests or required env vars — there's no test suite to be flaky.
+No CI configured (no `.github/workflows/`) for either `plugin/` or `cli/` — tests run locally. `plugin/` has no automated test suite so nothing there can be flaky. `cli/`'s test suite has its own flakiness/env-var notes in `cli/validation.md`. `heist` is a hard runtime dependency of the pipeline; a missing binary halts `/heist` at the preflight check rather than degrading gracefully (see `README.md` for install).

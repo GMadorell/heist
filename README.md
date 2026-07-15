@@ -14,7 +14,7 @@ You type `/heist:heist add rate limiting to the public API` and the crew gets to
 2. **Fence** reads it and immediately starts talking about everything wrong with the plan, because that's the job. Mastermind fixes what actually lands.
 3. You take a pass yourself in [crit](https://crit.md), leaving comments until you're out of things to nitpick. Silence is approval.
 4. **Forger** breaks the blueprint into `score.md`, a checklist so granular a Muscle can't screw it up.
-5. `/heist:safehouse` opens a git worktree in `.worktrees/`, and **Wheelman** sends **Muscle** in one step at a time, no improvising, no side quests, just the checklist.
+5. **Wheelman** sends **Muscle** in one step at a time to handle the work, no improvising, no side quests, just the checklist.
 6. **Cleaner** rebases, orchestrates a parallel review crew of its own, auto-fixes what's safe, floats the rest to you, runs build/lint/test, and opens a PR with a risk label. Anything labeled critical, it stops and wakes you up first.
 
 You come back to an open PR and a heat report: what got built, what got flagged, what's still on you to eyeball.
@@ -27,7 +27,7 @@ flowchart TD
     B -- no --> C["/heist:casing → validation.md"]
     B -- yes --> S[Slugger: pick slug]
     C --> S
-    S --> I["/heist:safehouse → worktree + branch"]
+    S --> I["heist worktree add → planning"]
     I --> D[Mastermind: relay interview → blueprint.md]
     D --> E[Fence: contrarian review]
     E --> F{findings?}
@@ -54,7 +54,6 @@ flowchart TD
 | Wheelman | Drives the job: runs the crew through the worktree from start to finish |
 | Muscle | Does the lifting: one step, no improvising, no thinking beyond what the score says |
 | Cleaner | Cleans up after: checks the work, scrubs for risk, drives the getaway car (the PR) |
-| Safehouse | Where the job actually happens (a git worktree in `.worktrees/`), invoked via `/heist:safehouse` |
 | Casing | Casing the joint before the job: one-time repo scouting, writes `validation.md` |
 | Blueprint | The plan for the job: `blueprint.md`, the design doc |
 | Score | The job's step-by-step rundown: `score.md`, the ordered TDD work doc |
@@ -63,6 +62,9 @@ flowchart TD
 ## Quickstart
 
 ```bash
+# install the heist binary
+cargo install --path `path_to_this_project`/cli 
+
 # add this repo as a local marketplace, then install the plugin
 claude plugin marketplace add `path_to_this_project`
 claude plugin install heist@heist-marketplace
@@ -77,7 +79,16 @@ Then, inside any project:
 /heist:heist <describe the change you want>
 ```
 
-Note: plugin skills are always namespaced (`/heist:heist`, `/heist:safehouse`, `/heist:casing`), there's no unprefixed shorthand.
+Note: plugin skills are always namespaced (`/heist:heist`, `/heist:casing`), there's no unprefixed shorthand. Worktree and state management is handled by the `heist` binary.
+
+## Layout
+
+Heist is organized as a monorepo with two main components:
+
+- **`plugin/`**: The Claude Code plugin. Contains the crew of specialized agents and assets. This is what's installed via `claude plugin install heist@...`.
+- **`cli/`**: The Rust crate `heist`, a binary that handles deterministic parts of the flow to be token-efficient.
+
+Docs live in `.heist/<slug>/` inside your project. Gitignoring those files is recommended.
 
 ## Model / cost table
 
@@ -91,4 +102,3 @@ Note: plugin skills are always namespaced (`/heist:heist`, `/heist:safehouse`, `
 | Muscle | Haiku | Zero thinking by design, the plan is already fully specified in `score.md` |
 | Cleaner | Sonnet | Adversarial review + validation pipeline, bounded scope |
 
-Docs live in `.heist/<slug>/` inside your project. Gitignoring those files is recommended.
