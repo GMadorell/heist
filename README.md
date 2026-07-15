@@ -55,6 +55,7 @@ flowchart TD
 | Muscle | Does the lifting: one step, no improvising, no thinking beyond what the score says |
 | Cleaner | Cleans up after: checks the work, scrubs for risk, drives the getaway car (the PR) |
 | Casing | Casing the joint before the job: one-time repo scouting, writes `validation.md` |
+| `heist validation resolve` | The read path: merges every `validation.md` from repo root down to the target path (nested/monorepo layouts supported) and prints the effective sections — every agent reads validation this way, never the raw file |
 | Blueprint | The plan for the job: `blueprint.md`, the design doc |
 | Score | The job's step-by-step rundown: `score.md`, the ordered TDD work doc |
 | Risk label | How hot the job is: PR risk classification `low` / `medium` / `high` / `critical` |
@@ -89,6 +90,8 @@ Heist is organized as a monorepo with two main components:
 - **`cli/`**: The Rust crate `heist`, a binary that handles deterministic parts of the flow to be token-efficient.
 
 Docs live in `.heist/<slug>/` inside your project. Gitignoring those files is recommended.
+
+`validation.md` can also live in subdirectories for a monorepo/nested-package layout — `heist validation resolve <path>` walks repo root down to `<path>`, merging every `validation.md` found along the way (nearest file wins per section).
 
 ## Model / cost table
 

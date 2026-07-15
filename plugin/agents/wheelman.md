@@ -15,11 +15,11 @@ If you're told to resume from a specific step number (e.g. after a session resta
 
 For each step in `.heist/<slug>/score.md`, in dependency order (starting from the resume point if given):
 
-1. Spawn one `heist:muscle` subagent (foreground, i.e. `run_in_background: false` on the Agent tool call — you need its result immediately to verify) with ONLY that step's text plus the exact test-run, build, and lint commands it needs from `validation.md`. Do not give it the blueprint or other steps.
+1. Spawn one `heist:muscle` subagent (foreground, i.e. `run_in_background: false` on the Agent tool call — you need its result immediately to verify) with ONLY that step's text plus the exact test-run, build, and lint commands it needs from `heist validation resolve <path>` (`<path>` = the file(s) the step touches; run from the worktree root, or pass an absolute path). Do not give it the blueprint or other steps.
 2. Verify honestly, per the step's shape:
    - **Red-Green step**: run the test yourself against the current (post-change) code and confirm it passes. Don't trust Muscle's say-so. Trust Muscle's own transcript for the Red confirmation — it already ran that live, before making the change.
    - **Change step**: confirm the described change was made, then run whatever the step's Verify line names — build/lint, or the named existing test(s) — and confirm it passes. There's no red phase to check.
-3. Run the build command from `validation.md`.
+3. Run the build command from `heist validation resolve <path>`.
 4. If verification (red-green or change) and the build both check out, commit with the message from the step (conventional commit format), then run `heist state incr <slug> score_step`.
 5. If Muscle's step fails verification, send it back once with the specific failure. If it fails a second time, do the step yourself instead of a third attempt — burning retries on a stuck worker wastes more than doing it directly.
 

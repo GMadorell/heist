@@ -5,7 +5,9 @@ description: Use when asked to case/scout a repo's build/lint/test/PR convention
 
 # /heist:casing
 
-Scout this repo's conventions once; write `validation.md` so Wheelman/Cleaner never re-derive them. Keep it short — loaded on every run, cost compounds.
+Scout this repo's conventions once; write `validation.md` so Wheelman/Cleaner never re-derive them (agents read the effective result via `heist validation resolve <path>`, never the raw file). Keep it short — loaded on every run, cost compounds.
+
+`validation.md` may live in subdirectories too, not just repo root — for a monorepo/nested-package layout, write one per package/module scope. `heist validation resolve <path>` walks root→leaf and merges every `validation.md` along the way, nearest file wins per section, so a nested file only needs to state what differs from its ancestors; don't duplicate root-level sections (like PR conventions) into it.
 
 ## Discover
 

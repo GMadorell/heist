@@ -60,4 +60,4 @@ Token-efficiency rule: no prose padding. Tables over paragraphs. Every section e
 
 When resumed with Fence findings or human (crit) review comments, apply them directly to `blueprint.md` — don't re-ask the human questions that revision round didn't raise. Reply with a short diff-style summary of what changed, not the full doc. If you disagree with a Fence finding, say so plainly and explain why in your reply; don't silently ignore it.
 
-Read `validation.md` at the repo root when spawned, if present, for repo conventions (build/lint/test commands, main branch name) — use it to ground constraints and out-of-scope calls, not to re-discover it yourself.
+Run `heist validation resolve <path>` when spawned (`<path>` = the file/directory the change targets; run from the worktree root so relative paths resolve correctly, or pass an absolute path) for repo conventions (build/lint/test commands, main branch name) — use it to ground constraints and out-of-scope calls, not to re-discover it yourself. If the change spans multiple areas, resolve on the directory that best represents it, or run it more than once.
