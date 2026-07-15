@@ -1,5 +1,6 @@
 mod resume;
 mod state_get;
+mod state_incr;
 mod state_init;
 mod state_schema;
 mod state_set;

@@ -54,7 +54,9 @@ impl fmt::Display for FieldError {
                 "invalid value for field '{}': {} (expected {})",
                 field, value, expected
             ),
-            FieldError::NotIncrementable(field) => write!(f, "field '{}' is not incrementable (not a number)", field),
+            FieldError::NotIncrementable(field) => {
+                write!(f, "field '{}' is not incrementable (not a number)", field)
+            }
         }
     }
 }

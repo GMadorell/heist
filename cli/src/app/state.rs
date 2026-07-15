@@ -150,7 +150,8 @@ mod tests {
         );
         let clock = FixedClock(today_date());
 
-        let err = incr(&repo, &clock, "foo", "bogus_field").expect_err("should reject unknown field");
+        let err =
+            incr(&repo, &clock, "foo", "bogus_field").expect_err("should reject unknown field");
         match err {
             IncrError::Field(FieldError::Unknown(field)) => assert_eq!(field, "bogus_field"),
             _ => panic!("expected IncrError::Field(Unknown), got a different variant"),

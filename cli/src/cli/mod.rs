@@ -53,6 +53,10 @@ enum StateCommands {
         field: String,
         value: String,
     },
+    Incr {
+        slug: String,
+        field: String,
+    },
     Schema,
 }
 
@@ -134,6 +138,21 @@ fn run_state(
                 }
             }
         }
+        StateCommands::Incr { slug, field } => match app::state::incr(repo, clock, &slug, &field) {
+            Ok(()) => ExitCode::Success,
+            Err(app::state::IncrError::Field(e)) => {
+                present::error(e);
+                ExitCode::Precondition
+            }
+            Err(app::state::IncrError::Load(e)) => {
+                present::state_load_failed(&slug, &e);
+                ExitCode::from(&e)
+            }
+            Err(app::state::IncrError::Save(e)) => {
+                present::state_save_failed(&slug, &e);
+                ExitCode::from(&e)
+            }
+        },
         StateCommands::Schema => match app::state::schema() {
             Ok(output) => {
                 present::line(output);
