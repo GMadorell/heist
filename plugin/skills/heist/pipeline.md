@@ -54,7 +54,7 @@ Use `crit` tool to review the blueprint found in `<worktree-path>/.heist/<slug>/
 
 The Mastermind's job ends at approval — forging is a fresh, one-shot transformation, not a continuation of its conversation.
 
-1. Spawn `heist:forger` (foreground, one-shot) with the worktree's absolute path and an explicit `cd <worktree-path>` instruction in the task message, so Forger reads `blueprint.md` and `validation.md` from the worktree and writes `score.md` there.
+1. Spawn `heist:forger` (foreground, one-shot) with the worktree's absolute path and an explicit `cd <worktree-path>` instruction in the task message, so Forger reads `blueprint.md` from the worktree, runs `heist validation resolve <path>` for the effective validation sections, and writes `score.md` there.
 2. Run `heist state set <slug> stage safehouse` and `heist state set <slug> score_steps_total <step-count>` where `<step-count>` is the value the Forger reported.
 3. Report to the human: `score.md` path, step count, and any implicit calls the Forger flagged — worth a quick skim before implementation starts.
 4. Continue into the `implementing` flow below.

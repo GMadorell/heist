@@ -90,6 +90,8 @@ Heist is organized as a monorepo with two main components:
 
 Docs live in `.heist/<slug>/` inside your project. Gitignoring those files is recommended.
 
+`validation.md` can also live in subdirectories for a monorepo/nested-package layout — `heist validation resolve <path>` walks repo root down to `<path>`, merging every `validation.md` found along the way (nearest file wins per section).
+
 ## Model / cost table
 
 | Crew member | Model | Why |
