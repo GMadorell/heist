@@ -1,4 +1,5 @@
 use crate::domain::error::StateError;
+use crate::domain::validation::ValidationError;
 use crate::ports::git::GitError;
 
 /// The discriminants are the raw process exit codes callers rely on, so they
@@ -32,5 +33,35 @@ impl From<&StateError> for ExitCode {
 impl From<&GitError> for ExitCode {
     fn from(_: &GitError) -> Self {
         ExitCode::Git
+    }
+}
+
+impl From<&ValidationError> for ExitCode {
+    fn from(e: &ValidationError) -> Self {
+        match e {
+            ValidationError::PathOutsideProject { .. } => ExitCode::Precondition,
+            ValidationError::Other(_) => ExitCode::Internal,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn path_outside_project_maps_to_precondition() {
+        let e = ValidationError::PathOutsideProject {
+            requested: PathBuf::from("x"),
+            project_root: PathBuf::from("/y"),
+        };
+        assert_eq!(ExitCode::from(&e), ExitCode::Precondition);
+    }
+
+    #[test]
+    fn other_maps_to_internal() {
+        let e = ValidationError::Other("boom".into());
+        assert_eq!(ExitCode::from(&e), ExitCode::Internal);
     }
 }
