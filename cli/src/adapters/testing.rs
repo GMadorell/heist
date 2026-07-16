@@ -116,6 +116,7 @@ pub struct FakeGit {
     add_error: Option<GitError>,
     remove_error: Option<GitError>,
     delete_error: Option<GitError>,
+    merge_check_error: Option<GitError>,
 }
 
 impl Default for FakeGit {
@@ -133,6 +134,7 @@ impl FakeGit {
             add_error: None,
             remove_error: None,
             delete_error: None,
+            merge_check_error: None,
         }
     }
 
@@ -165,6 +167,11 @@ impl FakeGit {
         self.delete_error = Some(error);
         self
     }
+
+    pub fn failing_merge_check(mut self, error: GitError) -> Self {
+        self.merge_check_error = Some(error);
+        self
+    }
 }
 
 impl GitRepository for FakeGit {
@@ -178,6 +185,9 @@ impl GitRepository for FakeGit {
         branch: &str,
         _into: &str,
     ) -> Result<bool, GitError> {
+        if let Some(err) = &self.merge_check_error {
+            return Err(err.clone());
+        }
         Ok(self.merged_branches.contains(branch))
     }
 

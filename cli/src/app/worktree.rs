@@ -248,4 +248,18 @@ mod tests {
 
         assert!(outcomes.is_empty());
     }
+
+    #[test]
+    fn cleanup_aborts_when_origin_default_unresolvable() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .failing_merge_check(GitError::MergeCheck {
+                message: "cannot find remote ref origin/main".into(),
+            });
+
+        let result = cleanup(Path::new("."), &repo, &git, &FakeWorktreeFs, &fixed_clock(), false);
+
+        assert!(matches!(result, Err(CleanupError::Git(_))));
+    }
 }
