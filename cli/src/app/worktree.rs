@@ -262,4 +262,24 @@ mod tests {
 
         assert!(matches!(result, Err(CleanupError::Git(_))));
     }
+
+    #[test]
+    fn cleanup_ignores_non_heist_owned_worktree() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_worktree_info("scratch", "/repo/.worktrees/scratch", Some("some-other-branch"));
+
+        let outcomes = cleanup(
+            Path::new("/repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            false,
+        )
+        .expect("cleanup should succeed");
+
+        assert!(outcomes.is_empty());
+    }
 }

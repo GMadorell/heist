@@ -113,6 +113,7 @@ pub struct FakeGit {
     default_branch: String,
     merged_branches: std::collections::HashSet<String>,
     worktrees: std::cell::RefCell<std::collections::HashSet<String>>,
+    worktree_infos: Vec<WorktreeInfo>,
     add_error: Option<GitError>,
     remove_error: Option<GitError>,
     delete_error: Option<GitError>,
@@ -131,6 +132,7 @@ impl FakeGit {
             default_branch: "main".to_string(),
             merged_branches: std::collections::HashSet::new(),
             worktrees: std::cell::RefCell::new(std::collections::HashSet::new()),
+            worktree_infos: Vec::new(),
             add_error: None,
             remove_error: None,
             delete_error: None,
@@ -150,6 +152,15 @@ impl FakeGit {
 
     pub fn with_existing_worktree(self, slug: &str) -> Self {
         self.worktrees.borrow_mut().insert(slug.to_string());
+        self
+    }
+
+    pub fn with_worktree_info(mut self, name: &str, path: &str, branch: Option<&str>) -> Self {
+        self.worktree_infos.push(WorktreeInfo {
+            name: name.to_string(),
+            path: std::path::PathBuf::from(path),
+            branch: branch.map(str::to_string),
+        });
         self
     }
 
@@ -226,7 +237,7 @@ impl GitRepository for FakeGit {
     }
 
     fn list_worktrees(&self, _repo_root: &Path) -> Result<Vec<WorktreeInfo>, GitError> {
-        Ok(Vec::new())
+        Ok(self.worktree_infos.clone())
     }
 }
 
