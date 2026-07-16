@@ -1,4 +1,4 @@
-use crate::ports::git::{GitError, GitRepository};
+use crate::ports::git::{GitError, GitRepository, WorktreeInfo};
 use std::path::Path;
 
 pub struct RealGit;
@@ -143,5 +143,9 @@ impl GitRepository for RealGit {
         Err(GitError::WorktreeRemove {
             message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
         })
+    }
+
+    fn list_worktrees(&self, _repo_root: &Path) -> Result<Vec<WorktreeInfo>, GitError> {
+        Ok(Vec::new())
     }
 }

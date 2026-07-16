@@ -1,5 +1,12 @@
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorktreeInfo {
+    pub name: String,
+    pub path: PathBuf,
+    pub branch: Option<String>,
+}
 
 pub trait GitRepository {
     fn default_branch(&self, repo_root: &Path) -> String;
@@ -24,6 +31,8 @@ pub trait GitRepository {
     ) -> Result<(), GitError>;
 
     fn remove_worktree(&self, repo_root: &Path, path: &Path) -> Result<(), GitError>;
+
+    fn list_worktrees(&self, repo_root: &Path) -> Result<Vec<WorktreeInfo>, GitError>;
 }
 
 #[derive(Debug, Clone)]

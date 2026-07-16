@@ -2,7 +2,7 @@ use crate::domain::error::StateError;
 use crate::domain::state::State;
 use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
-use crate::ports::git::{GitError, GitRepository};
+use crate::ports::git::{GitError, GitRepository, WorktreeInfo};
 use crate::ports::state_repository::StateRepository;
 use crate::ports::validation_source::ValidationSource;
 use crate::ports::worktree_fs::WorktreeFs;
@@ -213,6 +213,10 @@ impl GitRepository for FakeGit {
             return Err(err.clone());
         }
         Ok(())
+    }
+
+    fn list_worktrees(&self, _repo_root: &Path) -> Result<Vec<WorktreeInfo>, GitError> {
+        Ok(Vec::new())
     }
 }
 
