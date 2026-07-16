@@ -337,4 +337,30 @@ mod tests {
         );
         assert_eq!(git.deleted_branch_names(), vec!["heist/foo".to_string()]);
     }
+
+    #[test]
+    fn cleanup_dry_run_previews_without_mutating() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_merged_branch("heist/foo")
+            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"));
+
+        let outcomes = cleanup(
+            Path::new("/repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            true,
+        )
+        .expect("cleanup should succeed");
+
+        assert_eq!(
+            outcomes,
+            vec![CleanupOutcome::WouldRemove(SlugValue::parse("foo").expect("valid slug"))]
+        );
+        assert!(git.removed_worktree_paths().is_empty());
+        assert!(git.deleted_branch_names().is_empty());
+    }
 }
