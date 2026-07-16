@@ -457,4 +457,46 @@ mod tests {
         let state = repo.get("foo").expect("state should still exist");
         assert_eq!(state.stage, Stage::Casing);
     }
+
+    #[test]
+    fn cleanup_reports_orphaned_branch_when_delete_fails() {
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new("foo", DateValue::parse("today", "2025-01-01").expect("valid date"))
+                .expect("valid slug"),
+        );
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_merged_branch("heist/foo")
+            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"))
+            .failing_delete(GitError::BranchDelete {
+                message: "not fully merged".into(),
+            });
+
+        let outcomes = cleanup(
+            Path::new("/repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            false,
+        )
+        .expect("cleanup should surface per-item failures, not error out");
+
+        match &outcomes[..] {
+            [CleanupOutcome::Failed(slug, reason)] => {
+                assert_eq!(slug.as_ref(), "foo");
+                assert!(reason.contains("worktree removed but branch heist/foo not deleted"));
+                assert!(reason.contains("not fully merged"));
+            }
+            other => panic!("expected a single Failed outcome, got {:?}", other),
+        }
+        // The worktree removal did happen before the branch-delete failure.
+        assert_eq!(
+            git.removed_worktree_paths(),
+            vec![std::path::PathBuf::from("/repo/.worktrees/foo")]
+        );
+        let state = repo.get("foo").expect("state should still exist");
+        assert_eq!(state.stage, Stage::Casing);
+    }
 }
