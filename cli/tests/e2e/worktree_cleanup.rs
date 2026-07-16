@@ -379,3 +379,50 @@ fn reclaims_orphan_heist_owned_worktree_without_state() {
         ".worktrees/my-slug should be removed"
     );
 }
+
+#[test]
+fn aborts_whole_sweep_when_origin_default_unresolvable() {
+    let main_temp = TempDir::new().expect("failed to create main temp dir");
+    let main_repo = main_temp.path();
+
+    run_git(main_repo, &["init", "-q", "-b", "main"]);
+    run_git(main_repo, &["config", "user.email", "test@example.com"]);
+    run_git(main_repo, &["config", "user.name", "Test"]);
+    fs::write(main_repo.join("README.md"), "hello").expect("failed to write README");
+    run_git(main_repo, &["add", "."]);
+    run_git(main_repo, &["commit", "-q", "-m", "init"]);
+    // Deliberately no `origin` remote configured at all, so origin/main
+    // cannot resolve.
+
+    let mut init_cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    init_cmd
+        .current_dir(main_repo)
+        .arg("state")
+        .arg("init")
+        .arg("my-slug");
+    init_cmd.assert().success();
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(main_repo)
+        .arg("worktree")
+        .arg("cleanup")
+        .output()
+        .expect("failed to run worktree cleanup");
+
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "cleanup should exit 3 when origin default is unresolvable, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "",
+        "no per-slug lines should print on abort"
+    );
+    assert!(
+        !String::from_utf8_lossy(&output.stderr).is_empty(),
+        "a top-level error should be printed to stderr"
+    );
+}
