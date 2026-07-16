@@ -61,4 +61,14 @@ mod tests {
         assert_eq!(hw.path, path);
         assert_eq!(hw.branch.as_ref(), "heist/foo");
     }
+
+    #[test]
+    fn rejects_mismatched_branch() {
+        let repo_root = Path::new("/repo");
+        let path = Path::new("/repo/.worktrees/foo");
+
+        let result = HeistWorktree::try_from_parts(path, Some("some-other-branch"), repo_root);
+
+        assert!(result.is_none());
+    }
 }
