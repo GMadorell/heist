@@ -119,6 +119,7 @@ pub struct FakeGit {
     remove_error: Option<GitError>,
     delete_error: Option<GitError>,
     merge_check_error: Option<GitError>,
+    merge_check_error_for: Option<(String, GitError)>,
     removed_worktree_paths: RefCell<Vec<PathBuf>>,
     deleted_branch_names: RefCell<Vec<String>>,
 }
@@ -140,6 +141,7 @@ impl FakeGit {
             remove_error: None,
             delete_error: None,
             merge_check_error: None,
+            merge_check_error_for: None,
             removed_worktree_paths: RefCell::new(Vec::new()),
             deleted_branch_names: RefCell::new(Vec::new()),
         }
@@ -189,6 +191,14 @@ impl FakeGit {
         self
     }
 
+    /// Fails the merge check only for the given branch, leaving the
+    /// top-level `origin/<default>` probe (which checks `default_branch`
+    /// against itself) and every other branch's check unaffected.
+    pub fn failing_merge_check_for(mut self, branch: &str, error: GitError) -> Self {
+        self.merge_check_error_for = Some((branch.to_string(), error));
+        self
+    }
+
     pub fn removed_worktree_paths(&self) -> Vec<PathBuf> {
         self.removed_worktree_paths.borrow().clone()
     }
@@ -211,6 +221,11 @@ impl GitRepository for FakeGit {
     ) -> Result<bool, GitError> {
         if let Some(err) = &self.merge_check_error {
             return Err(err.clone());
+        }
+        if let Some((failing_branch, err)) = &self.merge_check_error_for {
+            if failing_branch == branch {
+                return Err(err.clone());
+            }
         }
         Ok(self.merged_branches.contains(branch))
     }

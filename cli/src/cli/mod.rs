@@ -298,7 +298,7 @@ fn run_worktree(
                 Ok(outcomes) => {
                     let mut any_failed = false;
                     for outcome in &outcomes {
-                        if let app::worktree::CleanupOutcome::Failed(..) = outcome {
+                        if let app::worktree::CleanupOutcome::Failed { .. } = outcome {
                             any_failed = true;
                         }
                         present::cleanup_outcome(outcome);

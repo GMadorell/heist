@@ -95,6 +95,6 @@ pub fn cleanup_outcome(outcome: &CleanupOutcome) {
         CleanupOutcome::Removed(slug) => println!("removed {}", slug),
         CleanupOutcome::Skipped(slug) => println!("skipped {} (unmerged)", slug),
         CleanupOutcome::WouldRemove(slug) => println!("would remove {}", slug),
-        CleanupOutcome::Failed(slug, reason) => println!("failed {}: {}", slug, reason),
+        CleanupOutcome::Failed { slug, reason } => println!("failed {}: {}", slug, reason),
     }
 }

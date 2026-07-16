@@ -1,7 +1,8 @@
 use crate::domain::error::{FieldError, StateError};
 use crate::domain::state::Stage;
-use crate::domain::value::NonBlankValue;
+use crate::domain::value::{NonBlankValue, SlugValue};
 use crate::domain::worktree;
+use crate::domain::worktree::HeistWorktree;
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository};
 use crate::ports::state_repository::StateRepository;
@@ -112,15 +113,12 @@ pub fn remove(
     state_repo.save(slug, &state).map_err(RemoveError::Save)
 }
 
-use crate::domain::value::SlugValue;
-use crate::domain::worktree::HeistWorktree;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CleanupOutcome {
     Removed(SlugValue),
     Skipped(SlugValue),
     WouldRemove(SlugValue),
-    Failed(SlugValue, String),
+    Failed { slug: SlugValue, reason: String },
 }
 
 impl CleanupOutcome {
@@ -129,7 +127,7 @@ impl CleanupOutcome {
             CleanupOutcome::Removed(s)
             | CleanupOutcome::Skipped(s)
             | CleanupOutcome::WouldRemove(s)
-            | CleanupOutcome::Failed(s, _) => s,
+            | CleanupOutcome::Failed { slug: s, .. } => s,
         }
     }
 }
@@ -172,7 +170,10 @@ pub fn cleanup(
                 continue;
             }
             Err(e) => {
-                outcomes.push(CleanupOutcome::Failed(hw.slug, e.to_string()));
+                outcomes.push(CleanupOutcome::Failed {
+                    slug: hw.slug,
+                    reason: e.to_string(),
+                });
                 continue;
             }
         }
@@ -183,18 +184,21 @@ pub fn cleanup(
         }
 
         if let Err(e) = git.remove_worktree(repo_root, &hw.path) {
-            outcomes.push(CleanupOutcome::Failed(hw.slug, e.to_string()));
+            outcomes.push(CleanupOutcome::Failed {
+                slug: hw.slug,
+                reason: e.to_string(),
+            });
             continue;
         }
 
         if let Err(e) = git.delete_branch(repo_root, hw.branch.as_ref()) {
-            outcomes.push(CleanupOutcome::Failed(
-                hw.slug,
-                format!(
+            outcomes.push(CleanupOutcome::Failed {
+                slug: hw.slug,
+                reason: format!(
                     "worktree removed but branch {} not deleted: {}",
                     hw.branch, e
                 ),
-            ));
+            });
             continue;
         }
 
@@ -204,12 +208,18 @@ pub fn cleanup(
                     state.stage = Stage::Done;
                     state.updated = clock.today();
                     if let Err(e) = state_repo.save(hw.slug.as_ref(), &state) {
-                        outcomes.push(CleanupOutcome::Failed(hw.slug, e.to_string()));
+                        outcomes.push(CleanupOutcome::Failed {
+                            slug: hw.slug,
+                            reason: e.to_string(),
+                        });
                         continue;
                     }
                 }
                 Err(e) => {
-                    outcomes.push(CleanupOutcome::Failed(hw.slug, e.to_string()));
+                    outcomes.push(CleanupOutcome::Failed {
+                        slug: hw.slug,
+                        reason: e.to_string(),
+                    });
                     continue;
                 }
             }
@@ -323,6 +333,50 @@ mod tests {
         );
         assert!(git.removed_worktree_paths().is_empty());
         assert!(git.deleted_branch_names().is_empty());
+    }
+
+    #[test]
+    fn cleanup_reports_failed_when_one_items_merge_check_errors_but_others_proceed() {
+        // The top-level `origin/<default>` probe succeeds (only "main" is
+        // configured to fail), so this exercises the per-item merge-check
+        // error arm distinctly from the top-level abort path.
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_merged_branch("heist/bar")
+            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"))
+            .with_worktree_info("bar", "/repo/.worktrees/bar", Some("heist/bar"))
+            .failing_merge_check_for(
+                "heist/foo",
+                GitError::MergeCheck {
+                    message: "bad ref".into(),
+                },
+            );
+
+        let outcomes = cleanup(
+            Path::new("/repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            false,
+        )
+        .expect("cleanup should surface per-item failures, not error out");
+
+        assert_eq!(
+            outcomes,
+            vec![
+                CleanupOutcome::Removed(SlugValue::parse("bar").expect("valid slug")),
+                CleanupOutcome::Failed {
+                    slug: SlugValue::parse("foo").expect("valid slug"),
+                    reason: "failed to check merged branches: bad ref".to_string(),
+                },
+            ]
+        );
+        assert_eq!(
+            git.removed_worktree_paths(),
+            vec![std::path::PathBuf::from("/repo/.worktrees/bar")]
+        );
     }
 
     #[test]
@@ -479,7 +533,7 @@ mod tests {
         .expect("cleanup should surface per-item failures, not error out");
 
         match &outcomes[..] {
-            [CleanupOutcome::Failed(slug, reason)] => {
+            [CleanupOutcome::Failed { slug, reason }] => {
                 assert_eq!(slug.as_ref(), "foo");
                 assert!(reason.contains("worktree is dirty"));
             }
@@ -519,7 +573,7 @@ mod tests {
         .expect("cleanup should surface per-item failures, not error out");
 
         match &outcomes[..] {
-            [CleanupOutcome::Failed(slug, reason)] => {
+            [CleanupOutcome::Failed { slug, reason }] => {
                 assert_eq!(slug.as_ref(), "foo");
                 assert!(reason.contains("worktree removed but branch heist/foo not deleted"));
                 assert!(reason.contains("not fully merged"));
