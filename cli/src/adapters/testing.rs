@@ -2,10 +2,11 @@ use crate::domain::error::StateError;
 use crate::domain::state::State;
 use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
-use crate::ports::git::{GitError, GitRepository};
+use crate::ports::git::{GitError, GitRepository, WorktreeInfo};
 use crate::ports::state_repository::StateRepository;
 use crate::ports::validation_source::ValidationSource;
 use crate::ports::worktree_fs::WorktreeFs;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -113,9 +114,14 @@ pub struct FakeGit {
     default_branch: String,
     merged_branches: std::collections::HashSet<String>,
     worktrees: std::cell::RefCell<std::collections::HashSet<String>>,
+    worktree_infos: Vec<WorktreeInfo>,
     add_error: Option<GitError>,
     remove_error: Option<GitError>,
     delete_error: Option<GitError>,
+    merge_check_error_for: Option<(String, GitError)>,
+    remote_default_resolve_error: Option<GitError>,
+    removed_worktree_paths: RefCell<Vec<PathBuf>>,
+    deleted_branch_names: RefCell<Vec<String>>,
 }
 
 impl Default for FakeGit {
@@ -130,9 +136,14 @@ impl FakeGit {
             default_branch: "main".to_string(),
             merged_branches: std::collections::HashSet::new(),
             worktrees: std::cell::RefCell::new(std::collections::HashSet::new()),
+            worktree_infos: Vec::new(),
             add_error: None,
             remove_error: None,
             delete_error: None,
+            merge_check_error_for: None,
+            remote_default_resolve_error: None,
+            removed_worktree_paths: RefCell::new(Vec::new()),
+            deleted_branch_names: RefCell::new(Vec::new()),
         }
     }
 
@@ -151,6 +162,14 @@ impl FakeGit {
         self
     }
 
+    pub fn with_worktree_info(mut self, path: &str, branch: Option<&str>) -> Self {
+        self.worktree_infos.push(WorktreeInfo {
+            path: std::path::PathBuf::from(path),
+            branch: branch.map(str::to_string),
+        });
+        self
+    }
+
     pub fn failing_add(mut self, error: GitError) -> Self {
         self.add_error = Some(error);
         self
@@ -165,6 +184,29 @@ impl FakeGit {
         self.delete_error = Some(error);
         self
     }
+
+    /// Fails the merge check only for the given branch, leaving the
+    /// top-level `remote_default_resolves` probe and every other branch's
+    /// check unaffected.
+    pub fn failing_merge_check_for(mut self, branch: &str, error: GitError) -> Self {
+        self.merge_check_error_for = Some((branch.to_string(), error));
+        self
+    }
+
+    /// Fails the top-level `origin/<default>` resolvability probe that
+    /// `cleanup` runs before sweeping worktrees.
+    pub fn failing_remote_default_resolve(mut self, error: GitError) -> Self {
+        self.remote_default_resolve_error = Some(error);
+        self
+    }
+
+    pub fn removed_worktree_paths(&self) -> Vec<PathBuf> {
+        self.removed_worktree_paths.borrow().clone()
+    }
+
+    pub fn deleted_branch_names(&self) -> Vec<String> {
+        self.deleted_branch_names.borrow().clone()
+    }
 }
 
 impl GitRepository for FakeGit {
@@ -178,6 +220,11 @@ impl GitRepository for FakeGit {
         branch: &str,
         _into: &str,
     ) -> Result<bool, GitError> {
+        if let Some((failing_branch, err)) = &self.merge_check_error_for {
+            if failing_branch == branch {
+                return Err(err.clone());
+            }
+        }
         Ok(self.merged_branches.contains(branch))
     }
 
@@ -201,15 +248,36 @@ impl GitRepository for FakeGit {
         Ok(())
     }
 
-    fn remove_worktree(&self, _repo_root: &Path, _path: &Path) -> Result<(), GitError> {
+    fn remove_worktree(&self, _repo_root: &Path, path: &Path) -> Result<(), GitError> {
+        self.removed_worktree_paths
+            .borrow_mut()
+            .push(path.to_path_buf());
         if let Some(err) = &self.remove_error {
             return Err(err.clone());
         }
         Ok(())
     }
 
-    fn delete_branch(&self, _repo_root: &Path, _branch: &str) -> Result<(), GitError> {
+    fn delete_branch(&self, _repo_root: &Path, branch: &str) -> Result<(), GitError> {
+        self.deleted_branch_names
+            .borrow_mut()
+            .push(branch.to_string());
         if let Some(err) = &self.delete_error {
+            return Err(err.clone());
+        }
+        Ok(())
+    }
+
+    fn list_worktrees(&self, _repo_root: &Path) -> Result<Vec<WorktreeInfo>, GitError> {
+        Ok(self.worktree_infos.clone())
+    }
+
+    fn remote_default_resolves(
+        &self,
+        _repo_root: &Path,
+        _main_branch: &str,
+    ) -> Result<(), GitError> {
+        if let Some(err) = &self.remote_default_resolve_error {
             return Err(err.clone());
         }
         Ok(())

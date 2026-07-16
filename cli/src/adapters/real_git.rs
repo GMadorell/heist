@@ -1,4 +1,4 @@
-use crate::ports::git::{GitError, GitRepository};
+use crate::ports::git::{GitError, GitRepository, WorktreeInfo};
 use std::path::Path;
 
 pub struct RealGit;
@@ -142,6 +142,43 @@ impl GitRepository for RealGit {
         }
         Err(GitError::WorktreeRemove {
             message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        })
+    }
+
+    fn remote_default_resolves(&self, repo_root: &Path, main_branch: &str) -> Result<(), GitError> {
+        let resolve = || -> Result<(), git2::Error> {
+            let repo = git2::Repository::open(repo_root)?;
+            repo.revparse_single(&format!("origin/{}", main_branch))?;
+            Ok(())
+        };
+        resolve().map_err(|e| GitError::MergeCheck {
+            message: e.to_string(),
+        })
+    }
+
+    fn list_worktrees(&self, repo_root: &Path) -> Result<Vec<WorktreeInfo>, GitError> {
+        let list = || -> Result<Vec<WorktreeInfo>, git2::Error> {
+            let repo = git2::Repository::open(repo_root)?;
+            let names = repo.worktrees()?;
+            let mut infos = Vec::new();
+            for name in names.iter().flatten().flatten() {
+                let worktree = repo.find_worktree(name)?;
+                let path = worktree.path().to_path_buf();
+                let branch = if let Ok(wt_repo) = git2::Repository::open_from_worktree(&worktree) {
+                    wt_repo
+                        .head()
+                        .ok()
+                        .and_then(|head| head.shorthand().ok().map(str::to_string))
+                } else {
+                    None
+                };
+                infos.push(WorktreeInfo { path, branch });
+            }
+            Ok(infos)
+        };
+        list().map_err(|e| GitError::CommandFailed {
+            command: "git worktree list".to_string(),
+            message: e.to_string(),
         })
     }
 }

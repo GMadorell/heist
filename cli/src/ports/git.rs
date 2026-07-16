@@ -1,5 +1,11 @@
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorktreeInfo {
+    pub path: PathBuf,
+    pub branch: Option<String>,
+}
 
 pub trait GitRepository {
     fn default_branch(&self, repo_root: &Path) -> String;
@@ -24,6 +30,15 @@ pub trait GitRepository {
     ) -> Result<(), GitError>;
 
     fn remove_worktree(&self, repo_root: &Path, path: &Path) -> Result<(), GitError>;
+
+    fn list_worktrees(&self, repo_root: &Path) -> Result<Vec<WorktreeInfo>, GitError>;
+
+    /// Checks that `origin/<main_branch>` resolves to a commit, without
+    /// requiring a local branch of the same name to exist. Used as a
+    /// pre-flight probe before a bulk merge-check sweep, where
+    /// `is_branch_merged`'s requirement of a matching local ref would be a
+    /// stricter (and wrong) precondition.
+    fn remote_default_resolves(&self, repo_root: &Path, main_branch: &str) -> Result<(), GitError>;
 }
 
 #[derive(Debug, Clone)]

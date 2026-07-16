@@ -98,6 +98,12 @@ enum WorktreeCommands {
         /// Heist slug (directory name under .heist/)
         slug: String,
     },
+    /// Remove every heist-owned worktree whose branch is already merged
+    Cleanup {
+        /// Preview without removing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -283,6 +289,32 @@ fn run_worktree(
                 }
                 Err(app::worktree::RemoveError::Save(e)) => {
                     present::state_save_failed(&slug, &e);
+                    ExitCode::from(&e)
+                }
+            }
+        }
+        WorktreeCommands::Cleanup { dry_run } => {
+            match app::worktree::cleanup(repo_root, state_repo, git, fs, clock, dry_run) {
+                Ok(outcomes) => {
+                    let mut any_failed = false;
+                    for outcome in &outcomes {
+                        if let app::worktree::CleanupOutcome::Failed { .. } = outcome {
+                            any_failed = true;
+                        }
+                        present::cleanup_outcome(outcome);
+                    }
+                    if any_failed {
+                        ExitCode::Git
+                    } else {
+                        ExitCode::Success
+                    }
+                }
+                Err(app::worktree::CleanupError::Fs(e)) => {
+                    present::error(e);
+                    ExitCode::Internal
+                }
+                Err(app::worktree::CleanupError::Git(e)) => {
+                    present::error(&e);
                     ExitCode::from(&e)
                 }
             }
@@ -616,5 +648,66 @@ mod tests {
             repo.get("foo").expect("state should exist").stage,
             Stage::Done
         );
+    }
+
+    #[test]
+    fn worktree_cleanup_returns_success_when_nothing_failed() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new().with_default_branch("main");
+
+        let code = run_worktree(
+            WorktreeCommands::Cleanup { dry_run: false },
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Success);
+    }
+
+    #[test]
+    fn worktree_cleanup_returns_git_exit_code_on_item_failure() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_merged_branch("heist/foo")
+            .with_worktree_info("/foo-repo/.worktrees/foo", Some("heist/foo"))
+            .failing_remove(GitError::WorktreeRemove {
+                message: "worktree is dirty".into(),
+            });
+
+        let code = run_worktree(
+            WorktreeCommands::Cleanup { dry_run: false },
+            Path::new("/foo-repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Git);
+    }
+
+    #[test]
+    fn worktree_cleanup_returns_git_exit_code_when_origin_unresolvable() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .failing_remote_default_resolve(GitError::MergeCheck {
+                message: "cannot find remote ref origin/main".into(),
+            });
+
+        let code = run_worktree(
+            WorktreeCommands::Cleanup { dry_run: false },
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Git);
     }
 }
