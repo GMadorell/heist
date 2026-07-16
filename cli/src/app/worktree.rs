@@ -111,3 +111,141 @@ pub fn remove(
     state.updated = clock.today();
     state_repo.save(slug, &state).map_err(RemoveError::Save)
 }
+
+use crate::domain::worktree::HeistWorktree;
+use crate::domain::value::SlugValue;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CleanupOutcome {
+    Removed(SlugValue),
+    Skipped(SlugValue),
+    WouldRemove(SlugValue),
+    Failed(SlugValue, String),
+}
+
+impl CleanupOutcome {
+    fn slug(&self) -> &SlugValue {
+        match self {
+            CleanupOutcome::Removed(s)
+            | CleanupOutcome::Skipped(s)
+            | CleanupOutcome::WouldRemove(s)
+            | CleanupOutcome::Failed(s, _) => s,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum CleanupError {
+    Fs(std::io::Error),
+    Git(GitError),
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn cleanup(
+    repo_root: &Path,
+    state_repo: &dyn StateRepository,
+    git: &dyn GitRepository,
+    fs: &dyn WorktreeFs,
+    clock: &dyn Clock,
+    dry_run: bool,
+) -> Result<Vec<CleanupOutcome>, CleanupError> {
+    let canonical_repo_root = fs.canonicalize(repo_root).map_err(CleanupError::Fs)?;
+    let main_branch = git.default_branch(repo_root);
+
+    git.is_branch_merged(repo_root, &main_branch, &main_branch)
+        .map_err(CleanupError::Git)?;
+
+    let infos = git.list_worktrees(repo_root).map_err(CleanupError::Git)?;
+
+    let mut outcomes = Vec::new();
+    for info in infos {
+        let Some(hw) = HeistWorktree::try_from_parts(&info.path, info.branch.as_deref(), &canonical_repo_root) else {
+            continue;
+        };
+
+        match git.is_branch_merged(repo_root, hw.branch.as_ref(), &main_branch) {
+            Ok(true) => {}
+            Ok(false) => {
+                outcomes.push(CleanupOutcome::Skipped(hw.slug));
+                continue;
+            }
+            Err(e) => {
+                outcomes.push(CleanupOutcome::Failed(hw.slug, e.to_string()));
+                continue;
+            }
+        }
+
+        if dry_run {
+            outcomes.push(CleanupOutcome::WouldRemove(hw.slug));
+            continue;
+        }
+
+        if let Err(e) = git.remove_worktree(repo_root, &hw.path) {
+            outcomes.push(CleanupOutcome::Failed(hw.slug, e.to_string()));
+            continue;
+        }
+
+        if let Err(e) = git.delete_branch(repo_root, hw.branch.as_ref()) {
+            outcomes.push(CleanupOutcome::Failed(
+                hw.slug,
+                format!(
+                    "worktree removed but branch {} not deleted: {}",
+                    hw.branch, e
+                ),
+            ));
+            continue;
+        }
+
+        if state_repo.exists(hw.slug.as_ref()) {
+            match state_repo.load(hw.slug.as_ref()) {
+                Ok(mut state) => {
+                    state.stage = Stage::Done;
+                    state.updated = clock.today();
+                    if let Err(e) = state_repo.save(hw.slug.as_ref(), &state) {
+                        outcomes.push(CleanupOutcome::Failed(hw.slug, e.to_string()));
+                        continue;
+                    }
+                }
+                Err(e) => {
+                    outcomes.push(CleanupOutcome::Failed(hw.slug, e.to_string()));
+                    continue;
+                }
+            }
+        }
+
+        outcomes.push(CleanupOutcome::Removed(hw.slug));
+    }
+
+    outcomes.sort_by(|a, b| a.slug().as_ref().cmp(b.slug().as_ref()));
+    Ok(outcomes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::adapters::testing::{FakeGit, FakeWorktreeFs, FixedClock, InMemoryStateRepository};
+    use crate::domain::value::DateValue;
+    use std::path::Path;
+
+    fn fixed_clock() -> FixedClock {
+        FixedClock(DateValue::parse("today", "2026-01-01").expect("valid date"))
+    }
+
+    #[test]
+    fn cleanup_returns_empty_outcomes_when_no_worktrees() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new().with_default_branch("main");
+
+        let outcomes = cleanup(
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            false,
+        )
+        .expect("cleanup should succeed");
+
+        assert!(outcomes.is_empty());
+    }
+}
