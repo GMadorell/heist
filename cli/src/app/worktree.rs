@@ -499,4 +499,33 @@ mod tests {
         let state = repo.get("foo").expect("state should still exist");
         assert_eq!(state.stage, Stage::Casing);
     }
+
+    #[test]
+    fn cleanup_sorts_outcomes_by_slug() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_merged_branch("heist/zeta")
+            .with_merged_branch("heist/alpha")
+            .with_worktree_info("zeta", "/repo/.worktrees/zeta", Some("heist/zeta"))
+            .with_worktree_info("alpha", "/repo/.worktrees/alpha", Some("heist/alpha"));
+
+        let outcomes = cleanup(
+            Path::new("/repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            false,
+        )
+        .expect("cleanup should succeed");
+
+        assert_eq!(
+            outcomes,
+            vec![
+                CleanupOutcome::Removed(SlugValue::parse("alpha").expect("valid slug")),
+                CleanupOutcome::Removed(SlugValue::parse("zeta").expect("valid slug")),
+            ]
+        );
+    }
 }
