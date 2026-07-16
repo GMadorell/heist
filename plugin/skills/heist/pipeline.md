@@ -43,7 +43,7 @@ Resuming the Mastermind after turn 1: `SendMessage` to the still-alive subagent,
 
 #### 2b. Plan detected: one-shot import with the Mastermind
 
-1. Run `heist state init <slug>` using the slug SKILL.md already derived and confirmed. If it fails because the slug directory already exists: ask `heist:slugger` for an alternative slug (or append a numeric suffix yourself) and retry once. If it still collides, surface this to the human and ask them for a slug, then retry.
+1. Run `heist state init <slug>` using the slug SKILL.md already derived and confirmed. If it fails because the slug directory already exists: auto-append a numeric suffix (`-2`, `-3`, ...) and retry, incrementing until it succeeds — no human confirmation needed, this is expected to be rare and silent.
 2. Run `heist state set <slug> mode <mode>`.
 3. Run `heist worktree add <slug>`.
 4. Run `heist state set <slug> stage planning`.
@@ -51,7 +51,7 @@ Resuming the Mastermind after turn 1: `SendMessage` to the still-alive subagent,
 6. The Mastermind replies once with `INTERVIEW_COMPLETE` — it has written `.heist/<slug>/blueprint.md` in one shot, reusing this sentinel even though there was no interview. Run `heist state set <slug> stage fence_review` (heavy) or `stage human_review` (medium/light). Show the human the summary (including any gaps or stale/false plan assertions the Mastermind flagged) and the blueprint path. Keep the Mastermind subagent alive.
 7. heavy: continue to fence review below. medium/light: continue to human review below (stage already set).
 
-Session restart while `stage` is `planning` in plan mode: the plan file paths and prose are not persisted in state, so resume cannot re-run the import. If `.heist/<slug>/blueprint.md` already exists, resume by spawning a fresh `heist:mastermind` with its current content (same as 2a's resume note). If it doesn't exist yet, tell the human the import didn't finish and ask them to re-invoke `/heist:heist` with the same plan file(s).
+Session restart while `stage` is `planning` for a plan-based heist: the plan file paths and prose are not persisted in state, so resume cannot re-run the import. If `.heist/<slug>/blueprint.md` already exists, resume by spawning a fresh `heist:mastermind` with its current content (same as 2a's resume note). If it doesn't exist yet, tell the human the import didn't finish and ask them to re-invoke `/heist:heist` with the same plan file(s).
 
 ### 3. Fence review
 
