@@ -42,6 +42,10 @@ Creates a git worktree at `.worktrees/<slug>` on branch `heist/<slug>`, symlinks
 
 Removes the worktree and local branch, then sets `stage: done`. Refuses if `heist/<slug>` isn't merged into the repo's default branch.
 
+### `worktree cleanup [--dry-run]`
+
+Removes every heist-owned worktree (path under `.worktrees/<slug>`, actual checked-out branch `heist/<slug>`) whose branch is already merged into the repo's default branch. For each heist-owned worktree prints one line: `removed <slug>`, `skipped <slug> (unmerged)`, `would remove <slug>` (with `--dry-run`), or `failed <slug>: <reason>`. Non-heist worktrees (different branch, detached HEAD, or outside `.worktrees/`) are left untouched and produce no output. Never forces removal of a dirty worktree. Continues past per-item failures (best-effort); exits 3 if any item failed, or if `origin/<default>` can't be resolved (single top-level error, no per-item output in that case). `--dry-run` previews without removing/deleting/saving anything.
+
 ### `validation check <path>`
 
 Requires an absolute path; a relative or out-of-project path exits 4. Prints `ok` (exit 0) if a `validation.md` exists in `<path>`'s directory or any ancestor up to the repo root, `missing` (exit 2) otherwise.
