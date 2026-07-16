@@ -91,3 +91,27 @@ fn removes_merged_heist_owned_worktree() {
     let state_json: serde_json::Value = serde_json::from_str(&state_content).expect("failed to parse state.json");
     assert_eq!(state_json["stage"].as_str(), Some("done"));
 }
+
+#[test]
+fn skips_unmerged_heist_owned_worktree() {
+    let (main_temp, _bare_temp, worktree_path) = setup_repo_with_worktree("my-slug");
+    let main_repo = main_temp.path();
+
+    fs::write(worktree_path.join("feature.txt"), "feature work").expect("failed to write feature.txt");
+    run_git(&worktree_path, &["add", "."]);
+    run_git(&worktree_path, &["commit", "-q", "-m", "add feature"]);
+    // heist/my-slug is never merged into main.
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(main_repo)
+        .arg("worktree")
+        .arg("cleanup")
+        .output()
+        .expect("failed to run worktree cleanup");
+
+    assert!(output.status.success(), "cleanup should succeed even when skipping, stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "skipped my-slug (unmerged)");
+    assert!(worktree_path.exists(), ".worktrees/my-slug should still exist");
+}
