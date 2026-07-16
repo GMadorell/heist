@@ -308,4 +308,33 @@ mod tests {
         assert!(git.removed_worktree_paths().is_empty());
         assert!(git.deleted_branch_names().is_empty());
     }
+
+    #[test]
+    fn cleanup_removes_merged_heist_owned_worktree() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_merged_branch("heist/foo")
+            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"));
+
+        let outcomes = cleanup(
+            Path::new("/repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            false,
+        )
+        .expect("cleanup should succeed");
+
+        assert_eq!(
+            outcomes,
+            vec![CleanupOutcome::Removed(SlugValue::parse("foo").expect("valid slug"))]
+        );
+        assert_eq!(
+            git.removed_worktree_paths(),
+            vec![std::path::PathBuf::from("/repo/.worktrees/foo")]
+        );
+        assert_eq!(git.deleted_branch_names(), vec!["heist/foo".to_string()]);
+    }
 }
