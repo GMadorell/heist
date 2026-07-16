@@ -79,9 +79,9 @@ impl DateValue {
     Deserialize,
     Display
 ))]
-pub struct ScoreStep(u32);
+pub struct ScoreStepsTotal(u32);
 
-impl ScoreStep {
+impl ScoreStepsTotal {
     pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
         parse_numeric(field, value, Self::new)
     }
@@ -100,9 +100,30 @@ impl ScoreStep {
     Deserialize,
     Display
 ))]
-pub struct ScoreStepsTotal(u32);
+pub struct ScoreWave(u32);
 
-impl ScoreStepsTotal {
+impl ScoreWave {
+    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
+        parse_numeric(field, value, Self::new)
+    }
+}
+
+#[nutype(derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    AsRef,
+    Serialize,
+    Deserialize,
+    Display
+))]
+pub struct ScoreWavesTotal(u32);
+
+impl ScoreWavesTotal {
     pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
         parse_numeric(field, value, Self::new)
     }

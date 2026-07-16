@@ -48,7 +48,11 @@ fn creates_state_json_with_defaults() {
         serde_json::Value::Null,
         "branch should be null"
     );
-    assert_eq!(parsed_state["score_step"], 0, "score_step should be 0");
+    assert_eq!(parsed_state["score_wave"], 0, "score_wave should be 0");
+    assert_eq!(
+        parsed_state["score_waves_total"], 0,
+        "score_waves_total should be 0"
+    );
     assert_eq!(
         parsed_state["score_steps_total"], 0,
         "score_steps_total should be 0"

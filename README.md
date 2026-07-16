@@ -14,7 +14,7 @@ You type `/heist:heist add rate limiting to the public API` (optionally prefixed
 2. **Fence** reads it and immediately starts talking about everything wrong with the plan, because that's the job. Mastermind fixes what actually lands.
 3. You take a pass yourself in [crit](https://crit.md), leaving comments until you're out of things to nitpick. Silence is approval.
 4. **Forger** breaks the blueprint into `score.md`, a checklist so granular a Muscle can't screw it up.
-5. **Wheelman** sends **Muscle** in one step at a time to handle the work, no improvising, no side quests, just the checklist.
+5. **Wheelman** sends **Muscle** to handle the work wave by wave — no improvising, no side quests, just the checklist.
 6. **Cleaner** rebases, orchestrates a parallel review crew of its own, auto-fixes what's safe, floats the rest to you, runs build/lint/test, and opens a PR with a risk label. Anything labeled critical, it stops and wakes you up first.
 
 You come back to an open PR and a heat report: what got built, what got flagged, what's still on you to eyeball.
@@ -36,7 +36,7 @@ flowchart TD
     G -- changes --> D2
     G -- approved --> H[Forger: blueprint.md → score.md]
     H --> J[Wheelman in worktree]
-    J --> K[Muscle × N: red-green TDD micro-steps]
+    J --> K[Muscle x4 max per wave: red-green TDD micro-steps]
     K --> J
     J --> L[Cleaner: mergeable → parallel review crew → triage auto-fix/ask-user → build/lint/test → docs → push → PR + risk label]
     L -- failures --> J
