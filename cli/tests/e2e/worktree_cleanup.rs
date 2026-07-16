@@ -253,3 +253,88 @@ fn leaves_non_heist_worktree_untouched() {
         "non-heist worktree should be untouched"
     );
 }
+
+#[test]
+fn continues_past_one_failure_and_exits_git_error() {
+    let main_temp = TempDir::new().expect("failed to create main temp dir");
+    let main_repo = main_temp.path();
+    let bare_temp = TempDir::new().expect("failed to create bare temp dir");
+    let bare_repo = bare_temp.path();
+
+    run_git(bare_repo, &["init", "-q", "--bare"]);
+    run_git(main_repo, &["init", "-q", "-b", "main"]);
+    run_git(main_repo, &["config", "user.email", "test@example.com"]);
+    run_git(main_repo, &["config", "user.name", "Test"]);
+    run_git(
+        main_repo,
+        &[
+            "remote",
+            "add",
+            "origin",
+            bare_repo.to_string_lossy().as_ref(),
+        ],
+    );
+    fs::write(main_repo.join("README.md"), "hello").expect("failed to write README");
+    run_git(main_repo, &["add", "."]);
+    run_git(main_repo, &["commit", "-q", "-m", "init"]);
+    run_git(main_repo, &["push", "-u", "origin", "main"]);
+
+    for slug in ["slug-a", "slug-b"] {
+        let mut init_cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+        init_cmd
+            .current_dir(main_repo)
+            .arg("state")
+            .arg("init")
+            .arg(slug);
+        init_cmd.assert().success();
+        let mut add_cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+        add_cmd
+            .current_dir(main_repo)
+            .arg("worktree")
+            .arg("add")
+            .arg(slug)
+            .assert()
+            .success();
+
+        let worktree_path = main_repo.join(".worktrees").join(slug);
+        fs::write(worktree_path.join("feature.txt"), "work").expect("failed to write feature.txt");
+        run_git(&worktree_path, &["add", "."]);
+        run_git(&worktree_path, &["commit", "-q", "-m", "add feature"]);
+    }
+
+    run_git(main_repo, &["checkout", "main"]);
+    run_git(main_repo, &["merge", "--ff-only", "heist/slug-a"]);
+    run_git(main_repo, &["merge", "--ff-only", "heist/slug-b"]);
+    run_git(main_repo, &["push", "origin", "main"]);
+
+    // Make slug-a's worktree dirty (untracked+uncommitted) so `git worktree
+    // remove` refuses it without --force; slug-b stays clean.
+    fs::write(main_repo.join(".worktrees/slug-a/uncommitted.txt"), "dirty")
+        .expect("failed to write dirty file");
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(main_repo)
+        .arg("worktree")
+        .arg("cleanup")
+        .output()
+        .expect("failed to run worktree cleanup");
+
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "cleanup should exit 3 when one item fails, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("failed slug-a"), "stdout: {}", stdout);
+    assert!(stdout.contains("removed slug-b"), "stdout: {}", stdout);
+    assert!(
+        main_repo.join(".worktrees/slug-a").exists(),
+        "dirty worktree should remain"
+    );
+    assert!(
+        !main_repo.join(".worktrees/slug-b").exists(),
+        "clean merged worktree should be removed"
+    );
+}
