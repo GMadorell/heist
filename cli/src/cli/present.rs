@@ -70,11 +70,12 @@ pub fn list_summary(rows: &[ListRow]) {
         let worktree = row.worktree.as_ref().map(AsRef::as_ref).unwrap_or("none");
 
         println!(
-            "{}  {}  {}  {}",
+            "{}  {}  {}  {}  {}",
             row.slug,
             row.stage.as_str(),
             next_step,
-            worktree
+            worktree,
+            row.mode.as_str()
         );
     }
 }
@@ -92,6 +93,7 @@ pub fn resume_summary(state: &State) {
 
     println!("slug: {}", state.slug);
     println!("stage: {}", state.stage.as_str());
+    println!("mode: {}", state.mode.as_str());
     println!("next_step: {}", next_step);
     println!("worktree: {}", worktree);
 }

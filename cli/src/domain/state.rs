@@ -9,6 +9,8 @@ pub struct State {
     pub schema_version: SchemaVersion,
     pub slug: SlugValue,
     pub stage: Stage,
+    #[serde(default)]
+    pub mode: Mode,
     pub worktree: Option<NonBlankValue>,
     pub branch: Option<NonBlankValue>,
     pub score_step: ScoreStep,
@@ -24,6 +26,7 @@ impl State {
             schema_version: SchemaVersion::CURRENT,
             slug: SlugValue::parse(slug)?,
             stage: Stage::Casing,
+            mode: Mode::default(),
             worktree: None,
             branch: None,
             score_step: ScoreStep::new(0),
@@ -39,6 +42,7 @@ impl State {
             "schema_version" => self.schema_version.to_string(),
             "slug" => self.slug.to_string(),
             "stage" => self.stage.as_str().to_string(),
+            "mode" => self.mode.as_str().to_string(),
             "worktree" => self
                 .worktree
                 .as_ref()
@@ -64,6 +68,7 @@ impl State {
             "schema_version" => self.schema_version = SchemaVersion::parse(value)?,
             "slug" => self.slug = SlugValue::parse(value)?,
             "stage" => self.stage = Stage::parse(value)?,
+            "mode" => self.mode = Mode::parse(value)?,
             "worktree" => self.worktree = Some(NonBlankValue::parse(cli_field, value)?),
             "branch" => self.branch = Some(NonBlankValue::parse(cli_field, value)?),
             "score_step" => self.score_step = ScoreStep::parse(cli_field, value)?,
@@ -133,6 +138,41 @@ impl Stage {
     }
 }
 
+/// How much of the pipeline runs: `heavy` is the full pipeline, `medium` skips
+/// Fence review, `light` skips Fence, Forger, Wheelman, and the Cleaner in favor
+/// of direct implementation with a manual crit review of the diff.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
+    #[default]
+    Heavy,
+    Medium,
+    Light,
+}
+
+impl Mode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Mode::Heavy => "heavy",
+            Mode::Medium => "medium",
+            Mode::Light => "light",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Mode, FieldError> {
+        match value {
+            "heavy" => Ok(Mode::Heavy),
+            "medium" => Ok(Mode::Medium),
+            "light" => Ok(Mode::Light),
+            _ => Err(FieldError::InvalidValue {
+                field: "mode".to_string(),
+                value: value.to_string(),
+                expected: "one of: heavy, medium, light".to_string(),
+            }),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,6 +190,7 @@ mod tests {
                 "schema_version": 1,
                 "slug": "my-slug",
                 "stage": "casing",
+                "mode": "heavy",
                 "worktree": null,
                 "branch": null,
                 "score_step": 0,
@@ -185,5 +226,52 @@ mod tests {
         assert_eq!(Stage::Safehouse.next_step(), Some(Stage::Implementing));
         assert_eq!(Stage::Implementing.next_step(), Some(Stage::Implementing));
         assert_eq!(Stage::Done.next_step(), None);
+    }
+
+    #[test]
+    fn mode_variants_serialize_to_snake_case_strings() {
+        let cases = [
+            (Mode::Heavy, "heavy"),
+            (Mode::Medium, "medium"),
+            (Mode::Light, "light"),
+        ];
+        for (mode, expected) in cases {
+            assert_eq!(serde_json::to_value(mode).unwrap(), json!(expected));
+        }
+    }
+
+    #[test]
+    fn mode_defaults_to_heavy() {
+        assert_eq!(Mode::default(), Mode::Heavy);
+    }
+
+    #[test]
+    fn state_without_mode_key_deserializes_to_heavy_default() {
+        let json = json!({
+            "schema_version": 1,
+            "slug": "my-slug",
+            "stage": "casing",
+            "worktree": null,
+            "branch": null,
+            "score_step": 0,
+            "score_steps_total": 0,
+            "fence_rounds": 0,
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+        });
+        let state: State = serde_json::from_value(json).expect("should deserialize");
+        assert_eq!(state.mode, Mode::Heavy);
+    }
+
+    #[test]
+    fn mode_parse_rejects_unknown_value() {
+        let err = Mode::parse("bogus").expect_err("should reject unknown mode");
+        match err {
+            FieldError::InvalidValue { field, value, .. } => {
+                assert_eq!(field, "mode");
+                assert_eq!(value, "bogus");
+            }
+            _ => panic!("expected FieldError::InvalidValue, got a different variant"),
+        }
     }
 }

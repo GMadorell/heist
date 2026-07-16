@@ -132,6 +132,70 @@ fn numeric_field_is_stored_as_a_number() {
 }
 
 #[test]
+fn mode_field_is_stored() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    let temp_path = temp_dir.path();
+    write_fixture(temp_path, "planning", 1);
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(temp_path)
+        .arg("state")
+        .arg("set")
+        .arg("my-slug")
+        .arg("mode")
+        .arg("light")
+        .output()
+        .expect("failed to run command");
+
+    assert!(
+        output.status.success(),
+        "expected success, got {:?}, stderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = fs::read_to_string(temp_path.join(".heist/my-slug/state.json"))
+        .expect("failed to read state.json");
+    let state: serde_json::Value =
+        serde_json::from_str(&content).expect("failed to parse state.json");
+
+    assert_eq!(state["mode"], "light", "mode should be 'light'");
+}
+
+#[test]
+fn rejects_invalid_mode() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    let temp_path = temp_dir.path();
+    write_fixture(temp_path, "planning", 1);
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(temp_path)
+        .arg("state")
+        .arg("set")
+        .arg("my-slug")
+        .arg("mode")
+        .arg("bogus_mode")
+        .output()
+        .expect("failed to run command");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "expected exit code 2, got {:?}",
+        output.status.code()
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("mode"),
+        "stderr should mention 'mode', got: {:?}",
+        stderr
+    );
+}
+
+#[test]
 fn rejects_unknown_field() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     let temp_path = temp_dir.path();

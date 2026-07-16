@@ -51,6 +51,7 @@ pub enum SchemaError {
 const FIELD_LIST: &str = "schema_version: u32\n\
 slug: string\n\
 stage: string (casing|planning|fence_review|human_review|forging|safehouse|implementing|cleaning|done)\n\
+mode: string (heavy|medium|light), defaults to heavy if unset\n\
 worktree: string|null\n\
 branch: string|null\n\
 score_step: u32\n\

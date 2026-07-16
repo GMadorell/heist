@@ -1,5 +1,5 @@
 use crate::domain::error::StateError;
-use crate::domain::state::{Stage, State};
+use crate::domain::state::{Mode, Stage, State};
 use crate::domain::value::{NonBlankValue, SlugValue};
 use crate::ports::state_repository::StateRepository;
 
@@ -8,6 +8,7 @@ pub struct ListRow {
     pub stage: Stage,
     pub next_step: Option<Stage>,
     pub worktree: Option<NonBlankValue>,
+    pub mode: Mode,
 }
 
 impl From<&State> for ListRow {
@@ -17,6 +18,7 @@ impl From<&State> for ListRow {
             stage: state.stage,
             next_step: state.stage.next_step(),
             worktree: state.worktree.clone(),
+            mode: state.mode,
         }
     }
 }

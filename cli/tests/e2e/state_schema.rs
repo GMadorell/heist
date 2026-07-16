@@ -23,6 +23,7 @@ fn prints_field_list_and_example() {
     let expected = r#"schema_version: u32
 slug: string
 stage: string (casing|planning|fence_review|human_review|forging|safehouse|implementing|cleaning|done)
+mode: string (heavy|medium|light), defaults to heavy if unset
 worktree: string|null
 branch: string|null
 score_step: u32
@@ -35,6 +36,7 @@ updated: string
   "schema_version": 1,
   "slug": "example",
   "stage": "casing",
+  "mode": "heavy",
   "worktree": null,
   "branch": null,
   "score_step": 0,

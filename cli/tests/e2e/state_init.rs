@@ -35,6 +35,10 @@ fn creates_state_json_with_defaults() {
     );
     assert_eq!(parsed_state["stage"], "casing", "stage should be 'casing'");
     assert_eq!(
+        parsed_state["mode"], "heavy",
+        "mode should default to 'heavy'"
+    );
+    assert_eq!(
         parsed_state["worktree"],
         serde_json::Value::Null,
         "worktree should be null"
