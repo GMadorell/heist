@@ -12,7 +12,8 @@ fn write_fixture(temp_path: &std::path::Path, stage: &str) {
   "stage": "{}",
   "worktree": null,
   "branch": null,
-  "score_step": 0,
+  "score_wave": 0,
+  "score_waves_total": 0,
   "score_steps_total": 0,
   "fence_rounds": 0,
   "created": "2026-07-13",
@@ -54,13 +55,13 @@ fn get_today_date() -> String {
 }
 
 #[test]
-fn increments_score_step_twice_and_bumps_updated() {
+fn increments_score_wave_twice_and_bumps_updated() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     let temp_path = temp_dir.path();
     write_fixture(temp_path, "implementing");
     let today = get_today_date();
 
-    let first = run_incr(temp_path, "score_step");
+    let first = run_incr(temp_path, "score_wave");
     assert!(
         first.status.success(),
         "expected success, got {:?}, stderr: {}",
@@ -69,15 +70,15 @@ fn increments_score_step_twice_and_bumps_updated() {
     );
     let state = read_state(temp_path);
     assert_eq!(
-        state["score_step"], 1,
-        "score_step should be 1 after first incr"
+        state["score_wave"], 1,
+        "score_wave should be 1 after first incr"
     );
     assert_eq!(
         state["updated"], today,
         "updated should be today after first incr"
     );
 
-    let second = run_incr(temp_path, "score_step");
+    let second = run_incr(temp_path, "score_wave");
     assert!(
         second.status.success(),
         "expected success, got {:?}, stderr: {}",
@@ -86,8 +87,8 @@ fn increments_score_step_twice_and_bumps_updated() {
     );
     let state = read_state(temp_path);
     assert_eq!(
-        state["score_step"], 2,
-        "score_step should be 2 after second incr"
+        state["score_wave"], 2,
+        "score_wave should be 2 after second incr"
     );
 }
 
@@ -185,7 +186,7 @@ fn rejects_missing_slug() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     let temp_path = temp_dir.path();
 
-    let output = run_incr(temp_path, "score_step");
+    let output = run_incr(temp_path, "score_wave");
     assert_eq!(
         output.status.code(),
         Some(2),

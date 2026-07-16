@@ -54,7 +54,8 @@ stage: string (casing|planning|fence_review|human_review|forging|safehouse|imple
 mode: string (heavy|medium|light), defaults to heavy if unset\n\
 worktree: string|null\n\
 branch: string|null\n\
-score_step: u32\n\
+score_wave: u32\n\
+score_waves_total: u32\n\
 score_steps_total: u32\n\
 fence_rounds: u32\n\
 created: string\n\
@@ -103,7 +104,7 @@ mod tests {
     use super::*;
     use crate::adapters::testing::{FixedClock, InMemoryStateRepository};
     use crate::domain::state::State;
-    use crate::domain::value::ScoreStep;
+    use crate::domain::value::ScoreWave;
 
     fn created_date() -> DateValue {
         DateValue::parse("today", "2026-01-01").expect("valid date")
@@ -121,10 +122,10 @@ mod tests {
         );
         let clock = FixedClock(today_date());
 
-        incr(&repo, &clock, "foo", "score_step").expect("incr should succeed");
+        incr(&repo, &clock, "foo", "score_wave").expect("incr should succeed");
 
         let state = repo.get("foo").expect("state should exist");
-        assert_eq!(state.score_step, ScoreStep::new(1));
+        assert_eq!(state.score_wave, ScoreWave::new(1));
         assert_eq!(state.updated, today_date());
     }
 
@@ -163,16 +164,16 @@ mod tests {
     fn incr_rejects_overflow_at_u32_max() {
         let mut state = State::new("foo", created_date()).expect("valid slug");
         state
-            .set_field("score_step", &u32::MAX.to_string())
-            .expect("u32::MAX is a valid score_step value");
+            .set_field("score_wave", &u32::MAX.to_string())
+            .expect("u32::MAX is a valid score_wave value");
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let clock = FixedClock(today_date());
 
-        let err = incr(&repo, &clock, "foo", "score_step")
+        let err = incr(&repo, &clock, "foo", "score_wave")
             .expect_err("should reject increment past u32::MAX");
         match err {
             IncrError::Field(FieldError::InvalidNumeric { field, value }) => {
-                assert_eq!(field, "score_step");
+                assert_eq!(field, "score_wave");
                 assert_eq!(value, u32::MAX.to_string());
             }
             _ => panic!("expected IncrError::Field(InvalidNumeric), got a different variant"),
@@ -180,8 +181,8 @@ mod tests {
 
         let state = repo.get("foo").expect("state should exist");
         assert_eq!(
-            state.score_step,
-            ScoreStep::new(u32::MAX),
+            state.score_wave,
+            ScoreWave::new(u32::MAX),
             "state must be unchanged on overflow rejection"
         );
     }

@@ -26,7 +26,8 @@ stage: string (casing|planning|fence_review|human_review|forging|safehouse|imple
 mode: string (heavy|medium|light), defaults to heavy if unset
 worktree: string|null
 branch: string|null
-score_step: u32
+score_wave: u32
+score_waves_total: u32
 score_steps_total: u32
 fence_rounds: u32
 created: string
@@ -39,7 +40,8 @@ updated: string
   "mode": "heavy",
   "worktree": null,
   "branch": null,
-  "score_step": 0,
+  "score_wave": 0,
+  "score_waves_total": 0,
   "score_steps_total": 0,
   "fence_rounds": 0,
   "created": "2026-01-01",
