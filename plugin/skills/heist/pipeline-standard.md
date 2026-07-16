@@ -14,9 +14,9 @@ The Mastermind's job ends at approval — forging is a fresh, one-shot transform
 ### 6. Implementing (Wheelman + Muscle)
 
 1. Spawn `heist:wheelman` (foreground) with task `<slug>`.
-2. Let it run its full per-step loop autonomously. Don't intervene per-step.
+2. Let it run its full per-wave loop autonomously. Don't intervene per-wave.
 3. When done, run `heist state set <slug> stage cleaning`. Wheelman owns `score_wave` via `heist state incr` throughout — don't re-set it here.
-4. Report to the human: steps completed, anything Wheelman did itself and why, build status.
+4. Report to the human: waves completed, anything Wheelman did itself and why, build status.
 5. Continue to cleaning.
 
 ### 7. Cleaning (The Cleaner)
