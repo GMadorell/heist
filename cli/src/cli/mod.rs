@@ -649,4 +649,21 @@ mod tests {
             Stage::Done
         );
     }
+
+    #[test]
+    fn worktree_cleanup_returns_success_when_nothing_failed() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new().with_default_branch("main");
+
+        let code = run_worktree(
+            WorktreeCommands::Cleanup { dry_run: false },
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Success);
+    }
 }
