@@ -666,4 +666,48 @@ mod tests {
 
         assert_eq!(code, ExitCode::Success);
     }
+
+    #[test]
+    fn worktree_cleanup_returns_git_exit_code_on_item_failure() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_merged_branch("heist/foo")
+            .with_worktree_info("foo", "/foo-repo/.worktrees/foo", Some("heist/foo"))
+            .failing_remove(GitError::WorktreeRemove {
+                message: "worktree is dirty".into(),
+            });
+
+        let code = run_worktree(
+            WorktreeCommands::Cleanup { dry_run: false },
+            Path::new("/foo-repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Git);
+    }
+
+    #[test]
+    fn worktree_cleanup_returns_git_exit_code_when_origin_unresolvable() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .failing_merge_check(GitError::MergeCheck {
+                message: "cannot find remote ref origin/main".into(),
+            });
+
+        let code = run_worktree(
+            WorktreeCommands::Cleanup { dry_run: false },
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Git);
+    }
 }
