@@ -71,4 +71,14 @@ mod tests {
 
         assert!(result.is_none());
     }
+
+    #[test]
+    fn rejects_path_outside_worktrees_dir() {
+        let repo_root = Path::new("/repo");
+        let path = Path::new("/repo/elsewhere/foo");
+
+        let result = HeistWorktree::try_from_parts(path, Some("heist/foo"), repo_root);
+
+        assert!(result.is_none());
+    }
 }
