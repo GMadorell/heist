@@ -224,6 +224,7 @@ pub fn cleanup(
 mod tests {
     use super::*;
     use crate::adapters::testing::{FakeGit, FakeWorktreeFs, FixedClock, InMemoryStateRepository};
+    use crate::domain::state::State;
     use crate::domain::value::DateValue;
     use std::path::Path;
 
@@ -362,5 +363,36 @@ mod tests {
         );
         assert!(git.removed_worktree_paths().is_empty());
         assert!(git.deleted_branch_names().is_empty());
+    }
+
+    #[test]
+    fn cleanup_marks_existing_state_done() {
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new("foo", DateValue::parse("today", "2025-01-01").expect("valid date"))
+                .expect("valid slug"),
+        );
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_merged_branch("heist/foo")
+            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"));
+
+        let outcomes = cleanup(
+            Path::new("/repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            false,
+        )
+        .expect("cleanup should succeed");
+
+        assert_eq!(
+            outcomes,
+            vec![CleanupOutcome::Removed(SlugValue::parse("foo").expect("valid slug"))]
+        );
+        let state = repo.get("foo").expect("state should still exist");
+        assert_eq!(state.stage, Stage::Done);
+        assert_eq!(state.updated, DateValue::parse("today", "2026-01-01").expect("valid date"));
     }
 }
