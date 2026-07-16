@@ -395,4 +395,29 @@ mod tests {
         assert_eq!(state.stage, Stage::Done);
         assert_eq!(state.updated, DateValue::parse("today", "2026-01-01").expect("valid date"));
     }
+
+    #[test]
+    fn cleanup_removes_orphan_worktree_without_state() {
+        let repo = InMemoryStateRepository::new(); // no state for "foo"
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_merged_branch("heist/foo")
+            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"));
+
+        let outcomes = cleanup(
+            Path::new("/repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            false,
+        )
+        .expect("cleanup should succeed even without a state entry");
+
+        assert_eq!(
+            outcomes,
+            vec![CleanupOutcome::Removed(SlugValue::parse("foo").expect("valid slug"))]
+        );
+        assert_eq!(repo.get("foo"), None);
+    }
 }
