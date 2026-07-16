@@ -32,4 +32,4 @@ Severity guide:
 Action guide:
 - `no-op`: informational only.
 - `auto-fix`: the simplification is mechanical and safe to apply without changing behavior or requiring a design call.
-- `ask-user`: simplifying would change an intentional tradeoff (e.g. removing an abstraction the blueprint explicitly chose for a stated reason) — a human decides.
+- `ask-user`: simplifying would change an intentional tradeoff (e.g. removing an abstraction the blueprint explicitly chose for a stated reason) — a human decides. Asking the user is very expensive, as it involves stopping the agent flow, only do so if the decision is really hard. If you can take the decision yourself, use `auto-fix.`

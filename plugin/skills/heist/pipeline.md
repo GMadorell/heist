@@ -70,7 +70,9 @@ The Mastermind's job ends at approval — forging is a fresh, one-shot transform
 ### 7. Cleaning (The Cleaner)
 
 1. Spawn `heist:cleaner` (foreground) with the task `<slug>` as input. It runs its full pipeline per its own definition.
-2. **Mechanical failure (bounced back)**: Run `heist state set <slug> stage implementing`. Spawn a fresh `heist:wheelman` in the same worktree with the Cleaner's failure report as its task, telling it to fix the failure and re-verify (not re-run the whole score — just fix what broke). When it reports done, go back to step 1 (re-run the Cleaner from the top — mergeable state may have changed).
-3. **Adversarial review lands `critical`**: the Cleaner stops before push per its own instructions. Surface this plainly to the human — findings, risk label, and that nothing has been pushed — and stop. This is a human decision, not yours to make.
-4. **Success**: Run `heist state set <slug> stage done`. Report the PR URL, risk label, and any findings from the adversarial review worth a human's attention, even at a passing risk level.
-5. Worktree teardown is out of scope for this pipeline: once the PR merges, reclaim the worktree by hand with `heist worktree remove <slug>`.
+2. Handling cleaner output:
+* If adversarial review finds a critical path, surface this to the human and stop. This is a human intervention.
+* If there are mechanical failures: Run `heist state set <slug> stage implementing`. Spawn a fresh `heist:wheelman` in the same worktree with the Cleaner's failure report as its task, telling it to fix the failure and re-verify (not re-run the whole score — just fix what broke). When it reports done, go back to step 1 (re-run the Cleaner from the top — mergeable state may have changed).
+* If there are things to ask to the user (warnings / things to improve found), stop here, and ask the user what to do following up before continuing. We need to iterate and then cleanup again with the cleaner (don't rerun whole score, just fix the given things).
+3. **Success**: Run `heist state set <slug> stage done`. Report the PR URL, risk label, and any findings from the adversarial review worth a human's attention, even at a passing risk level.
+4. Worktree teardown is out of scope for this pipeline: once the PR merges, reclaim the worktree by hand with `heist worktree remove <slug>`.

@@ -32,4 +32,4 @@ Severity guide:
 Action guide:
 - `no-op`: informational only.
 - `auto-fix`: rename/restructure that's unambiguous and doesn't change behavior or public contracts.
-- `ask-user`: the fix touches a public API, module boundary, or established convention — a human decides whether the tradeoff is worth it.
+- `ask-user`: the fix touches a public API, module boundary, or established convention — a human decides whether the tradeoff is worth it. This is expensive, it stops the flow. Only `ask-user` if it's a hard decision, otherwise use `auto-fix`, if it's very likely the suggested fix is the good path to go.

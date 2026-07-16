@@ -15,7 +15,7 @@ Run this pipeline in order. Stop and report at the first failing stage — no pa
 1. **Mergeable**: ensure everything is committed, rebase onto `origin/<main>` (name from `heist validation resolve <absolute-path>`'s PR conventions section). Resolve trivial conflicts, surface real ones.
 2. **Adversarial review**: spawn `heist:review-intent`, `heist:review-simplicity`, `heist:review-quality`, `heist:review-coverage` in parallel — one message, four Agent tool calls, each with `run_in_background: false` (you need all results before deciding; don't rely on background notifications). Give each the git diff; give `review-intent` also `blueprint.md` and `score.md`. All return `[severity: error|warning|info] [action: no-op|auto-fix|ask-user] <file>:<line>` + description. Triage:
    - `auto-fix`: apply yourself (Edit/Write), re-run the touched test(s). Reconcile by hand if two agents hit the same lines — don't apply both blindly.
-   - `ask-user`: don't apply. Carry into final report verbatim (file, description, agent).
+   - `ask-user`: compile all of them. Communicate them to the user before continuing, as it's likely that there will be some decision done and changes done based on those decisions. We should stop here and see what human decisions are before continuing.
    - `no-op`: carry into final report as FYI.
    Risk label from surviving findings: `low`/`medium`/`high`/`critical` — any `error`-severity `ask-user` is at least `high`; more than one, or anything touching security/data-loss, is `critical`.
 3. **Mechanical**: build, lint, full test suite. All green or bounce back with a concrete failure report (heist returns to `implementing` — say so).

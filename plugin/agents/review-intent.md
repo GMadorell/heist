@@ -30,5 +30,5 @@ Severity guide:
 
 Action guide:
 - `no-op`: informational only, no code change needed (used with `info`, sometimes `warning`).
-- `auto-fix`: the fix is small, mechanical, and unambiguous enough that a subsequent pass can apply it without more input.
-- `ask-user`: the fix requires a judgment call (behavior tradeoff, ambiguous intent, risk of scope creep) — a human decides, not the pipeline.
+- `auto-fix`: the fix is unambiguous enough that a subsequent pass can apply it without more input.
+- `ask-user`: the fix requires a judgment call (behavior tradeoff, ambiguous intent, risk of scope creep) — a human decides, not the pipeline. Asking the user is very expensive, as it involves stopping the agent flow, only do so if the decision is really hard. If you can take the decision yourself, use `auto-fix.`
