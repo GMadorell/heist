@@ -6,6 +6,7 @@ use crate::ports::git::{GitError, GitRepository, WorktreeInfo};
 use crate::ports::state_repository::StateRepository;
 use crate::ports::validation_source::ValidationSource;
 use crate::ports::worktree_fs::WorktreeFs;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -118,6 +119,8 @@ pub struct FakeGit {
     remove_error: Option<GitError>,
     delete_error: Option<GitError>,
     merge_check_error: Option<GitError>,
+    removed_worktree_paths: RefCell<Vec<PathBuf>>,
+    deleted_branch_names: RefCell<Vec<String>>,
 }
 
 impl Default for FakeGit {
@@ -137,6 +140,8 @@ impl FakeGit {
             remove_error: None,
             delete_error: None,
             merge_check_error: None,
+            removed_worktree_paths: RefCell::new(Vec::new()),
+            deleted_branch_names: RefCell::new(Vec::new()),
         }
     }
 
@@ -183,6 +188,14 @@ impl FakeGit {
         self.merge_check_error = Some(error);
         self
     }
+
+    pub fn removed_worktree_paths(&self) -> Vec<PathBuf> {
+        self.removed_worktree_paths.borrow().clone()
+    }
+
+    pub fn deleted_branch_names(&self) -> Vec<String> {
+        self.deleted_branch_names.borrow().clone()
+    }
 }
 
 impl GitRepository for FakeGit {
@@ -222,14 +235,16 @@ impl GitRepository for FakeGit {
         Ok(())
     }
 
-    fn remove_worktree(&self, _repo_root: &Path, _path: &Path) -> Result<(), GitError> {
+    fn remove_worktree(&self, _repo_root: &Path, path: &Path) -> Result<(), GitError> {
+        self.removed_worktree_paths.borrow_mut().push(path.to_path_buf());
         if let Some(err) = &self.remove_error {
             return Err(err.clone());
         }
         Ok(())
     }
 
-    fn delete_branch(&self, _repo_root: &Path, _branch: &str) -> Result<(), GitError> {
+    fn delete_branch(&self, _repo_root: &Path, branch: &str) -> Result<(), GitError> {
+        self.deleted_branch_names.borrow_mut().push(branch.to_string());
         if let Some(err) = &self.delete_error {
             return Err(err.clone());
         }

@@ -282,4 +282,30 @@ mod tests {
 
         assert!(outcomes.is_empty());
     }
+
+    #[test]
+    fn cleanup_skips_unmerged_heist_owned_worktree() {
+        let repo = InMemoryStateRepository::new();
+        // No merged branch configured, so heist/foo is treated as unmerged.
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"));
+
+        let outcomes = cleanup(
+            Path::new("/repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            false,
+        )
+        .expect("cleanup should succeed");
+
+        assert_eq!(
+            outcomes,
+            vec![CleanupOutcome::Skipped(SlugValue::parse("foo").expect("valid slug"))]
+        );
+        assert!(git.removed_worktree_paths().is_empty());
+        assert!(git.deleted_branch_names().is_empty());
+    }
 }
