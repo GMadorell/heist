@@ -137,8 +137,16 @@ fn skips_unmerged_heist_owned_worktree() {
         "cleanup should succeed even when skipping, stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    // The GitHub fallback also can't confirm anything here (the `origin`
+    // in this test is a plain local bare repo, not a GitHub remote), so the
+    // exact wording depends on whether `gh` is installed/authenticated in
+    // the test environment. Only the "still unmerged" verdict is asserted.
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout.trim(), "skipped my-slug (unmerged)");
+    assert!(
+        stdout.trim().starts_with("skipped my-slug (unmerged"),
+        "unexpected output: {}",
+        stdout
+    );
     assert!(
         worktree_path.exists(),
         ".worktrees/my-slug should still exist"

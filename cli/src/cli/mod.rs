@@ -275,8 +275,9 @@ fn run_worktree(
                 Err(app::worktree::RemoveError::NotMerged {
                     branch,
                     main_branch,
+                    verification_error,
                 }) => {
-                    present::not_merged(&branch, &main_branch);
+                    present::not_merged(&branch, &main_branch, verification_error.as_deref());
                     ExitCode::Precondition
                 }
                 Err(app::worktree::RemoveError::Git(e)) => {

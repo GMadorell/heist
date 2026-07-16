@@ -2,7 +2,7 @@ use crate::domain::error::StateError;
 use crate::domain::state::State;
 use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
-use crate::ports::git::{GitError, GitRepository, WorktreeInfo};
+use crate::ports::git::{GitError, GitRepository, MergeCheck, WorktreeInfo};
 use crate::ports::state_repository::StateRepository;
 use crate::ports::validation_source::ValidationSource;
 use crate::ports::worktree_fs::WorktreeFs;
@@ -119,6 +119,7 @@ pub struct FakeGit {
     remove_error: Option<GitError>,
     delete_error: Option<GitError>,
     merge_check_error_for: Option<(String, GitError)>,
+    verification_error_for: Option<(String, String)>,
     remote_default_resolve_error: Option<GitError>,
     removed_worktree_paths: RefCell<Vec<PathBuf>>,
     deleted_branch_names: RefCell<Vec<String>>,
@@ -141,6 +142,7 @@ impl FakeGit {
             remove_error: None,
             delete_error: None,
             merge_check_error_for: None,
+            verification_error_for: None,
             remote_default_resolve_error: None,
             removed_worktree_paths: RefCell::new(Vec::new()),
             deleted_branch_names: RefCell::new(Vec::new()),
@@ -193,6 +195,11 @@ impl FakeGit {
         self
     }
 
+    pub fn failing_verification_for(mut self, branch: &str, message: &str) -> Self {
+        self.verification_error_for = Some((branch.to_string(), message.to_string()));
+        self
+    }
+
     /// Fails the top-level `origin/<default>` resolvability probe that
     /// `cleanup` runs before sweeping worktrees.
     pub fn failing_remote_default_resolve(mut self, error: GitError) -> Self {
@@ -219,13 +226,25 @@ impl GitRepository for FakeGit {
         _repo_root: &Path,
         branch: &str,
         _into: &str,
-    ) -> Result<bool, GitError> {
+    ) -> Result<MergeCheck, GitError> {
         if let Some((failing_branch, err)) = &self.merge_check_error_for {
             if failing_branch == branch {
                 return Err(err.clone());
             }
         }
-        Ok(self.merged_branches.contains(branch))
+        if self.merged_branches.contains(branch) {
+            return Ok(MergeCheck::Merged);
+        }
+        if let Some((failing_branch, message)) = &self.verification_error_for {
+            if failing_branch == branch {
+                return Ok(MergeCheck::NotMerged {
+                    verification_error: Some(message.clone()),
+                });
+            }
+        }
+        Ok(MergeCheck::NotMerged {
+            verification_error: None,
+        })
     }
 
     fn worktree_exists(&self, _repo_root: &Path, slug: &str) -> bool {

@@ -1,4 +1,4 @@
-use crate::ports::git::{GitError, GitRepository, WorktreeInfo};
+use crate::ports::git::{GitError, GitRepository, MergeCheck, WorktreeInfo};
 use std::path::Path;
 
 pub struct RealGit;
@@ -33,7 +33,7 @@ impl GitRepository for RealGit {
         repo_root: &Path,
         branch: &str,
         into: &str,
-    ) -> Result<bool, GitError> {
+    ) -> Result<MergeCheck, GitError> {
         let merged = || -> Result<bool, git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
             let branch_oid = repo.revparse_single(branch)?.id();
@@ -44,9 +44,25 @@ impl GitRepository for RealGit {
             }
             repo.graph_descendant_of(main_oid, branch_oid)
         };
-        merged().map_err(|e| GitError::MergeCheck {
-            message: e.to_string(),
-        })
+        match merged() {
+            Ok(true) => Ok(MergeCheck::Merged),
+            // Ancestry check misses squash/rebase merges: GitHub creates a
+            // new commit rather than reusing the branch's commits, so the
+            // branch tip is never reachable from `into` even though the PR
+            // landed. Ask the GitHub API as a fallback.
+            Ok(false) => Ok(match is_pr_merged_on_github(repo_root, branch) {
+                Ok(true) => MergeCheck::Merged,
+                Ok(false) => MergeCheck::NotMerged {
+                    verification_error: None,
+                },
+                Err(message) => MergeCheck::NotMerged {
+                    verification_error: Some(message),
+                },
+            }),
+            Err(e) => Err(GitError::MergeCheck {
+                message: e.to_string(),
+            }),
+        }
     }
 
     fn delete_branch(&self, repo_root: &Path, branch: &str) -> Result<(), GitError> {
@@ -181,4 +197,22 @@ impl GitRepository for RealGit {
             message: e.to_string(),
         })
     }
+}
+
+fn is_pr_merged_on_github(repo_root: &Path, branch: &str) -> Result<bool, String> {
+    let output = std::process::Command::new("gh")
+        .current_dir(repo_root)
+        .args([
+            "pr", "list", "--head", branch, "--state", "merged", "--json", "number", "--limit", "1",
+        ])
+        .output()
+        .map_err(|e| format!("failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("failed to parse gh output: {}", e))?;
+    Ok(value.as_array().map(|arr| !arr.is_empty()).unwrap_or(false))
 }

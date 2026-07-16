@@ -1,5 +1,5 @@
 use heist_cli::adapters::real_git::RealGit;
-use heist_cli::ports::git::{GitError, GitRepository};
+use heist_cli::ports::git::{GitError, GitRepository, MergeCheck};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -68,9 +68,12 @@ fn reports_branch_merged_when_equal_to_origin_main() {
     );
     run_git(repo_dir.path(), &["branch", "feature"]);
 
-    assert!(RealGit
-        .is_branch_merged(repo_dir.path(), "feature", "main")
-        .expect("merge check should succeed"));
+    assert_eq!(
+        RealGit
+            .is_branch_merged(repo_dir.path(), "feature", "main")
+            .expect("merge check should succeed"),
+        MergeCheck::Merged
+    );
 }
 
 #[test]
@@ -101,9 +104,12 @@ fn reports_branch_merged_when_ancestor_of_origin_main() {
     commit_file(origin_dir.path(), "more.txt", "more");
     run_git(repo_dir.path(), &["fetch", "-q", "origin"]);
 
-    assert!(RealGit
-        .is_branch_merged(repo_dir.path(), "feature", "main")
-        .expect("merge check should succeed"));
+    assert_eq!(
+        RealGit
+            .is_branch_merged(repo_dir.path(), "feature", "main")
+            .expect("merge check should succeed"),
+        MergeCheck::Merged
+    );
 }
 
 #[test]
@@ -130,9 +136,12 @@ fn reports_branch_unmerged_when_not_ancestor_of_origin_main() {
     run_git(repo_dir.path(), &["checkout", "-q", "-b", "feature"]);
     commit_file(repo_dir.path(), "feature.txt", "unmerged");
 
-    assert!(!RealGit
-        .is_branch_merged(repo_dir.path(), "feature", "main")
-        .expect("merge check should succeed"));
+    assert!(matches!(
+        RealGit
+            .is_branch_merged(repo_dir.path(), "feature", "main")
+            .expect("merge check should succeed"),
+        MergeCheck::NotMerged { .. }
+    ));
 }
 
 #[test]

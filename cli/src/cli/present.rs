@@ -31,8 +31,14 @@ pub fn no_state_for_remove(slug: &str) {
     eprintln!("no state found for slug {}", slug);
 }
 
-pub fn not_merged(branch: &str, main_branch: &str) {
+pub fn not_merged(branch: &str, main_branch: &str, verification_error: Option<&str>) {
     eprintln!("branch {} is not merged into {}", branch, main_branch);
+    if let Some(e) = verification_error {
+        eprintln!(
+            "note: could not verify via GitHub, relying on git ancestry only: {}",
+            e
+        );
+    }
 }
 
 pub fn validation_output(output: &str) {
@@ -93,7 +99,17 @@ pub fn resume_summary(state: &State) {
 pub fn cleanup_outcome(outcome: &CleanupOutcome) {
     match outcome {
         CleanupOutcome::Removed(slug) => println!("removed {}", slug),
-        CleanupOutcome::Skipped(slug) => println!("skipped {} (unmerged)", slug),
+        CleanupOutcome::Skipped {
+            slug,
+            verification_error: None,
+        } => println!("skipped {} (unmerged)", slug),
+        CleanupOutcome::Skipped {
+            slug,
+            verification_error: Some(e),
+        } => println!(
+            "skipped {} (unmerged; could not verify via GitHub: {})",
+            slug, e
+        ),
         CleanupOutcome::WouldRemove(slug) => println!("would remove {}", slug),
         CleanupOutcome::Failed { slug, reason } => println!("failed {}: {}", slug, reason),
     }

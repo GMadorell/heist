@@ -7,6 +7,17 @@ pub struct WorktreeInfo {
     pub branch: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MergeCheck {
+    Merged,
+    /// `verification_error` is `Some` when a secondary check couldn't run
+    /// (missing tooling, no auth, no remote configured, etc.) rather than
+    /// having actually confirmed the branch is unmerged.
+    NotMerged {
+        verification_error: Option<String>,
+    },
+}
+
 pub trait GitRepository {
     fn default_branch(&self, repo_root: &Path) -> String;
 
@@ -15,7 +26,7 @@ pub trait GitRepository {
         repo_root: &Path,
         branch: &str,
         into: &str,
-    ) -> Result<bool, GitError>;
+    ) -> Result<MergeCheck, GitError>;
 
     fn delete_branch(&self, repo_root: &Path, branch: &str) -> Result<(), GitError>;
 

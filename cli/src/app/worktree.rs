@@ -4,7 +4,7 @@ use crate::domain::value::{NonBlankValue, SlugValue};
 use crate::domain::worktree;
 use crate::domain::worktree::HeistWorktree;
 use crate::ports::clock::Clock;
-use crate::ports::git::{GitError, GitRepository};
+use crate::ports::git::{GitError, GitRepository, MergeCheck};
 use crate::ports::state_repository::StateRepository;
 use crate::ports::worktree_fs::WorktreeFs;
 use std::path::Path;
@@ -68,7 +68,11 @@ pub enum RemoveError {
     NoState,
     Naming(FieldError),
     Git(GitError),
-    NotMerged { branch: String, main_branch: String },
+    NotMerged {
+        branch: String,
+        main_branch: String,
+        verification_error: Option<String>,
+    },
     Load(StateError),
     Save(StateError),
 }
@@ -88,11 +92,12 @@ pub fn remove(
     let branch = worktree::branch_name(slug).map_err(RemoveError::Naming)?;
 
     match git.is_branch_merged(repo_root, branch.as_ref(), &main_branch) {
-        Ok(true) => {}
-        Ok(false) => {
+        Ok(MergeCheck::Merged) => {}
+        Ok(MergeCheck::NotMerged { verification_error }) => {
             return Err(RemoveError::NotMerged {
                 branch: branch.to_string(),
                 main_branch,
+                verification_error,
             });
         }
         Err(e) => return Err(RemoveError::Git(e)),
@@ -116,18 +121,24 @@ pub fn remove(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CleanupOutcome {
     Removed(SlugValue),
-    Skipped(SlugValue),
+    Skipped {
+        slug: SlugValue,
+        verification_error: Option<String>,
+    },
     WouldRemove(SlugValue),
-    Failed { slug: SlugValue, reason: String },
+    Failed {
+        slug: SlugValue,
+        reason: String,
+    },
 }
 
 impl CleanupOutcome {
     fn slug(&self) -> &SlugValue {
         match self {
-            CleanupOutcome::Removed(s)
-            | CleanupOutcome::Skipped(s)
-            | CleanupOutcome::WouldRemove(s)
-            | CleanupOutcome::Failed { slug: s, .. } => s,
+            CleanupOutcome::Removed(s) => s,
+            CleanupOutcome::Skipped { slug: s, .. } => s,
+            CleanupOutcome::WouldRemove(s) => s,
+            CleanupOutcome::Failed { slug: s, .. } => s,
         }
     }
 }
@@ -164,9 +175,12 @@ pub fn cleanup(
         };
 
         match git.is_branch_merged(repo_root, hw.branch.as_ref(), &main_branch) {
-            Ok(true) => {}
-            Ok(false) => {
-                outcomes.push(CleanupOutcome::Skipped(hw.slug));
+            Ok(MergeCheck::Merged) => {}
+            Ok(MergeCheck::NotMerged { verification_error }) => {
+                outcomes.push(CleanupOutcome::Skipped {
+                    slug: hw.slug,
+                    verification_error,
+                });
                 continue;
             }
             Err(e) => {
@@ -323,12 +337,41 @@ mod tests {
 
         assert_eq!(
             outcomes,
-            vec![CleanupOutcome::Skipped(
-                SlugValue::parse("foo").expect("valid slug")
-            )]
+            vec![CleanupOutcome::Skipped {
+                slug: SlugValue::parse("foo").expect("valid slug"),
+                verification_error: None,
+            }]
         );
         assert!(git.removed_worktree_paths().is_empty());
         assert!(git.deleted_branch_names().is_empty());
+    }
+
+    #[test]
+    fn cleanup_skips_with_verification_error_when_github_check_is_inconclusive() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_worktree_info("/repo/.worktrees/foo", Some("heist/foo"))
+            .failing_verification_for("heist/foo", "gh: command not found");
+
+        let outcomes = cleanup(
+            Path::new("/repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            false,
+        )
+        .expect("cleanup should succeed");
+
+        assert_eq!(
+            outcomes,
+            vec![CleanupOutcome::Skipped {
+                slug: SlugValue::parse("foo").expect("valid slug"),
+                verification_error: Some("gh: command not found".to_string()),
+            }]
+        );
+        assert!(git.removed_worktree_paths().is_empty());
     }
 
     #[test]
