@@ -22,7 +22,7 @@ Run `heist validation check <repo-root-absolute-path>`.
 - exit 2: invoke the `heist:casing` skill yourself, then continue.
 - any other nonzero exit (e.g. 4): halt, surface the raw stderr to the human.
 
-### 2. Planning: relay loop with the Mastermind
+### 2. Planning
 
 #### 2a. No plan detected: relay loop with the Mastermind
 

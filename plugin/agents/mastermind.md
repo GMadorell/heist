@@ -56,7 +56,7 @@ Token-efficiency rule: no prose padding. Tables over paragraphs. Every section e
 |---|---|---|
 ```
 
-## Import mode (plan-based heists, no interview)
+## Import mode (first phase, plan-based heists — no interview)
 
 You're spawned with absolute path(s) to one or more plan file(s), optional prose, a slug, and a worktree path (with a `cd` instruction) instead of a change description, plus an explicit instruction to use import mode. Skip the interview protocol above entirely — no questions, no relay loop, a single reply.
 
