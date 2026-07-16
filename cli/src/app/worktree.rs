@@ -150,7 +150,7 @@ pub fn cleanup(
     let canonical_repo_root = fs.canonicalize(repo_root).map_err(CleanupError::Fs)?;
     let main_branch = git.default_branch(repo_root);
 
-    git.is_branch_merged(repo_root, &main_branch, &main_branch)
+    git.remote_default_resolves(repo_root, &main_branch)
         .map_err(CleanupError::Git)?;
 
     let infos = git.list_worktrees(repo_root).map_err(CleanupError::Git)?;
@@ -267,7 +267,7 @@ mod tests {
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new()
             .with_default_branch("main")
-            .failing_merge_check(GitError::MergeCheck {
+            .failing_remote_default_resolve(GitError::MergeCheck {
                 message: "cannot find remote ref origin/main".into(),
             });
 
@@ -288,11 +288,7 @@ mod tests {
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new()
             .with_default_branch("main")
-            .with_worktree_info(
-                "scratch",
-                "/repo/.worktrees/scratch",
-                Some("some-other-branch"),
-            );
+            .with_worktree_info("/repo/.worktrees/scratch", Some("some-other-branch"));
 
         let outcomes = cleanup(
             Path::new("/repo"),
@@ -313,7 +309,7 @@ mod tests {
         // No merged branch configured, so heist/foo is treated as unmerged.
         let git = FakeGit::new()
             .with_default_branch("main")
-            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"));
+            .with_worktree_info("/repo/.worktrees/foo", Some("heist/foo"));
 
         let outcomes = cleanup(
             Path::new("/repo"),
@@ -344,8 +340,8 @@ mod tests {
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_merged_branch("heist/bar")
-            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"))
-            .with_worktree_info("bar", "/repo/.worktrees/bar", Some("heist/bar"))
+            .with_worktree_info("/repo/.worktrees/foo", Some("heist/foo"))
+            .with_worktree_info("/repo/.worktrees/bar", Some("heist/bar"))
             .failing_merge_check_for(
                 "heist/foo",
                 GitError::MergeCheck {
@@ -385,7 +381,7 @@ mod tests {
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_merged_branch("heist/foo")
-            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"));
+            .with_worktree_info("/repo/.worktrees/foo", Some("heist/foo"));
 
         let outcomes = cleanup(
             Path::new("/repo"),
@@ -416,7 +412,7 @@ mod tests {
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_merged_branch("heist/foo")
-            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"));
+            .with_worktree_info("/repo/.worktrees/foo", Some("heist/foo"));
 
         let outcomes = cleanup(
             Path::new("/repo"),
@@ -451,7 +447,7 @@ mod tests {
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_merged_branch("heist/foo")
-            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"));
+            .with_worktree_info("/repo/.worktrees/foo", Some("heist/foo"));
 
         let outcomes = cleanup(
             Path::new("/repo"),
@@ -483,7 +479,7 @@ mod tests {
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_merged_branch("heist/foo")
-            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"));
+            .with_worktree_info("/repo/.worktrees/foo", Some("heist/foo"));
 
         let outcomes = cleanup(
             Path::new("/repo"),
@@ -517,7 +513,7 @@ mod tests {
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_merged_branch("heist/foo")
-            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"))
+            .with_worktree_info("/repo/.worktrees/foo", Some("heist/foo"))
             .failing_remove(GitError::WorktreeRemove {
                 message: "worktree is dirty".into(),
             });
@@ -557,7 +553,7 @@ mod tests {
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_merged_branch("heist/foo")
-            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"))
+            .with_worktree_info("/repo/.worktrees/foo", Some("heist/foo"))
             .failing_delete(GitError::BranchDelete {
                 message: "not fully merged".into(),
             });
@@ -596,8 +592,8 @@ mod tests {
             .with_default_branch("main")
             .with_merged_branch("heist/zeta")
             .with_merged_branch("heist/alpha")
-            .with_worktree_info("zeta", "/repo/.worktrees/zeta", Some("heist/zeta"))
-            .with_worktree_info("alpha", "/repo/.worktrees/alpha", Some("heist/alpha"));
+            .with_worktree_info("/repo/.worktrees/zeta", Some("heist/zeta"))
+            .with_worktree_info("/repo/.worktrees/alpha", Some("heist/alpha"));
 
         let outcomes = cleanup(
             Path::new("/repo"),

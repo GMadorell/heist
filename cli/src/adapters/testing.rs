@@ -118,8 +118,8 @@ pub struct FakeGit {
     add_error: Option<GitError>,
     remove_error: Option<GitError>,
     delete_error: Option<GitError>,
-    merge_check_error: Option<GitError>,
     merge_check_error_for: Option<(String, GitError)>,
+    remote_default_resolve_error: Option<GitError>,
     removed_worktree_paths: RefCell<Vec<PathBuf>>,
     deleted_branch_names: RefCell<Vec<String>>,
 }
@@ -140,8 +140,8 @@ impl FakeGit {
             add_error: None,
             remove_error: None,
             delete_error: None,
-            merge_check_error: None,
             merge_check_error_for: None,
+            remote_default_resolve_error: None,
             removed_worktree_paths: RefCell::new(Vec::new()),
             deleted_branch_names: RefCell::new(Vec::new()),
         }
@@ -162,9 +162,8 @@ impl FakeGit {
         self
     }
 
-    pub fn with_worktree_info(mut self, name: &str, path: &str, branch: Option<&str>) -> Self {
+    pub fn with_worktree_info(mut self, path: &str, branch: Option<&str>) -> Self {
         self.worktree_infos.push(WorktreeInfo {
-            name: name.to_string(),
             path: std::path::PathBuf::from(path),
             branch: branch.map(str::to_string),
         });
@@ -186,16 +185,18 @@ impl FakeGit {
         self
     }
 
-    pub fn failing_merge_check(mut self, error: GitError) -> Self {
-        self.merge_check_error = Some(error);
+    /// Fails the merge check only for the given branch, leaving the
+    /// top-level `remote_default_resolves` probe and every other branch's
+    /// check unaffected.
+    pub fn failing_merge_check_for(mut self, branch: &str, error: GitError) -> Self {
+        self.merge_check_error_for = Some((branch.to_string(), error));
         self
     }
 
-    /// Fails the merge check only for the given branch, leaving the
-    /// top-level `origin/<default>` probe (which checks `default_branch`
-    /// against itself) and every other branch's check unaffected.
-    pub fn failing_merge_check_for(mut self, branch: &str, error: GitError) -> Self {
-        self.merge_check_error_for = Some((branch.to_string(), error));
+    /// Fails the top-level `origin/<default>` resolvability probe that
+    /// `cleanup` runs before sweeping worktrees.
+    pub fn failing_remote_default_resolve(mut self, error: GitError) -> Self {
+        self.remote_default_resolve_error = Some(error);
         self
     }
 
@@ -219,9 +220,6 @@ impl GitRepository for FakeGit {
         branch: &str,
         _into: &str,
     ) -> Result<bool, GitError> {
-        if let Some(err) = &self.merge_check_error {
-            return Err(err.clone());
-        }
         if let Some((failing_branch, err)) = &self.merge_check_error_for {
             if failing_branch == branch {
                 return Err(err.clone());
@@ -272,6 +270,17 @@ impl GitRepository for FakeGit {
 
     fn list_worktrees(&self, _repo_root: &Path) -> Result<Vec<WorktreeInfo>, GitError> {
         Ok(self.worktree_infos.clone())
+    }
+
+    fn remote_default_resolves(
+        &self,
+        _repo_root: &Path,
+        _main_branch: &str,
+    ) -> Result<(), GitError> {
+        if let Some(err) = &self.remote_default_resolve_error {
+            return Err(err.clone());
+        }
+        Ok(())
     }
 }
 

@@ -145,6 +145,17 @@ impl GitRepository for RealGit {
         })
     }
 
+    fn remote_default_resolves(&self, repo_root: &Path, main_branch: &str) -> Result<(), GitError> {
+        let resolve = || -> Result<(), git2::Error> {
+            let repo = git2::Repository::open(repo_root)?;
+            repo.revparse_single(&format!("origin/{}", main_branch))?;
+            Ok(())
+        };
+        resolve().map_err(|e| GitError::MergeCheck {
+            message: e.to_string(),
+        })
+    }
+
     fn list_worktrees(&self, repo_root: &Path) -> Result<Vec<WorktreeInfo>, GitError> {
         let list = || -> Result<Vec<WorktreeInfo>, git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
@@ -161,11 +172,7 @@ impl GitRepository for RealGit {
                 } else {
                     None
                 };
-                infos.push(WorktreeInfo {
-                    name: name.to_string(),
-                    path,
-                    branch,
-                });
+                infos.push(WorktreeInfo { path, branch });
             }
             Ok(infos)
         };

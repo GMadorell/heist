@@ -673,7 +673,7 @@ mod tests {
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_merged_branch("heist/foo")
-            .with_worktree_info("foo", "/foo-repo/.worktrees/foo", Some("heist/foo"))
+            .with_worktree_info("/foo-repo/.worktrees/foo", Some("heist/foo"))
             .failing_remove(GitError::WorktreeRemove {
                 message: "worktree is dirty".into(),
             });
@@ -695,7 +695,7 @@ mod tests {
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new()
             .with_default_branch("main")
-            .failing_merge_check(GitError::MergeCheck {
+            .failing_remote_default_resolve(GitError::MergeCheck {
                 message: "cannot find remote ref origin/main".into(),
             });
 

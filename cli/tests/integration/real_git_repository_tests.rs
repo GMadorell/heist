@@ -226,7 +226,7 @@ fn remove_worktree_fails_for_nonexistent_path() {
 }
 
 #[test]
-fn list_worktrees_reports_name_path_and_branch() {
+fn list_worktrees_reports_path_and_branch() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     init_repo_with_commit(temp_dir.path());
     let worktree_path = temp_dir.path().join("worktrees").join("foo");
@@ -239,7 +239,6 @@ fn list_worktrees_reports_name_path_and_branch() {
         .expect("list should succeed");
 
     assert_eq!(infos.len(), 1);
-    assert_eq!(infos[0].name, "foo");
     assert_eq!(
         infos[0].path,
         worktree_path
