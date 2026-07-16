@@ -115,3 +115,40 @@ fn skips_unmerged_heist_owned_worktree() {
     assert_eq!(stdout.trim(), "skipped my-slug (unmerged)");
     assert!(worktree_path.exists(), ".worktrees/my-slug should still exist");
 }
+
+#[test]
+fn dry_run_mutates_nothing() {
+    let (main_temp, _bare_temp, worktree_path) = setup_repo_with_worktree("my-slug");
+    let main_repo = main_temp.path();
+    let state_file = main_repo.join(".heist/my-slug/state.json");
+
+    fs::write(worktree_path.join("feature.txt"), "feature work").expect("failed to write feature.txt");
+    run_git(&worktree_path, &["add", "."]);
+    run_git(&worktree_path, &["commit", "-q", "-m", "add feature"]);
+    run_git(&worktree_path, &["push", "-u", "origin", "heist/my-slug"]);
+
+    run_git(main_repo, &["checkout", "main"]);
+    run_git(main_repo, &["merge", "--ff-only", "heist/my-slug"]);
+    run_git(main_repo, &["push", "origin", "main"]);
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(main_repo)
+        .arg("worktree")
+        .arg("cleanup")
+        .arg("--dry-run")
+        .output()
+        .expect("failed to run worktree cleanup --dry-run");
+
+    assert!(output.status.success(), "dry-run should succeed, stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "would remove my-slug");
+
+    assert!(worktree_path.exists(), ".worktrees/my-slug should still exist after dry-run");
+    let branch_output = StdCommand::new("git").args(["branch"]).current_dir(main_repo).output().expect("failed to run git branch");
+    assert!(String::from_utf8_lossy(&branch_output.stdout).contains("heist/my-slug"));
+
+    let state_content = fs::read_to_string(&state_file).expect("failed to read state.json");
+    let state_json: serde_json::Value = serde_json::from_str(&state_content).expect("failed to parse state.json");
+    assert_ne!(state_json["stage"].as_str(), Some("done"));
+}
