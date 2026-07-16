@@ -8,13 +8,13 @@ It ships as a single Claude Code plugin: one entry point, a crew of specialized 
 
 ## The story of one heist
 
-You type `/heist:heist add rate limiting to the public API` and the crew gets to work:
+You type `/heist:heist add rate limiting to the public API` (optionally prefixed with a mode, see [Modes](#modes)) and the crew gets to work:
 
 1. **Slugger** picks a short slug for the job, then **Mastermind** interviews you with multiple-choice questions like a detective, then writes `blueprint.md`.
 2. **Fence** reads it and immediately starts talking about everything wrong with the plan, because that's the job. Mastermind fixes what actually lands.
 3. You take a pass yourself in [crit](https://crit.md), leaving comments until you're out of things to nitpick. Silence is approval.
 4. **Forger** breaks the blueprint into `score.md`, a checklist so granular a Muscle can't screw it up.
-5. **Wheelman** sends **Muscle** in one step at a time to handle the work, no improvising, no side quests, just the checklist.
+5. **Wheelman** sends **Muscle** to handle the work wave by wave — no improvising, no side quests, just the checklist.
 6. **Cleaner** rebases, orchestrates a parallel review crew of its own, auto-fixes what's safe, floats the rest to you, runs build/lint/test, and opens a PR with a risk label. Anything labeled critical, it stops and wakes you up first.
 
 You come back to an open PR and a heat report: what got built, what got flagged, what's still on you to eyeball.
@@ -36,14 +36,26 @@ flowchart TD
     G -- changes --> D2
     G -- approved --> H[Forger: blueprint.md → score.md]
     H --> J[Wheelman in worktree]
-    J --> K[Muscle × N: red-green TDD micro-steps]
+    J --> K[Muscle x4 max per wave: red-green TDD micro-steps]
     K --> J
     J --> L[Cleaner: mergeable → parallel review crew → triage auto-fix/ask-user → build/lint/test → docs → push → PR + risk label]
     L -- failures --> J
     L --> M[Done: PR open, report delivered]
 ```
 
-Worktree teardown is deliberately manual, not part of the pipeline above: once a heist's PR merges, reclaim the worktree yourself with `heist worktree remove <slug>`. Cleaner stops at PR-open.
+Diagram shows `heavy`. `medium` skips Fence. `light` skips Fence, Forger, Wheelman/Muscle, and Cleaner: you implement the blueprint directly and do a manual crit review of the diff instead. See [Modes](#modes).
+
+Worktree teardown is deliberately manual, not part of the pipeline above. Once a heist's PR merges, reclaim its worktree with `heist worktree remove <slug>`, or reclaim all merged worktrees at once with `heist worktree cleanup [--dry-run]`. Cleaner stops at PR-open.
+
+## Modes
+
+Every heist runs in one of three modes, chosen up front (or you're asked if none is specified). Fixed for that heist's lifetime.
+
+| Mode | Flow |
+|---|---|
+| `heavy` (default) | Everything above: Fence review, Forger/score.md, Wheelman/Muscle, Cleaner |
+| `medium` | Same as heavy, minus Fence review |
+| `light` | Plan + human review only, then you implement directly and do a manual crit pass on the diff. For small, well-understood changes |
 
 ## Terms explanation
 
@@ -56,6 +68,7 @@ Worktree teardown is deliberately manual, not part of the pipeline above: once a
 | Wheelman | Drives the job: runs the crew through the worktree from start to finish |
 | Muscle | Does the lifting: one step, no improvising, no thinking beyond what the score says |
 | Cleaner | Cleans up after: checks the work, scrubs for risk, drives the getaway car (the PR) |
+| Review crew | Cleaner's four lookouts (`review-intent`, `review-simplicity`, `review-quality`, `review-coverage`), each watching a different angle in parallel |
 | Casing | Casing the joint before the job: one-time repo scouting, writes `validation.md` |
 | Blueprint | The plan for the job: `blueprint.md`, the design doc |
 | Score | The job's step-by-step rundown: `score.md`, the ordered TDD work doc |
@@ -94,7 +107,7 @@ Heist is organized as a monorepo with two main components:
 
 Docs live in `.heist/<slug>/` inside your project. Gitignoring those files is recommended.
 
-`validation.md` can also live in subdirectories for a monorepo/nested-package layout — `heist validation resolve <absolute-path>` walks repo root down to `<absolute-path>`, merging every `validation.md` found along the way (nearest file wins per section).
+`validation.md` can also live in subdirectories for a monorepo/nested-package layout: `heist validation resolve <absolute-path>` walks repo root down to `<absolute-path>`, merging every `validation.md` found along the way (nearest file wins per section).
 
 ## Model / cost table
 
@@ -107,4 +120,8 @@ Docs live in `.heist/<slug>/` inside your project. Gitignoring those files is re
 | Wheelman | Sonnet | Needs to dispatch, verify honestly, and make judgment calls on fallback steps |
 | Muscle | Haiku | Zero thinking by design, the plan is already fully specified in `score.md` |
 | Cleaner | Sonnet | Adversarial review + validation pipeline, bounded scope |
+| review-intent | Sonnet | Checks the diff against expected business rules and edge cases |
+| review-simplicity | Sonnet | Flags over-abstraction and unnecessary complexity |
+| review-quality | Sonnet | Reviews naming, structure, and maintainability |
+| review-coverage | Sonnet | Flags code paths without meaningful test coverage |
 

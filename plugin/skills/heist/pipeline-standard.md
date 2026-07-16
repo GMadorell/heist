@@ -7,16 +7,16 @@ Runs after core `pipeline.md` steps 1-4, for `heavy` and `medium` mode.
 The Mastermind's job ends at approval — forging is a fresh, one-shot transformation.
 
 1. Spawn `heist:forger` (foreground, one-shot) with the worktree absolute path and a `cd` instruction, so it reads `blueprint.md`, resolves validation via `heist validation resolve <absolute-path>`, and writes `score.md`.
-2. Run `heist state set <slug> stage safehouse` and `heist state set <slug> score_steps_total <step-count>` (Forger reports the count).
+2. Run `heist state set <slug> stage safehouse`, `heist state set <slug> score_steps_total <step-count>`, and `heist state set <slug> score_waves_total <wave-count>` (Forger reports both counts).
 3. Report to the human: `score.md` path, step count, implicit calls flagged.
 4. Continue to implementing.
 
 ### 6. Implementing (Wheelman + Muscle)
 
 1. Spawn `heist:wheelman` (foreground) with task `<slug>`.
-2. Let it run its full per-step loop autonomously. Don't intervene per-step.
-3. When done, run `heist state set <slug> stage cleaning`. Wheelman owns `score_step` via `heist state incr` throughout — don't re-set it here.
-4. Report to the human: steps completed, anything Wheelman did itself and why, build status.
+2. Let it run its full per-wave loop autonomously. Don't intervene per-wave.
+3. When done, run `heist state set <slug> stage cleaning`. Wheelman owns `score_wave` via `heist state incr` throughout — don't re-set it here.
+4. Report to the human: waves completed, anything Wheelman did itself and why, build status.
 5. Continue to cleaning.
 
 ### 7. Cleaning (The Cleaner)

@@ -12,7 +12,8 @@ fn write_fixture(temp_path: &std::path::Path, stage: &str, schema_version: u32) 
   "stage": "{}",
   "worktree": null,
   "branch": null,
-  "score_step": 0,
+  "score_wave": 0,
+  "score_waves_total": 0,
   "score_steps_total": 0,
   "fence_rounds": 0,
   "created": "2026-07-13",
@@ -82,7 +83,11 @@ fn updates_field_and_bumps_updated() {
         serde_json::Value::Null,
         "branch should be unchanged"
     );
-    assert_eq!(state["score_step"], 0, "score_step should be unchanged");
+    assert_eq!(state["score_wave"], 0, "score_wave should be unchanged");
+    assert_eq!(
+        state["score_waves_total"], 0,
+        "score_waves_total should be unchanged"
+    );
     assert_eq!(
         state["score_steps_total"], 0,
         "score_steps_total should be unchanged"
@@ -106,7 +111,7 @@ fn numeric_field_is_stored_as_a_number() {
         .arg("state")
         .arg("set")
         .arg("my-slug")
-        .arg("score_step")
+        .arg("score_wave")
         .arg("5")
         .output()
         .expect("failed to run command");
@@ -124,10 +129,47 @@ fn numeric_field_is_stored_as_a_number() {
         serde_json::from_str(&content).expect("failed to parse state.json");
 
     assert_eq!(
-        state["score_step"],
+        state["score_wave"],
         serde_json::Value::Number(5.into()),
-        "score_step should be stored as a JSON number, got: {}",
-        state["score_step"]
+        "score_wave should be stored as a JSON number, got: {}",
+        state["score_wave"]
+    );
+}
+
+#[test]
+fn score_waves_total_field_is_stored_as_a_number() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    let temp_path = temp_dir.path();
+    write_fixture(temp_path, "implementing", 1);
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(temp_path)
+        .arg("state")
+        .arg("set")
+        .arg("my-slug")
+        .arg("score_waves_total")
+        .arg("3")
+        .output()
+        .expect("failed to run command");
+
+    assert!(
+        output.status.success(),
+        "expected success, got {:?}, stderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = fs::read_to_string(temp_path.join(".heist/my-slug/state.json"))
+        .expect("failed to read state.json");
+    let state: serde_json::Value =
+        serde_json::from_str(&content).expect("failed to parse state.json");
+
+    assert_eq!(
+        state["score_waves_total"],
+        serde_json::Value::Number(3.into()),
+        "score_waves_total should be stored as a JSON number, got: {}",
+        state["score_waves_total"]
     );
 }
 

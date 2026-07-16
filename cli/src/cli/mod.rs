@@ -63,14 +63,14 @@ enum StateCommands {
     Get {
         /// Heist slug (directory name under .heist/)
         slug: String,
-        /// State field name, e.g. stage, worktree, branch, score_step
+        /// State field name, e.g. stage, worktree, branch, score_wave
         field: String,
     },
     /// Update one field and bump `updated` to today; validates the value
     Set {
         /// Heist slug (directory name under .heist/)
         slug: String,
-        /// State field name, e.g. stage, worktree, branch, score_step
+        /// State field name, e.g. stage, worktree, branch, score_wave
         field: String,
         /// New value for the field
         value: String,
@@ -79,7 +79,7 @@ enum StateCommands {
     Incr {
         /// Heist slug (directory name under .heist/)
         slug: String,
-        /// Numeric state field name, e.g. score_step
+        /// Numeric state field name, e.g. score_wave
         field: String,
     },
     /// Print the field list and an example state.json (no slug required)
@@ -397,7 +397,7 @@ mod tests {
     use super::*;
     use crate::adapters::testing::{FakeGit, FakeWorktreeFs, FixedClock, InMemoryStateRepository};
     use crate::domain::state::{Stage, State};
-    use crate::domain::value::{DateValue, ScoreStep};
+    use crate::domain::value::{DateValue, ScoreWave};
     use crate::ports::git::GitError;
     use tempfile::TempDir;
 
@@ -458,7 +458,7 @@ mod tests {
         let code = run_state(
             StateCommands::Set {
                 slug: "foo".into(),
-                field: "score_step".into(),
+                field: "score_wave".into(),
                 value: "4".into(),
             },
             &repo,
@@ -466,8 +466,8 @@ mod tests {
         );
         assert_eq!(code, ExitCode::Success);
         assert_eq!(
-            repo.get("foo").expect("state should exist").score_step,
-            ScoreStep::new(4)
+            repo.get("foo").expect("state should exist").score_wave,
+            ScoreWave::new(4)
         );
     }
 
@@ -478,7 +478,7 @@ mod tests {
         let code = run_state(
             StateCommands::Set {
                 slug: "foo".into(),
-                field: "score_step".into(),
+                field: "score_wave".into(),
                 value: "not-a-number".into(),
             },
             &repo,
@@ -486,8 +486,8 @@ mod tests {
         );
         assert_eq!(code, ExitCode::Precondition);
         assert_eq!(
-            repo.get("foo").expect("state should exist").score_step,
-            ScoreStep::new(0)
+            repo.get("foo").expect("state should exist").score_wave,
+            ScoreWave::new(0)
         );
     }
 

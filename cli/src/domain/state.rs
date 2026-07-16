@@ -1,6 +1,7 @@
 use crate::domain::error::FieldError;
 use crate::domain::value::{
-    DateValue, FenceRounds, NonBlankValue, SchemaVersion, ScoreStep, ScoreStepsTotal, SlugValue,
+    DateValue, FenceRounds, NonBlankValue, SchemaVersion, ScoreStepsTotal, ScoreWave,
+    ScoreWavesTotal, SlugValue,
 };
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +14,8 @@ pub struct State {
     pub mode: Mode,
     pub worktree: Option<NonBlankValue>,
     pub branch: Option<NonBlankValue>,
-    pub score_step: ScoreStep,
+    pub score_wave: ScoreWave,
+    pub score_waves_total: ScoreWavesTotal,
     pub score_steps_total: ScoreStepsTotal,
     pub fence_rounds: FenceRounds,
     pub created: DateValue,
@@ -29,7 +31,8 @@ impl State {
             mode: Mode::default(),
             worktree: None,
             branch: None,
-            score_step: ScoreStep::new(0),
+            score_wave: ScoreWave::new(0),
+            score_waves_total: ScoreWavesTotal::new(0),
             score_steps_total: ScoreStepsTotal::new(0),
             fence_rounds: FenceRounds::new(0),
             created: today.clone(),
@@ -53,7 +56,8 @@ impl State {
                 .as_ref()
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "null".to_string()),
-            "score_step" => self.score_step.to_string(),
+            "score_wave" => self.score_wave.to_string(),
+            "score_waves_total" => self.score_waves_total.to_string(),
             "score_steps_total" => self.score_steps_total.to_string(),
             "fence_rounds" => self.fence_rounds.to_string(),
             "created" => self.created.to_string(),
@@ -71,7 +75,10 @@ impl State {
             "mode" => self.mode = Mode::parse(value)?,
             "worktree" => self.worktree = Some(NonBlankValue::parse(cli_field, value)?),
             "branch" => self.branch = Some(NonBlankValue::parse(cli_field, value)?),
-            "score_step" => self.score_step = ScoreStep::parse(cli_field, value)?,
+            "score_wave" => self.score_wave = ScoreWave::parse(cli_field, value)?,
+            "score_waves_total" => {
+                self.score_waves_total = ScoreWavesTotal::parse(cli_field, value)?
+            }
             "score_steps_total" => {
                 self.score_steps_total = ScoreStepsTotal::parse(cli_field, value)?
             }
@@ -193,7 +200,8 @@ mod tests {
                 "mode": "heavy",
                 "worktree": null,
                 "branch": null,
-                "score_step": 0,
+                "score_wave": 0,
+                "score_waves_total": 0,
                 "score_steps_total": 0,
                 "fence_rounds": 0,
                 "created": today.to_string(),
@@ -253,7 +261,8 @@ mod tests {
             "stage": "casing",
             "worktree": null,
             "branch": null,
-            "score_step": 0,
+            "score_wave": 0,
+            "score_waves_total": 0,
             "score_steps_total": 0,
             "fence_rounds": 0,
             "created": "2026-01-01",

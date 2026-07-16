@@ -1,7 +1,7 @@
 use heist_cli::adapters::file_state_repository::FileStateRepository;
 use heist_cli::domain::error::StateError;
 use heist_cli::domain::state::State;
-use heist_cli::domain::value::{DateValue, ScoreStep};
+use heist_cli::domain::value::{DateValue, ScoreWave};
 use heist_cli::ports::state_repository::StateRepository;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -121,14 +121,14 @@ fn save_then_load_roundtrips() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
     let mut state = State::new("foo", fixed_date()).expect("valid slug");
-    state.score_step = ScoreStep::new(3);
+    state.score_wave = ScoreWave::new(3);
     std::fs::create_dir_all(".heist/foo").expect("create slug dir");
 
     repo.save("foo", &state).expect("save should succeed");
 
     assert_eq!(
-        repo.load("foo").expect("load should succeed").score_step,
-        ScoreStep::new(3)
+        repo.load("foo").expect("load should succeed").score_wave,
+        ScoreWave::new(3)
     );
 }
 
