@@ -224,3 +224,25 @@ fn remove_worktree_fails_for_nonexistent_path() {
     let result = RealGit.remove_worktree(temp_dir.path(), &missing_path);
     assert!(result.is_err());
 }
+
+#[test]
+fn list_worktrees_reports_name_path_and_branch() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(temp_dir.path());
+    let worktree_path = temp_dir.path().join("worktrees").join("foo");
+    RealGit
+        .add_worktree(temp_dir.path(), &worktree_path, "heist/foo", "main")
+        .expect("add should succeed");
+
+    let infos = RealGit
+        .list_worktrees(temp_dir.path())
+        .expect("list should succeed");
+
+    assert_eq!(infos.len(), 1);
+    assert_eq!(infos[0].name, "foo");
+    assert_eq!(
+        infos[0].path,
+        worktree_path.canonicalize().expect("worktree path should exist")
+    );
+    assert_eq!(infos[0].branch.as_deref(), Some("heist/foo"));
+}
