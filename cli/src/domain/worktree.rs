@@ -81,4 +81,14 @@ mod tests {
 
         assert!(result.is_none());
     }
+
+    #[test]
+    fn rejects_detached_head() {
+        let repo_root = Path::new("/repo");
+        let path = Path::new("/repo/.worktrees/foo");
+
+        let result = HeistWorktree::try_from_parts(path, None, repo_root);
+
+        assert!(result.is_none());
+    }
 }
