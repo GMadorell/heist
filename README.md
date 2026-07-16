@@ -19,16 +19,6 @@ You type `/heist:heist add rate limiting to the public API` (optionally prefixed
 
 You come back to an open PR and a heat report: what got built, what got flagged, what's still on you to eyeball.
 
-## Modes
-
-Every heist runs in one of three modes, chosen up front (or you're asked, heavy recommended). Fixed for that heist's lifetime.
-
-| Mode | Flow |
-|---|---|
-| `heavy` (default) | Everything above: Fence review, Forger/score.md, Wheelman/Muscle, Cleaner |
-| `medium` | Same as heavy, minus Fence review |
-| `light` | Plan + human review only, then you implement directly and do a manual crit pass on the diff. For small, well-understood changes |
-
 ## Pipeline
 
 ```mermaid
@@ -56,6 +46,16 @@ flowchart TD
 Diagram shows `heavy`. `medium` skips Fence. `light` skips Fence, Forger, Wheelman/Muscle, and Cleaner: you implement the blueprint directly and do a manual crit review of the diff instead. See [Modes](#modes).
 
 Worktree teardown is deliberately manual, not part of the pipeline above. Once a heist's PR merges, reclaim its worktree with `heist worktree remove <slug>`, or reclaim all merged worktrees at once with `heist worktree cleanup [--dry-run]`. Cleaner stops at PR-open.
+
+## Modes
+
+Every heist runs in one of three modes, chosen up front (or you're asked if none is specified). Fixed for that heist's lifetime.
+
+| Mode | Flow |
+|---|---|
+| `heavy` (default) | Everything above: Fence review, Forger/score.md, Wheelman/Muscle, Cleaner |
+| `medium` | Same as heavy, minus Fence review |
+| `light` | Plan + human review only, then you implement directly and do a manual crit pass on the diff. For small, well-understood changes |
 
 ## Terms explanation
 
