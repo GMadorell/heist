@@ -98,6 +98,12 @@ enum WorktreeCommands {
         /// Heist slug (directory name under .heist/)
         slug: String,
     },
+    /// Remove every heist-owned worktree whose branch is already merged
+    Cleanup {
+        /// Preview without removing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -283,6 +289,32 @@ fn run_worktree(
                 }
                 Err(app::worktree::RemoveError::Save(e)) => {
                     present::state_save_failed(&slug, &e);
+                    ExitCode::from(&e)
+                }
+            }
+        }
+        WorktreeCommands::Cleanup { dry_run } => {
+            match app::worktree::cleanup(repo_root, state_repo, git, fs, clock, dry_run) {
+                Ok(outcomes) => {
+                    let mut any_failed = false;
+                    for outcome in &outcomes {
+                        if let app::worktree::CleanupOutcome::Failed(..) = outcome {
+                            any_failed = true;
+                        }
+                        present::cleanup_outcome(outcome);
+                    }
+                    if any_failed {
+                        ExitCode::Git
+                    } else {
+                        ExitCode::Success
+                    }
+                }
+                Err(app::worktree::CleanupError::Fs(e)) => {
+                    present::error(e);
+                    ExitCode::Internal
+                }
+                Err(app::worktree::CleanupError::Git(e)) => {
+                    present::error(&e);
                     ExitCode::from(&e)
                 }
             }

@@ -1,4 +1,5 @@
 use crate::app::list::ListRow;
+use crate::app::worktree::CleanupOutcome;
 use crate::domain::state::State;
 use std::fmt::Display;
 
@@ -87,4 +88,13 @@ pub fn resume_summary(state: &State) {
     println!("stage: {}", state.stage.as_str());
     println!("next_step: {}", next_step);
     println!("worktree: {}", worktree);
+}
+
+pub fn cleanup_outcome(outcome: &CleanupOutcome) {
+    match outcome {
+        CleanupOutcome::Removed(slug) => println!("removed {}", slug),
+        CleanupOutcome::Skipped(slug) => println!("skipped {} (unmerged)", slug),
+        CleanupOutcome::WouldRemove(slug) => println!("would remove {}", slug),
+        CleanupOutcome::Failed(slug, reason) => println!("failed {}: {}", slug, reason),
+    }
 }

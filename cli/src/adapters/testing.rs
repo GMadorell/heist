@@ -236,7 +236,9 @@ impl GitRepository for FakeGit {
     }
 
     fn remove_worktree(&self, _repo_root: &Path, path: &Path) -> Result<(), GitError> {
-        self.removed_worktree_paths.borrow_mut().push(path.to_path_buf());
+        self.removed_worktree_paths
+            .borrow_mut()
+            .push(path.to_path_buf());
         if let Some(err) = &self.remove_error {
             return Err(err.clone());
         }
@@ -244,7 +246,9 @@ impl GitRepository for FakeGit {
     }
 
     fn delete_branch(&self, _repo_root: &Path, branch: &str) -> Result<(), GitError> {
-        self.deleted_branch_names.borrow_mut().push(branch.to_string());
+        self.deleted_branch_names
+            .borrow_mut()
+            .push(branch.to_string());
         if let Some(err) = &self.delete_error {
             return Err(err.clone());
         }

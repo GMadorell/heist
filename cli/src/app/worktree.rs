@@ -112,8 +112,8 @@ pub fn remove(
     state_repo.save(slug, &state).map_err(RemoveError::Save)
 }
 
-use crate::domain::worktree::HeistWorktree;
 use crate::domain::value::SlugValue;
+use crate::domain::worktree::HeistWorktree;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CleanupOutcome {
@@ -159,7 +159,9 @@ pub fn cleanup(
 
     let mut outcomes = Vec::new();
     for info in infos {
-        let Some(hw) = HeistWorktree::try_from_parts(&info.path, info.branch.as_deref(), &canonical_repo_root) else {
+        let Some(hw) =
+            HeistWorktree::try_from_parts(&info.path, info.branch.as_deref(), &canonical_repo_root)
+        else {
             continue;
         };
 
@@ -259,7 +261,14 @@ mod tests {
                 message: "cannot find remote ref origin/main".into(),
             });
 
-        let result = cleanup(Path::new("."), &repo, &git, &FakeWorktreeFs, &fixed_clock(), false);
+        let result = cleanup(
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            false,
+        );
 
         assert!(matches!(result, Err(CleanupError::Git(_))));
     }
@@ -269,7 +278,11 @@ mod tests {
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new()
             .with_default_branch("main")
-            .with_worktree_info("scratch", "/repo/.worktrees/scratch", Some("some-other-branch"));
+            .with_worktree_info(
+                "scratch",
+                "/repo/.worktrees/scratch",
+                Some("some-other-branch"),
+            );
 
         let outcomes = cleanup(
             Path::new("/repo"),
@@ -304,7 +317,9 @@ mod tests {
 
         assert_eq!(
             outcomes,
-            vec![CleanupOutcome::Skipped(SlugValue::parse("foo").expect("valid slug"))]
+            vec![CleanupOutcome::Skipped(
+                SlugValue::parse("foo").expect("valid slug")
+            )]
         );
         assert!(git.removed_worktree_paths().is_empty());
         assert!(git.deleted_branch_names().is_empty());
@@ -330,7 +345,9 @@ mod tests {
 
         assert_eq!(
             outcomes,
-            vec![CleanupOutcome::Removed(SlugValue::parse("foo").expect("valid slug"))]
+            vec![CleanupOutcome::Removed(
+                SlugValue::parse("foo").expect("valid slug")
+            )]
         );
         assert_eq!(
             git.removed_worktree_paths(),
@@ -359,7 +376,9 @@ mod tests {
 
         assert_eq!(
             outcomes,
-            vec![CleanupOutcome::WouldRemove(SlugValue::parse("foo").expect("valid slug"))]
+            vec![CleanupOutcome::WouldRemove(
+                SlugValue::parse("foo").expect("valid slug")
+            )]
         );
         assert!(git.removed_worktree_paths().is_empty());
         assert!(git.deleted_branch_names().is_empty());
@@ -369,8 +388,11 @@ mod tests {
     fn cleanup_marks_existing_state_done() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new("foo", DateValue::parse("today", "2025-01-01").expect("valid date"))
-                .expect("valid slug"),
+            State::new(
+                "foo",
+                DateValue::parse("today", "2025-01-01").expect("valid date"),
+            )
+            .expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_default_branch("main")
@@ -389,11 +411,16 @@ mod tests {
 
         assert_eq!(
             outcomes,
-            vec![CleanupOutcome::Removed(SlugValue::parse("foo").expect("valid slug"))]
+            vec![CleanupOutcome::Removed(
+                SlugValue::parse("foo").expect("valid slug")
+            )]
         );
         let state = repo.get("foo").expect("state should still exist");
         assert_eq!(state.stage, Stage::Done);
-        assert_eq!(state.updated, DateValue::parse("today", "2026-01-01").expect("valid date"));
+        assert_eq!(
+            state.updated,
+            DateValue::parse("today", "2026-01-01").expect("valid date")
+        );
     }
 
     #[test]
@@ -416,7 +443,9 @@ mod tests {
 
         assert_eq!(
             outcomes,
-            vec![CleanupOutcome::Removed(SlugValue::parse("foo").expect("valid slug"))]
+            vec![CleanupOutcome::Removed(
+                SlugValue::parse("foo").expect("valid slug")
+            )]
         );
         assert_eq!(repo.get("foo"), None);
     }
@@ -425,8 +454,11 @@ mod tests {
     fn cleanup_reports_failed_when_remove_worktree_fails() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new("foo", DateValue::parse("today", "2025-01-01").expect("valid date"))
-                .expect("valid slug"),
+            State::new(
+                "foo",
+                DateValue::parse("today", "2025-01-01").expect("valid date"),
+            )
+            .expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_default_branch("main")
@@ -462,8 +494,11 @@ mod tests {
     fn cleanup_reports_orphaned_branch_when_delete_fails() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new("foo", DateValue::parse("today", "2025-01-01").expect("valid date"))
-                .expect("valid slug"),
+            State::new(
+                "foo",
+                DateValue::parse("today", "2025-01-01").expect("valid date"),
+            )
+            .expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_default_branch("main")

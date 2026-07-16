@@ -242,7 +242,9 @@ fn list_worktrees_reports_name_path_and_branch() {
     assert_eq!(infos[0].name, "foo");
     assert_eq!(
         infos[0].path,
-        worktree_path.canonicalize().expect("worktree path should exist")
+        worktree_path
+            .canonicalize()
+            .expect("worktree path should exist")
     );
     assert_eq!(infos[0].branch.as_deref(), Some("heist/foo"));
 }
