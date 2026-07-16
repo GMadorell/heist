@@ -24,6 +24,8 @@ Run `heist validation check <repo-root-absolute-path>`.
 
 ### 2. Planning: relay loop with the Mastermind
 
+#### 2a. No plan detected: relay loop with the Mastermind
+
 1. Spawn `heist:slugger` (foreground, one-shot) with the raw change description. Parse the returned slug.
 2. Run `heist state init <slug>`.
 3. Run `heist state set <slug> mode <mode>`.
@@ -38,6 +40,18 @@ Run `heist validation check <repo-root-absolute-path>`.
 8. heavy: continue to fence review below. medium/light: continue to human review below (stage already set).
 
 Resuming the Mastermind after turn 1: `SendMessage` to the still-alive subagent, if same session. After a session restart, spawn a fresh `heist:mastermind` with `blueprint.md`'s current content plus what needs applying — it doesn't need the old transcript.
+
+#### 2b. Plan detected: one-shot import with the Mastermind
+
+1. Run `heist state init <slug>` using the slug SKILL.md already derived and confirmed. If it fails because the slug directory already exists: ask `heist:slugger` for an alternative slug (or append a numeric suffix yourself) and retry once. If it still collides, surface this to the human and ask them for a slug, then retry.
+2. Run `heist state set <slug> mode <mode>`.
+3. Run `heist worktree add <slug>`.
+4. Run `heist state set <slug> stage planning`.
+5. Spawn `heist:mastermind` (foreground) in import mode with: the absolute path(s) of every source-set file, the prose (if any), the slug, the worktree absolute path, an explicit `cd <worktree-path>` instruction, and an explicit instruction to use its import mode (see "Import mode" in `mastermind.md`) — no interview.
+6. The Mastermind replies once with `INTERVIEW_COMPLETE` — it has written `.heist/<slug>/blueprint.md` in one shot, reusing this sentinel even though there was no interview. Run `heist state set <slug> stage fence_review` (heavy) or `stage human_review` (medium/light). Show the human the summary (including any gaps or stale/false plan assertions the Mastermind flagged) and the blueprint path. Keep the Mastermind subagent alive.
+7. heavy: continue to fence review below. medium/light: continue to human review below (stage already set).
+
+Session restart while `stage` is `planning` in plan mode: the plan file paths and prose are not persisted in state, so resume cannot re-run the import. If `.heist/<slug>/blueprint.md` already exists, resume by spawning a fresh `heist:mastermind` with its current content (same as 2a's resume note). If it doesn't exist yet, tell the human the import didn't finish and ask them to re-invoke `/heist:heist` with the same plan file(s).
 
 ### 3. Fence review
 
