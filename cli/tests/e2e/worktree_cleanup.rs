@@ -338,3 +338,44 @@ fn continues_past_one_failure_and_exits_git_error() {
         "clean merged worktree should be removed"
     );
 }
+
+#[test]
+fn reclaims_orphan_heist_owned_worktree_without_state() {
+    let (main_temp, _bare_temp, worktree_path) = setup_repo_with_worktree("my-slug");
+    let main_repo = main_temp.path();
+
+    fs::write(worktree_path.join("feature.txt"), "feature work")
+        .expect("failed to write feature.txt");
+    run_git(&worktree_path, &["add", "."]);
+    run_git(&worktree_path, &["commit", "-q", "-m", "add feature"]);
+    run_git(&worktree_path, &["push", "-u", "origin", "heist/my-slug"]);
+    run_git(main_repo, &["checkout", "main"]);
+    run_git(main_repo, &["merge", "--ff-only", "heist/my-slug"]);
+    run_git(main_repo, &["push", "origin", "main"]);
+
+    // Simulate a state directory that was deleted/never existed for this
+    // worktree, e.g. from a manually-cleaned .heist/.
+    fs::remove_dir_all(main_repo.join(".heist/my-slug")).expect("failed to remove state dir");
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(main_repo)
+        .arg("worktree")
+        .arg("cleanup")
+        .output()
+        .expect("failed to run worktree cleanup");
+
+    assert!(
+        output.status.success(),
+        "cleanup should succeed for an orphan worktree, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "removed my-slug"
+    );
+    assert!(
+        !worktree_path.exists(),
+        ".worktrees/my-slug should be removed"
+    );
+}
