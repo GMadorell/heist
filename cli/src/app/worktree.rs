@@ -420,4 +420,41 @@ mod tests {
         );
         assert_eq!(repo.get("foo"), None);
     }
+
+    #[test]
+    fn cleanup_reports_failed_when_remove_worktree_fails() {
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new("foo", DateValue::parse("today", "2025-01-01").expect("valid date"))
+                .expect("valid slug"),
+        );
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_merged_branch("heist/foo")
+            .with_worktree_info("foo", "/repo/.worktrees/foo", Some("heist/foo"))
+            .failing_remove(GitError::WorktreeRemove {
+                message: "worktree is dirty".into(),
+            });
+
+        let outcomes = cleanup(
+            Path::new("/repo"),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            false,
+        )
+        .expect("cleanup should surface per-item failures, not error out");
+
+        match &outcomes[..] {
+            [CleanupOutcome::Failed(slug, reason)] => {
+                assert_eq!(slug.as_ref(), "foo");
+                assert!(reason.contains("worktree is dirty"));
+            }
+            other => panic!("expected a single Failed outcome, got {:?}", other),
+        }
+        assert!(git.deleted_branch_names().is_empty());
+        let state = repo.get("foo").expect("state should still exist");
+        assert_eq!(state.stage, Stage::Casing);
+    }
 }
