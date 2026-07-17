@@ -58,9 +58,7 @@ pub trait GitRepository {
     ) -> Result<Vec<PathBuf>, GitError>;
 
     /// Reads `path` as it exists in `rev`'s tree, straight from the object
-    /// database rather than the working directory — correct regardless of
-    /// which worktree (if any) `repo_root` has checked out. `Ok(None)` for a
-    /// missing path or non-UTF-8 (binary) content; not an error case.
+    /// database rather than the working directory.
     fn read_file_at(
         &self,
         repo_root: &Path,
