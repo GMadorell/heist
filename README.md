@@ -62,7 +62,7 @@ Every heist runs in one of three modes, chosen up front (or you're asked if none
 | Heist term | Real concept |
 |---|---|
 | Slugger | Names the job: picks the short slug it's tracked under |
-| Mastermind | Plans the job: interviews you and writes the blueprint before anyone lifts a finger |
+| Mastermind | Plans the job: make sure the blueprint is established, either interviewing you or using the information you give him |
 | Fence | Fences the plan before you fence the goods: reads the blueprint and tries to poke holes in it |
 | Forger | Forges the paperwork: turns the approved blueprint into the score, step by step |
 | Wheelman | Drives the job: runs the crew through the worktree from start to finish |
@@ -93,6 +93,8 @@ Then, inside any project:
 ```
 /heist:heist <describe the change you want>
 ```
+
+You can also point it at an existing plan file instead of describing the change: `/heist:heist path/to/plan.md`. Heist detects the file, confirms with you, then works with that plan as the baseline.
 
 Note: plugin skills are always namespaced (`/heist:heist`, `/heist:casing`), there's no unprefixed shorthand. Worktree and state management is handled by the `heist` binary.
 

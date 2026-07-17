@@ -20,4 +20,6 @@ Once a slug's `stage`/`mode` are known, route by the table below and jump into t
 
 `fence_review`, `forging`, `safehouse` don't occur in `light` mode. `implementing`/`cleaning` are shared stage names — `mode` disambiguates which tail file to read.
 
+If `stage` is `planning` and this heist was started from a plan file (plan-based heist): plan file paths and prose aren't persisted in state. When `pipeline.md` step 2b tells you to resume, if `.heist/<slug>/blueprint.md` already exists, resume normally by respawning `heist:mastermind` with its current content. If it doesn't exist yet, the import never finished — tell the human to re-invoke `/heist:heist` with the same plan file(s) instead of resuming.
+
 Read only the file the table points to before continuing.

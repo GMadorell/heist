@@ -22,22 +22,33 @@ Run `heist validation check <repo-root-absolute-path>`.
 - exit 2: invoke the `heist:casing` skill yourself, then continue.
 - any other nonzero exit (e.g. 4): halt, surface the raw stderr to the human.
 
-### 2. Planning: relay loop with the Mastermind
+### 2. Planning
 
-1. Spawn `heist:slugger` (foreground, one-shot) with the raw change description. Parse the returned slug.
+1. Spawn `heist:slugger` (foreground, one-shot) with the info you have on the input. Parse the returned slug.
 2. Run `heist state init <slug>`.
 3. Run `heist state set <slug> mode <mode>`.
 4. Run `heist worktree add <slug>`.
 5. Run `heist state set <slug> stage planning`.
-6. Spawn `heist:mastermind` (foreground) with: raw description, slug, worktree absolute path, explicit `cd <worktree-path>` instruction.
-7. Relay loop — each Mastermind reply is a structured question or `INTERVIEW_COMPLETE`.
+
+#### 2a. No plan detected: relay loop with the Mastermind
+
+1. Spawn `heist:mastermind` (foreground) with: raw description, slug, worktree absolute path, explicit `cd <worktree-path>` instruction.
+2. Relay loop — each Mastermind reply is a structured question or `INTERVIEW_COMPLETE`.
    - Every structured question gets an `AskUserQuestion` call. Never answer on the human's behalf.
    - Structured question has `QUESTION:`, `OPTIONS:`, `RECOMMENDATION:` lines. Map to `AskUserQuestion`: `question` = QUESTION text; `header` = short invented label; `options` = OPTIONS reordered with the recommended one first, `(Recommended)` appended to its label. Relay the human's answer verbatim via `SendMessage`, wait for the next reply. Loop.
    - `INTERVIEW_COMPLETE`: the Mastermind has written `.heist/<slug>/blueprint.md`. Run `heist state set <slug> stage fence_review` (heavy) or `stage human_review` (medium/light). Show the human the summary and blueprint path. Keep the Mastermind subagent alive.
    - Reply matches neither shape: remind it of the expected format once; if it repeats, stop and show the human the raw reply.
-8. heavy: continue to fence review below. medium/light: continue to human review below (stage already set).
+3. heavy: continue to fence review below. medium/light: continue to human review below (stage already set).
 
 Resuming the Mastermind after turn 1: `SendMessage` to the still-alive subagent, if same session. After a session restart, spawn a fresh `heist:mastermind` with `blueprint.md`'s current content plus what needs applying — it doesn't need the old transcript.
+
+#### 2b. Plan detected: one-shot import with the Mastermind
+
+1. Spawn `heist:mastermind` (foreground) in import mode with: the absolute path(s) of every source-set file, the prose (if any), the slug, the worktree absolute path, an explicit `cd <worktree-path>` instruction, and an explicit instruction to use its import mode.
+2. The Mastermind replies once with `INTERVIEW_COMPLETE` — it has written `.heist/<slug>/blueprint.md`. Run `heist state set <slug> stage fence_review` (heavy) or `stage human_review` (medium/light). Show the human the summary (including any gaps or stale/false plan assertions the Mastermind flagged) and the blueprint path. Keep the Mastermind subagent alive.
+3. heavy: continue to fence review below. medium/light: continue to human review below (stage already set).
+
+Session restart while `stage` is `planning` for a plan-based heist: the plan file paths and prose are not persisted in state, so resume cannot re-run the import. If `.heist/<slug>/blueprint.md` already exists, resume by spawning a fresh `heist:mastermind` with its current content (same as 2a's resume note). If it doesn't exist yet, tell the human the import didn't finish and ask them to re-invoke `/heist:heist` with the same plan file(s).
 
 ### 3. Fence review
 
