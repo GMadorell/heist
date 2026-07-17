@@ -162,3 +162,10 @@ pub fn abandoned_base(base_ref: &str) {
 pub fn base_resolve_failed(base_ref: &str, diagnostic: &str) {
     eprintln!("cannot resolve base {} ({})", base_ref, diagnostic);
 }
+
+pub fn abandoned_base_sync_refused(base_ref: &str) {
+    eprintln!(
+        "refusing to sync: base {} has its PR closed unmerged; a human must decide whether to drop, salvage, or reopen it",
+        base_ref
+    );
+}

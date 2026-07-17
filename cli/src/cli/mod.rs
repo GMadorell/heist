@@ -60,6 +60,11 @@ enum Commands {
         /// Heist slug (directory name under .heist/)
         slug: String,
     },
+    /// Rebase or merge onto the recorded base, per `heist base`'s resolution; the only place this heist ever runs `git rebase`/`git merge`
+    Sync {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -160,6 +165,7 @@ pub fn run(cli: Cli) -> ExitCode {
         Commands::Resume { slug } => run_resume(&slug, &state_repo),
         Commands::List => run_list(&state_repo),
         Commands::Base { slug } => run_base(&slug, repo_root, &state_repo, &git),
+        Commands::Sync { slug } => run_sync(&slug, repo_root, &state_repo, &git),
     }
 }
 
@@ -510,6 +516,43 @@ fn run_base(
     }
 }
 
+fn run_sync(
+    slug: &str,
+    repo_root: &Path,
+    state_repo: &dyn StateRepository,
+    git: &dyn crate::ports::git::GitRepository,
+) -> ExitCode {
+    match app::sync::sync(repo_root, state_repo, git, slug) {
+        Ok(()) => ExitCode::Success,
+        Err(app::sync::SyncError::Abandoned { base_ref }) => {
+            present::abandoned_base_sync_refused(&base_ref);
+            ExitCode::Precondition
+        }
+        Err(app::sync::SyncError::Git(e)) => {
+            present::error(&e);
+            ExitCode::from(&e)
+        }
+        Err(app::sync::SyncError::Resolve(app::base::ResolveError::NoState)) => {
+            present::no_state_for_review(slug);
+            ExitCode::Precondition
+        }
+        Err(app::sync::SyncError::Resolve(app::base::ResolveError::Load(e))) => {
+            present::state_load_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+        Err(app::sync::SyncError::Resolve(app::base::ResolveError::RefMissingWithOpenPr {
+            base_ref,
+        })) => {
+            present::base_resolve_failed(&base_ref, "ref does not exist but PR is still open");
+            ExitCode::Precondition
+        }
+        Err(app::sync::SyncError::Resolve(app::base::ResolveError::Ambiguous { base_ref })) => {
+            present::base_resolve_failed(&base_ref, "cannot determine PR state");
+            ExitCode::Precondition
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -848,6 +891,22 @@ mod tests {
         let git = FakeGit::new().with_pr_state("heist/piece-01", PrState::ClosedUnmerged);
 
         let code = run_base("foo", Path::new("."), &repo, &git);
+
+        assert_eq!(code, ExitCode::Precondition);
+    }
+
+    #[test]
+    fn sync_command_refuses_abandoned_base_with_precondition_exit_code() {
+        use crate::domain::value::NonBlankValue;
+        use crate::ports::git::PrState;
+
+        let mut state = State::new("foo", fixed_date()).expect("valid slug");
+        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+
+        let repo = InMemoryStateRepository::new().with_state("foo", state);
+        let git = FakeGit::new().with_pr_state("heist/piece-01", PrState::ClosedUnmerged);
+
+        let code = run_sync("foo", Path::new("."), &repo, &git);
 
         assert_eq!(code, ExitCode::Precondition);
     }
