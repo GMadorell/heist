@@ -35,5 +35,5 @@ File paths found -> if any empty or unreadable, halt. Show diagnostic to user. I
 
 1. Canonicalize filepaths to absolute paths.
 2. Ask the human via `AskUserQuestion`: list the source-set file(s) with absolute path and size, the total combined size, the mode; ask whether to proceed as a plan-based heist.
-   - Declined: fall back to the normal description path — read `pipeline.md` from step 1, carrying `<mode>` and the prose (if any) as the raw description. If there was no prose, ask the human for a description via `AskUserQuestion` first.
+   - Declined: fall back to the normal description path — read `pipeline.md` from step 1, carrying `<mode>`, the prose (if any) and the files, which in this case are used as context. If there was no description or the files didn't have context, ask the human for a description via `AskUserQuestion` first.
    - Confirmed: read `pipeline.md` (in this skill's directory) and run it from step 1, carrying `<mode>`, "plan-based heist", the source set (absolute paths), and the prose through.
