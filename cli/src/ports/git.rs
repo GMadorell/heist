@@ -50,6 +50,16 @@ pub trait GitRepository {
     /// `is_branch_merged`'s requirement of a matching local ref would be a
     /// stricter (and wrong) precondition.
     fn remote_default_resolves(&self, repo_root: &Path, main_branch: &str) -> Result<(), GitError>;
+
+    /// Changed paths between the merge-base of `origin/<base_branch>` and
+    /// `head_ref`, and `head_ref` itself (three-dot semantics). Used by
+    /// `review select` to classify the diff for reviewer-lane selection.
+    fn changed_paths(
+        &self,
+        repo_root: &Path,
+        base_branch: &str,
+        head_ref: &str,
+    ) -> Result<Vec<PathBuf>, GitError>;
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +69,7 @@ pub enum GitError {
     BranchDelete { message: String },
     MergeCheck { message: String },
     CommandFailed { command: String, message: String },
+    Diff { message: String },
 }
 
 impl fmt::Display for GitError {
@@ -75,6 +86,7 @@ impl fmt::Display for GitError {
             GitError::CommandFailed { command, message } => {
                 write!(f, "failed to run {}: {}", command, message)
             }
+            GitError::Diff { message } => write!(f, "failed to compute changed paths: {}", message),
         }
     }
 }

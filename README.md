@@ -68,7 +68,7 @@ Every heist runs in one of three modes, chosen up front (or you're asked if none
 | Wheelman | Drives the job: runs the crew through the worktree from start to finish |
 | Muscle | Does the lifting: one step, no improvising, no thinking beyond what the score says |
 | Cleaner | Cleans up after: checks the work, scrubs for risk, drives the getaway car (the PR) |
-| Review crew | Cleaner's four lookouts (`review-intent`, `review-simplicity`, `review-quality`, `review-coverage`), each watching a different angle in parallel |
+| Review crew | Cleaner's lookouts, spawned per-diff by `heist review select` (`review-intent` always; `review-simplicity`/`review-quality`/`review-coverage` when the diff has reviewable source; `review-rust` when it touches Rust), each watching a different angle in parallel |
 | Casing | Casing the joint before the job: one-time repo scouting, writes `validation.md` |
 | Blueprint | The plan for the job: `blueprint.md`, the design doc |
 | Score | The job's step-by-step rundown: `score.md`, the ordered TDD work doc |
@@ -124,4 +124,5 @@ Docs live in `.heist/<slug>/` inside your project. Gitignoring those files is re
 | review-simplicity | Sonnet | Flags over-abstraction and unnecessary complexity |
 | review-quality | Sonnet | Reviews naming, structure, and maintainability |
 | review-coverage | Sonnet | Flags code paths without meaningful test coverage |
+| review-rust | Sonnet | Rust-idiom correctness/safety a linter won't catch; runs clippy first and defers clippy-catchable issues |
 

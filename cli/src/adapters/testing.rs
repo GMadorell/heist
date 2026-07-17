@@ -123,6 +123,8 @@ pub struct FakeGit {
     remote_default_resolve_error: Option<GitError>,
     removed_worktree_paths: RefCell<Vec<PathBuf>>,
     deleted_branch_names: RefCell<Vec<String>>,
+    changed_paths: Vec<PathBuf>,
+    changed_paths_error: Option<GitError>,
 }
 
 impl Default for FakeGit {
@@ -146,6 +148,8 @@ impl FakeGit {
             remote_default_resolve_error: None,
             removed_worktree_paths: RefCell::new(Vec::new()),
             deleted_branch_names: RefCell::new(Vec::new()),
+            changed_paths: Vec::new(),
+            changed_paths_error: None,
         }
     }
 
@@ -204,6 +208,16 @@ impl FakeGit {
     /// `cleanup` runs before sweeping worktrees.
     pub fn failing_remote_default_resolve(mut self, error: GitError) -> Self {
         self.remote_default_resolve_error = Some(error);
+        self
+    }
+
+    pub fn with_changed_paths(mut self, paths: &[&str]) -> Self {
+        self.changed_paths = paths.iter().map(PathBuf::from).collect();
+        self
+    }
+
+    pub fn failing_changed_paths(mut self, error: GitError) -> Self {
+        self.changed_paths_error = Some(error);
         self
     }
 
@@ -300,6 +314,18 @@ impl GitRepository for FakeGit {
             return Err(err.clone());
         }
         Ok(())
+    }
+
+    fn changed_paths(
+        &self,
+        _repo_root: &Path,
+        _base_branch: &str,
+        _head_ref: &str,
+    ) -> Result<Vec<PathBuf>, GitError> {
+        if let Some(err) = &self.changed_paths_error {
+            return Err(err.clone());
+        }
+        Ok(self.changed_paths.clone())
     }
 }
 
