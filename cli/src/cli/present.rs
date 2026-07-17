@@ -1,5 +1,6 @@
 use crate::app::list::ListRow;
 use crate::app::worktree::CleanupOutcome;
+use crate::domain::review::Lane;
 use crate::domain::state::State;
 use std::fmt::Display;
 
@@ -115,4 +116,28 @@ pub fn cleanup_outcome(outcome: &CleanupOutcome) {
         CleanupOutcome::WouldRemove(slug) => println!("would remove {}", slug),
         CleanupOutcome::Failed { slug, reason } => println!("failed {}: {}", slug, reason),
     }
+}
+
+pub fn lane_list(lanes: &[Lane]) {
+    for lane in lanes {
+        println!("{}", lane.as_str());
+    }
+}
+
+pub fn no_state_for_review(slug: &str) {
+    eprintln!("no state found for slug {}", slug);
+}
+
+pub fn no_branch_for_review(slug: &str) {
+    eprintln!(
+        "no branch recorded for slug {}; run `heist worktree add` first",
+        slug
+    );
+}
+
+pub fn no_remote_default_for_review(slug: &str, e: impl Display) {
+    eprintln!(
+        "cannot compute diff for slug {}: origin's default branch doesn't resolve ({}); fetch the remote or set `refs/remotes/origin/HEAD`",
+        slug, e
+    );
 }

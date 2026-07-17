@@ -45,11 +45,26 @@ pub trait GitRepository {
     fn list_worktrees(&self, repo_root: &Path) -> Result<Vec<WorktreeInfo>, GitError>;
 
     /// Checks that `origin/<main_branch>` resolves to a commit, without
-    /// requiring a local branch of the same name to exist. Used as a
-    /// pre-flight probe before a bulk merge-check sweep, where
-    /// `is_branch_merged`'s requirement of a matching local ref would be a
-    /// stricter (and wrong) precondition.
+    /// requiring a local branch of the same name to exist.
     fn remote_default_resolves(&self, repo_root: &Path, main_branch: &str) -> Result<(), GitError>;
+
+    /// Changed paths between the merge-base of `origin/<base_branch>` and
+    /// `head_ref`, and `head_ref` itself (three-dot semantics).
+    fn changed_paths(
+        &self,
+        repo_root: &Path,
+        base_branch: &str,
+        head_ref: &str,
+    ) -> Result<Vec<PathBuf>, GitError>;
+
+    /// Reads `path` as it exists in `rev`'s tree, straight from the object
+    /// database rather than the working directory.
+    fn read_file_at(
+        &self,
+        repo_root: &Path,
+        rev: &str,
+        path: &Path,
+    ) -> Result<Option<String>, GitError>;
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +74,7 @@ pub enum GitError {
     BranchDelete { message: String },
     MergeCheck { message: String },
     CommandFailed { command: String, message: String },
+    Diff { message: String },
 }
 
 impl fmt::Display for GitError {
@@ -75,6 +91,7 @@ impl fmt::Display for GitError {
             GitError::CommandFailed { command, message } => {
                 write!(f, "failed to run {}: {}", command, message)
             }
+            GitError::Diff { message } => write!(f, "failed to compute changed paths: {}", message),
         }
     }
 }

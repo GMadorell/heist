@@ -43,6 +43,8 @@ impl WorktreeFs for FakeWorktreeFs {
 
 pub struct InMemoryStateRepository {
     states: std::cell::RefCell<std::collections::HashMap<String, State>>,
+    /// Slug -> error to return from `load`
+    load_errors: std::cell::RefCell<std::collections::HashMap<String, StateError>>,
 }
 
 impl Default for InMemoryStateRepository {
@@ -55,11 +57,20 @@ impl InMemoryStateRepository {
     pub fn new() -> Self {
         InMemoryStateRepository {
             states: std::cell::RefCell::new(std::collections::HashMap::new()),
+            load_errors: std::cell::RefCell::new(std::collections::HashMap::new()),
         }
     }
 
     pub fn with_state(self, slug: &str, state: State) -> Self {
         self.states.borrow_mut().insert(slug.to_string(), state);
+        self
+    }
+
+    /// Makes `exists(slug)` true but `load(slug)` fail with `error`
+    pub fn with_load_error(self, slug: &str, error: StateError) -> Self {
+        self.load_errors
+            .borrow_mut()
+            .insert(slug.to_string(), error);
         self
     }
 
@@ -70,7 +81,7 @@ impl InMemoryStateRepository {
 
 impl StateRepository for InMemoryStateRepository {
     fn exists(&self, slug: &str) -> bool {
-        self.states.borrow().contains_key(slug)
+        self.states.borrow().contains_key(slug) || self.load_errors.borrow().contains_key(slug)
     }
 
     fn init(&self, slug: &str, state: &State) -> Result<(), StateError> {
@@ -83,6 +94,9 @@ impl StateRepository for InMemoryStateRepository {
     }
 
     fn load(&self, slug: &str) -> Result<State, StateError> {
+        if let Some(error) = self.load_errors.borrow_mut().remove(slug) {
+            return Err(error);
+        }
         self.states
             .borrow()
             .get(slug)
@@ -123,6 +137,9 @@ pub struct FakeGit {
     remote_default_resolve_error: Option<GitError>,
     removed_worktree_paths: RefCell<Vec<PathBuf>>,
     deleted_branch_names: RefCell<Vec<String>>,
+    changed_paths: Vec<PathBuf>,
+    changed_paths_error: Option<GitError>,
+    file_contents: std::collections::HashMap<PathBuf, String>,
 }
 
 impl Default for FakeGit {
@@ -146,6 +163,9 @@ impl FakeGit {
             remote_default_resolve_error: None,
             removed_worktree_paths: RefCell::new(Vec::new()),
             deleted_branch_names: RefCell::new(Vec::new()),
+            changed_paths: Vec::new(),
+            changed_paths_error: None,
+            file_contents: std::collections::HashMap::new(),
         }
     }
 
@@ -204,6 +224,22 @@ impl FakeGit {
     /// `cleanup` runs before sweeping worktrees.
     pub fn failing_remote_default_resolve(mut self, error: GitError) -> Self {
         self.remote_default_resolve_error = Some(error);
+        self
+    }
+
+    pub fn with_changed_paths(mut self, paths: &[&str]) -> Self {
+        self.changed_paths = paths.iter().map(PathBuf::from).collect();
+        self
+    }
+
+    pub fn failing_changed_paths(mut self, error: GitError) -> Self {
+        self.changed_paths_error = Some(error);
+        self
+    }
+
+    pub fn with_file_content(mut self, path: &str, content: &str) -> Self {
+        self.file_contents
+            .insert(PathBuf::from(path), content.to_string());
         self
     }
 
@@ -300,6 +336,27 @@ impl GitRepository for FakeGit {
             return Err(err.clone());
         }
         Ok(())
+    }
+
+    fn changed_paths(
+        &self,
+        _repo_root: &Path,
+        _base_branch: &str,
+        _head_ref: &str,
+    ) -> Result<Vec<PathBuf>, GitError> {
+        if let Some(err) = &self.changed_paths_error {
+            return Err(err.clone());
+        }
+        Ok(self.changed_paths.clone())
+    }
+
+    fn read_file_at(
+        &self,
+        _repo_root: &Path,
+        _rev: &str,
+        path: &Path,
+    ) -> Result<Option<String>, GitError> {
+        Ok(self.file_contents.get(path).cloned())
     }
 }
 

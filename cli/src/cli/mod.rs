@@ -43,6 +43,11 @@ enum Commands {
         #[command(subcommand)]
         command: ValidationCommands,
     },
+    /// Select the reviewer lanes for the current diff (conditional on file types touched)
+    Review {
+        #[command(subcommand)]
+        command: ReviewCommands,
+    },
     /// Print a short summary (stage, next_step, worktree) for picking a heist back up
     Resume {
         /// Heist slug (directory name under .heist/)
@@ -120,6 +125,15 @@ enum ValidationCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum ReviewCommands {
+    /// Print the reviewer lanes to run for the diff since main, one bare lane name per line
+    Select {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
+}
+
 pub fn run(cli: Cli) -> ExitCode {
     let state_repo = FileStateRepository;
     let git = RealGit;
@@ -134,6 +148,7 @@ pub fn run(cli: Cli) -> ExitCode {
             run_worktree(command, repo_root, &state_repo, &git, &fs, &clock)
         }
         Commands::Validation { command } => run_validation(command, &validation_src),
+        Commands::Review { command } => run_review(command, repo_root, &state_repo, &git),
         Commands::Resume { slug } => run_resume(&slug, &state_repo),
         Commands::List => run_list(&state_repo),
     }
@@ -359,6 +374,44 @@ fn run_validation(
                 ExitCode::from(&e)
             }
         },
+    }
+}
+
+fn run_review(
+    command: ReviewCommands,
+    repo_root: &Path,
+    state_repo: &dyn StateRepository,
+    git: &dyn crate::ports::git::GitRepository,
+) -> ExitCode {
+    match command {
+        ReviewCommands::Select { slug } => {
+            match app::review::select(repo_root, state_repo, git, &slug) {
+                Ok(lanes) => {
+                    present::lane_list(&lanes);
+                    ExitCode::Success
+                }
+                Err(app::review::SelectError::NoState) => {
+                    present::no_state_for_review(&slug);
+                    ExitCode::Precondition
+                }
+                Err(app::review::SelectError::NoBranch) => {
+                    present::no_branch_for_review(&slug);
+                    ExitCode::Precondition
+                }
+                Err(app::review::SelectError::Load(e)) => {
+                    present::state_load_failed(&slug, &e);
+                    ExitCode::from(&e)
+                }
+                Err(app::review::SelectError::NoRemoteDefault(e)) => {
+                    present::no_remote_default_for_review(&slug, &e);
+                    ExitCode::Precondition
+                }
+                Err(app::review::SelectError::Git(e)) => {
+                    present::error(&e);
+                    ExitCode::from(&e)
+                }
+            }
+        }
     }
 }
 

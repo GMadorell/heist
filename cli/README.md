@@ -54,6 +54,10 @@ Requires an absolute path; a relative or out-of-project path exits 4. Prints `ok
 
 Requires absolute paths; a relative or out-of-project path exits 4. For each path, merges the nearest `validation.md` with the root `validation.md` (leaf sections override root sections `Build`/`Lint`/`Test`; `Docs`/`PR conventions`/`Notes` come from root). Prints one block per distinct scope, deduped.
 
+### `review select <slug>`
+
+Prints the reviewer lanes to run for the diff since the default branch, one bare lane name per line (e.g. `intent`, `coverage`, `quality`, `simplicity`, `rust`). Computes changed paths and classifies each by file type; `intent` always runs, `coverage` runs iff a programming file changed, `quality`/`simplicity` run iff any programming/prose/markup file changed, `rust` runs iff a Rust file changed. Exits 2 if state/branch is missing, or if `origin/<default>` doesn't resolve; exits 3 on any other git failure.
+
 ### `resume <slug>`
 
 Prints a short summary (`slug`, `stage`, `next_step`, `worktree`) for picking a heist back up.

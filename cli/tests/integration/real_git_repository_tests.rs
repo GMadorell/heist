@@ -1,7 +1,7 @@
 use heist_cli::adapters::real_git::RealGit;
 use heist_cli::ports::git::{GitError, GitRepository, MergeCheck};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
 
@@ -30,7 +30,11 @@ fn init_repo_with_commit(dir: &Path) {
 }
 
 fn commit_file(dir: &Path, name: &str, content: &str) {
-    fs::write(dir.join(name), content).expect("failed to write file");
+    let path = dir.join(name);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("failed to create parent directories");
+    }
+    fs::write(path, content).expect("failed to write file");
     run_git(dir, &["add", "."]);
     run_git(dir, &["commit", "-q", "-m", name]);
 }
@@ -255,4 +259,81 @@ fn list_worktrees_reports_path_and_branch() {
             .expect("worktree path should exist")
     );
     assert_eq!(infos[0].branch.as_deref(), Some("heist/foo"));
+}
+
+#[test]
+fn changed_paths_lists_files_changed_since_merge_base() {
+    let origin_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(origin_dir.path());
+
+    run_git(repo_dir.path(), &["init", "-q", "-b", "main"]);
+    run_git(
+        repo_dir.path(),
+        &[
+            "remote",
+            "add",
+            "origin",
+            origin_dir.path().to_string_lossy().as_ref(),
+        ],
+    );
+    run_git(repo_dir.path(), &["fetch", "-q", "origin"]);
+    run_git(
+        repo_dir.path(),
+        &["checkout", "-q", "-b", "main", "origin/main"],
+    );
+    run_git(repo_dir.path(), &["checkout", "-q", "-b", "feature"]);
+    commit_file(repo_dir.path(), "src/lib.rs", "fn main() {}");
+    commit_file(repo_dir.path(), "README.md", "hello\nmore");
+
+    let paths = RealGit
+        .changed_paths(repo_dir.path(), "main", "feature")
+        .expect("changed_paths should succeed");
+
+    assert_eq!(
+        paths,
+        vec![PathBuf::from("README.md"), PathBuf::from("src/lib.rs")]
+    );
+}
+
+#[test]
+fn changed_paths_errors_on_unresolvable_base() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(temp_dir.path());
+
+    let result = RealGit.changed_paths(temp_dir.path(), "no-such-remote-branch", "HEAD");
+    assert!(result.is_err());
+}
+
+#[test]
+fn changed_paths_includes_deleted_files_via_old_file_path() {
+    let origin_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(origin_dir.path());
+    commit_file(origin_dir.path(), "doomed.rs", "fn gone() {}");
+
+    run_git(repo_dir.path(), &["init", "-q", "-b", "main"]);
+    run_git(
+        repo_dir.path(),
+        &[
+            "remote",
+            "add",
+            "origin",
+            origin_dir.path().to_string_lossy().as_ref(),
+        ],
+    );
+    run_git(repo_dir.path(), &["fetch", "-q", "origin"]);
+    run_git(
+        repo_dir.path(),
+        &["checkout", "-q", "-b", "main", "origin/main"],
+    );
+    run_git(repo_dir.path(), &["checkout", "-q", "-b", "feature"]);
+    run_git(repo_dir.path(), &["rm", "-q", "doomed.rs"]);
+    run_git(repo_dir.path(), &["commit", "-q", "-m", "remove doomed.rs"]);
+
+    let paths = RealGit
+        .changed_paths(repo_dir.path(), "main", "feature")
+        .expect("changed_paths should succeed");
+
+    assert_eq!(paths, vec![PathBuf::from("doomed.rs")]);
 }

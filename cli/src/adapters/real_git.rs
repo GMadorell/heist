@@ -1,5 +1,5 @@
 use crate::ports::git::{GitError, GitRepository, MergeCheck, WorktreeInfo};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct RealGit;
 
@@ -194,6 +194,69 @@ impl GitRepository for RealGit {
         };
         list().map_err(|e| GitError::CommandFailed {
             command: "git worktree list".to_string(),
+            message: e.to_string(),
+        })
+    }
+
+    fn changed_paths(
+        &self,
+        repo_root: &Path,
+        base_branch: &str,
+        head_ref: &str,
+    ) -> Result<Vec<PathBuf>, GitError> {
+        let diff_paths = || -> Result<Vec<PathBuf>, git2::Error> {
+            let repo = git2::Repository::open(repo_root)?;
+            let base_oid = repo
+                .revparse_single(&format!("origin/{}", base_branch))?
+                .id();
+            let head_oid = repo.revparse_single(head_ref)?.id();
+            let merge_base_oid = repo.merge_base(base_oid, head_oid)?;
+            let base_tree = repo.find_commit(merge_base_oid)?.tree()?;
+            let head_tree = repo.find_commit(head_oid)?.tree()?;
+            let diff = repo.diff_tree_to_tree(Some(&base_tree), Some(&head_tree), None)?;
+
+            let mut paths = Vec::new();
+            diff.foreach(
+                &mut |delta, _| {
+                    if let Some(path) = delta.new_file().path().or_else(|| delta.old_file().path())
+                    {
+                        paths.push(path.to_path_buf());
+                    }
+                    true
+                },
+                None,
+                None,
+                None,
+            )?;
+
+            paths.sort();
+            paths.dedup();
+            Ok(paths)
+        };
+        diff_paths().map_err(|e| GitError::Diff {
+            message: e.to_string(),
+        })
+    }
+
+    fn read_file_at(
+        &self,
+        repo_root: &Path,
+        rev: &str,
+        path: &Path,
+    ) -> Result<Option<String>, GitError> {
+        let read = || -> Result<Option<String>, git2::Error> {
+            let repo = git2::Repository::open(repo_root)?;
+            let commit_oid = repo.revparse_single(rev)?.id();
+            let tree = repo.find_commit(commit_oid)?.tree()?;
+            let Ok(entry) = tree.get_path(path) else {
+                return Ok(None);
+            };
+            let Ok(blob) = entry.to_object(&repo)?.into_blob() else {
+                return Ok(None);
+            };
+            Ok(std::str::from_utf8(blob.content()).ok().map(str::to_string))
+        };
+        read().map_err(|e| GitError::Diff {
             message: e.to_string(),
         })
     }
