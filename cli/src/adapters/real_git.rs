@@ -350,6 +350,44 @@ impl GitRepository for RealGit {
             Ok(PrState::ClosedUnmerged)
         }
     }
+
+    fn rebase(&self, repo_root: &Path, onto: &str) -> Result<(), GitError> {
+        let output = std::process::Command::new("git")
+            .current_dir(repo_root)
+            .args(["rebase", onto])
+            .output()
+            .map_err(|e| GitError::CommandFailed {
+                command: "git rebase".to_string(),
+                message: e.to_string(),
+            })?;
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        Err(GitError::Rebase {
+            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        })
+    }
+
+    fn merge(&self, repo_root: &Path, other_ref: &str) -> Result<(), GitError> {
+        let output = std::process::Command::new("git")
+            .current_dir(repo_root)
+            .args(["merge", "--no-edit", other_ref])
+            .output()
+            .map_err(|e| GitError::CommandFailed {
+                command: "git merge".to_string(),
+                message: e.to_string(),
+            })?;
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        Err(GitError::Merge {
+            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        })
+    }
 }
 
 fn is_pr_merged_on_github(repo_root: &Path, branch: &str) -> Result<bool, String> {

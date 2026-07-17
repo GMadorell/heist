@@ -89,6 +89,10 @@ pub trait GitRepository {
 
     /// Returns the state of the pull request for the given branch.
     fn pr_state(&self, repo_root: &Path, branch: &str) -> Result<PrState, GitError>;
+
+    fn rebase(&self, repo_root: &Path, onto: &str) -> Result<(), GitError>;
+
+    fn merge(&self, repo_root: &Path, other_ref: &str) -> Result<(), GitError>;
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +103,8 @@ pub enum GitError {
     MergeCheck { message: String },
     CommandFailed { command: String, message: String },
     Diff { message: String },
+    Rebase { message: String },
+    Merge { message: String },
 }
 
 impl fmt::Display for GitError {
@@ -116,6 +122,8 @@ impl fmt::Display for GitError {
                 write!(f, "failed to run {}: {}", command, message)
             }
             GitError::Diff { message } => write!(f, "failed to compute changed paths: {}", message),
+            GitError::Rebase { message } => write!(f, "rebase-failed: {}", message),
+            GitError::Merge { message } => write!(f, "merge-failed: {}", message),
         }
     }
 }
