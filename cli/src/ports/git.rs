@@ -18,6 +18,14 @@ pub enum MergeCheck {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrState {
+    None,
+    Open,
+    Merged,
+    ClosedUnmerged,
+}
+
 pub trait GitRepository {
     fn default_branch(&self, repo_root: &Path) -> String;
 
@@ -69,6 +77,18 @@ pub trait GitRepository {
         rev: &str,
         path: &Path,
     ) -> Result<Option<String>, GitError>;
+
+    /// Returns true if `ancestor_ref` is reachable from `descendant_ref`,
+    /// or if they are equal.
+    fn is_ancestor(
+        &self,
+        repo_root: &Path,
+        ancestor_ref: &str,
+        descendant_ref: &str,
+    ) -> Result<bool, GitError>;
+
+    /// Returns the state of the pull request for the given branch.
+    fn pr_state(&self, repo_root: &Path, branch: &str) -> Result<PrState, GitError>;
 }
 
 #[derive(Debug, Clone)]

@@ -2,12 +2,12 @@ use crate::domain::error::StateError;
 use crate::domain::state::State;
 use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
-use crate::ports::git::{GitError, GitRepository, MergeCheck, WorktreeInfo};
+use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
 use crate::ports::state_repository::StateRepository;
 use crate::ports::validation_source::ValidationSource;
 use crate::ports::worktree_fs::WorktreeFs;
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
@@ -142,6 +142,9 @@ pub struct FakeGit {
     changed_paths: Vec<PathBuf>,
     changed_paths_error: Option<GitError>,
     file_contents: std::collections::HashMap<PathBuf, String>,
+    ancestors: HashSet<(String, String)>,
+    pr_states: HashMap<String, PrState>,
+    is_ancestor_calls: RefCell<u32>,
 }
 
 impl Default for FakeGit {
@@ -170,6 +173,9 @@ impl FakeGit {
             changed_paths: Vec::new(),
             changed_paths_error: None,
             file_contents: std::collections::HashMap::new(),
+            ancestors: HashSet::new(),
+            pr_states: HashMap::new(),
+            is_ancestor_calls: RefCell::new(0),
         }
     }
 
@@ -250,6 +256,21 @@ impl FakeGit {
         self.file_contents
             .insert(PathBuf::from(path), content.to_string());
         self
+    }
+
+    pub fn with_ancestor(mut self, ancestor: &str, descendant: &str) -> Self {
+        self.ancestors
+            .insert((ancestor.to_string(), descendant.to_string()));
+        self
+    }
+
+    pub fn with_pr_state(mut self, branch: &str, state: PrState) -> Self {
+        self.pr_states.insert(branch.to_string(), state);
+        self
+    }
+
+    pub fn is_ancestor_call_count(&self) -> u32 {
+        *self.is_ancestor_calls.borrow()
     }
 
     pub fn removed_worktree_paths(&self) -> Vec<PathBuf> {
@@ -382,6 +403,25 @@ impl GitRepository for FakeGit {
         path: &Path,
     ) -> Result<Option<String>, GitError> {
         Ok(self.file_contents.get(path).cloned())
+    }
+
+    fn is_ancestor(
+        &self,
+        _repo_root: &Path,
+        ancestor_ref: &str,
+        descendant_ref: &str,
+    ) -> Result<bool, GitError> {
+        *self.is_ancestor_calls.borrow_mut() += 1;
+        if ancestor_ref == descendant_ref {
+            return Ok(true);
+        }
+        Ok(self
+            .ancestors
+            .contains(&(ancestor_ref.to_string(), descendant_ref.to_string())))
+    }
+
+    fn pr_state(&self, _repo_root: &Path, branch: &str) -> Result<PrState, GitError> {
+        Ok(self.pr_states.get(branch).cloned().unwrap_or(PrState::None))
     }
 }
 

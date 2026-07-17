@@ -1,4 +1,4 @@
-use crate::ports::git::{GitError, GitRepository, MergeCheck, WorktreeInfo};
+use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
 use std::path::{Path, PathBuf};
 
 pub struct RealGit;
@@ -270,6 +270,85 @@ impl GitRepository for RealGit {
         read().map_err(|e| GitError::Diff {
             message: e.to_string(),
         })
+    }
+
+    fn is_ancestor(
+        &self,
+        repo_root: &Path,
+        ancestor_ref: &str,
+        descendant_ref: &str,
+    ) -> Result<bool, GitError> {
+        let check = || -> Result<bool, git2::Error> {
+            let repo = git2::Repository::open(repo_root)?;
+            let ancestor_oid = repo.revparse_single(ancestor_ref)?.id();
+            let descendant_oid = repo.revparse_single(descendant_ref)?.id();
+
+            if ancestor_oid == descendant_oid {
+                return Ok(true);
+            }
+            repo.graph_descendant_of(descendant_oid, ancestor_oid)
+        };
+        check().map_err(|e| GitError::MergeCheck {
+            message: e.to_string(),
+        })
+    }
+
+    fn pr_state(&self, repo_root: &Path, branch: &str) -> Result<PrState, GitError> {
+        let output = std::process::Command::new("gh")
+            .current_dir(repo_root)
+            .args([
+                "pr",
+                "list",
+                "--head",
+                branch,
+                "--state",
+                "all",
+                "--json",
+                "state,mergedAt",
+                "--limit",
+                "1",
+            ])
+            .output()
+            .map_err(|e| GitError::CommandFailed {
+                command: "gh pr list".into(),
+                message: e.to_string(),
+            })?;
+
+        if !output.status.success() {
+            return Err(GitError::CommandFailed {
+                command: "gh pr list".into(),
+                message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            });
+        }
+
+        let value: serde_json::Value =
+            serde_json::from_slice(&output.stdout).map_err(|e| GitError::CommandFailed {
+                command: "gh pr list".into(),
+                message: format!("failed to parse gh output: {}", e),
+            })?;
+
+        let arr = value.as_array().ok_or_else(|| GitError::CommandFailed {
+            command: "gh pr list".into(),
+            message: "expected JSON array".to_string(),
+        })?;
+
+        if arr.is_empty() {
+            return Ok(PrState::None);
+        }
+
+        let first = &arr[0];
+        let merged_at = first.get("mergedAt");
+        if merged_at.is_some() && merged_at != Some(&serde_json::Value::Null) {
+            return Ok(PrState::Merged);
+        }
+
+        let state = first.get("state").and_then(|v| v.as_str()).unwrap_or("");
+
+        if state == "OPEN" {
+            Ok(PrState::Open)
+        } else {
+            Ok(PrState::ClosedUnmerged)
+        }
     }
 }
 

@@ -356,3 +356,32 @@ fn resolve_ref_succeeds_for_existing_branch() {
     let result = RealGit.resolve_ref(temp_dir.path(), "feature");
     assert!(result.is_ok());
 }
+
+#[test]
+fn is_ancestor_false_when_not_reachable() {
+    let origin_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(origin_dir.path());
+
+    run_git(repo_dir.path(), &["init", "-q", "-b", "main"]);
+    run_git(
+        repo_dir.path(),
+        &[
+            "remote",
+            "add",
+            "origin",
+            origin_dir.path().to_string_lossy().as_ref(),
+        ],
+    );
+    run_git(repo_dir.path(), &["fetch", "-q", "origin"]);
+    run_git(
+        repo_dir.path(),
+        &["checkout", "-q", "-b", "main", "origin/main"],
+    );
+    run_git(repo_dir.path(), &["checkout", "-q", "-b", "feature"]);
+    commit_file(repo_dir.path(), "feature.txt", "unmerged");
+
+    assert!(!RealGit
+        .is_ancestor(repo_dir.path(), "feature", "main")
+        .expect("is_ancestor should succeed"));
+}
