@@ -55,6 +55,11 @@ enum Commands {
     },
     /// Print one line per heist under .heist/, sorted by slug
     List,
+    /// Print base, PR-state resolution for a heist: null/LIVE/EXPIRED/ABANDONED, plus a stale flag
+    Base {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -154,6 +159,7 @@ pub fn run(cli: Cli) -> ExitCode {
         Commands::Review { command } => run_review(command, repo_root, &state_repo, &git),
         Commands::Resume { slug } => run_resume(&slug, &state_repo),
         Commands::List => run_list(&state_repo),
+        Commands::Base { slug } => run_base(&slug, repo_root, &state_repo, &git),
     }
 }
 
@@ -452,6 +458,54 @@ fn run_list(repo: &dyn StateRepository) -> ExitCode {
         Err(app::list::ListError::Load { slug, error }) => {
             present::state_load_failed(slug.as_ref(), &error);
             ExitCode::from(&error)
+        }
+    }
+}
+
+fn run_base(
+    slug: &str,
+    repo_root: &Path,
+    state_repo: &dyn StateRepository,
+    git: &dyn crate::ports::git::GitRepository,
+) -> ExitCode {
+    let main_branch = git.default_branch(repo_root);
+
+    match app::base::resolve(repo_root, state_repo, git, slug) {
+        Ok(app::base::BaseResolution::Null) => {
+            present::base_resolution(&format!("origin/{}", main_branch), &main_branch, false);
+            ExitCode::Success
+        }
+        Ok(app::base::BaseResolution::Live { base_ref, stale }) => {
+            present::base_resolution(base_ref.as_ref(), base_ref.as_ref(), stale);
+            ExitCode::Success
+        }
+        Ok(app::base::BaseResolution::Expired { base_ref }) => {
+            present::base_resolution_expired(
+                &format!("origin/{}", main_branch),
+                &main_branch,
+                base_ref.as_ref(),
+            );
+            ExitCode::Success
+        }
+        Ok(app::base::BaseResolution::Abandoned { base_ref }) => {
+            present::abandoned_base(base_ref.as_ref());
+            ExitCode::Precondition
+        }
+        Err(app::base::ResolveError::NoState) => {
+            present::no_state_for_review(slug);
+            ExitCode::Precondition
+        }
+        Err(app::base::ResolveError::Load(e)) => {
+            present::state_load_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+        Err(app::base::ResolveError::RefMissingWithOpenPr { base_ref }) => {
+            present::base_resolve_failed(&base_ref, "ref does not exist but PR is still open");
+            ExitCode::Precondition
+        }
+        Err(app::base::ResolveError::Ambiguous { base_ref }) => {
+            present::base_resolve_failed(&base_ref, "cannot determine PR state");
+            ExitCode::Precondition
         }
     }
 }
@@ -780,5 +834,21 @@ mod tests {
         );
 
         assert_eq!(code, ExitCode::Git);
+    }
+
+    #[test]
+    fn base_command_reports_abandoned_as_precondition_exit_code() {
+        use crate::domain::value::NonBlankValue;
+        use crate::ports::git::PrState;
+
+        let mut state = State::new("foo", fixed_date()).expect("valid slug");
+        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+
+        let repo = InMemoryStateRepository::new().with_state("foo", state);
+        let git = FakeGit::new().with_pr_state("heist/piece-01", PrState::ClosedUnmerged);
+
+        let code = run_base("foo", Path::new("."), &repo, &git);
+
+        assert_eq!(code, ExitCode::Precondition);
     }
 }
