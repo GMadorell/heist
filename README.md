@@ -10,12 +10,12 @@ It ships as a single Claude Code plugin: one entry point, a crew of specialized 
 
 You type `/heist:heist add rate limiting to the public API` (optionally prefixed with a mode, see [Modes](#modes)) and the crew gets to work:
 
-1. **Slugger** picks a short slug for the job, then **Mastermind** interviews you with multiple-choice questions like a detective, then writes `blueprint.md`.
+1. **Slugger** picks a short slug for the job, then **Mastermind** interviews you with multiple-choice questions like a detective, then writes `blueprint.md`. If the scope is too big for one blueprint, Mastermind proposes a split instead: you approve/reject/redraw the seams, and an accepted split writes `heat.md`, one copy-pasteable `/heist:heist` prompt per piece, wired to run stacked or sequential via `--base`.
 2. **Fence** reads it and immediately starts talking about everything wrong with the plan, because that's the job. Mastermind fixes what actually lands.
 3. You take a pass yourself in [crit](https://crit.md), leaving comments until you're out of things to nitpick. Silence is approval.
 4. **Forger** breaks the blueprint into `score.md`, a checklist so granular a Muscle can't screw it up.
 5. **Wheelman** sends **Muscle** to handle the work wave by wave — no improvising, no side quests, just the checklist.
-6. **Cleaner** rebases, orchestrates a parallel review crew of its own, auto-fixes what's safe, floats the rest to you, runs build/lint/test, and opens a PR with a risk label. Anything labeled critical, it stops and wakes you up first.
+6. **Cleaner** syncs against the base (merges a stacked piece, rebases an ordinary heist, never the other way around), orchestrates a parallel review crew of its own, auto-fixes what's safe, floats the rest to you, runs build/lint/test, and opens a PR with a risk label. Anything labeled critical, it stops and wakes you up first.
 
 You come back to an open PR and a heat report: what got built, what got flagged, what's still on you to eyeball.
 
@@ -38,12 +38,14 @@ flowchart TD
     H --> J[Wheelman in worktree]
     J --> K[Muscle x4 max per wave: red-green TDD micro-steps]
     K --> J
-    J --> L[Cleaner: mergeable → parallel review crew → triage auto-fix/ask-user → build/lint/test → docs → push → PR + risk label]
+    J --> L["Cleaner: sync (heist sync <slug>) → parallel review crew → triage auto-fix/ask-user → build/lint/test → docs → push → PR + risk label"]
     L -- failures --> J
     L --> M[Done: PR open, report delivered]
 ```
 
 Diagram shows `heavy`. `medium` skips Fence. `light` skips Fence, Forger, Wheelman/Muscle, and Cleaner: you implement the blueprint directly and do a manual crit review of the diff instead. See [Modes](#modes).
+
+Not shown: at step D (Mastermind interview), a `SPLIT_PROPOSED` reply can branch the flow instead of `INTERVIEW_COMPLETE`, and you accept/reject/redraw the seams; accepting writes `heat.md` (one `/heist:heist` prompt per piece, each optionally `--base heist/<earlier-piece>` to run stacked) and ends the parent heist there. Each piece then re-enters this same pipeline from step A as its own heist.
 
 Worktree teardown is deliberately manual, not part of the pipeline above. Once a heist's PR merges, reclaim its worktree with `heist worktree remove <slug>`, or reclaim all merged worktrees at once with `heist worktree cleanup [--dry-run]`. Cleaner stops at PR-open.
 
@@ -108,6 +110,8 @@ Heist is organized as a monorepo with two main components:
 Docs live in `.heist/<slug>/` inside your project. Gitignoring those files is recommended.
 
 `validation.md` can also live in subdirectories for a monorepo/nested-package layout: `heist validation resolve <absolute-path>` walks repo root down to `<absolute-path>`, merging every `validation.md` found along the way (nearest file wins per section).
+
+A heist can carry a `base` (set via `heist worktree add --base <branch> <slug>`, e.g. for a stacked split piece), persisted in `state.json` and never cleared once set. `heist base <slug>` resolves that base's PR state (unset / open PR / merged / abandoned) and `heist sync <slug>` acts on it: no base syncs exactly like today (`git rebase origin/<main>`); a live or merged-but-not-yet-retargeted base is merged, never rebased, to avoid replaying a squash-merged base's commits; an abandoned base (explicitly-rejected commits) halts with exit code 2 rather than shipping them silently.
 
 ## Model / cost table
 
