@@ -55,7 +55,7 @@ enum Commands {
     },
     /// Print one line per heist under .heist/, sorted by slug
     List,
-    /// Print base, PR-state resolution for a heist: null/LIVE/EXPIRED/ABANDONED, plus a stale flag
+    /// Print base, PR-state resolution for a heist: null/LIVE/EXPIRED/ABANDONED
     Base {
         /// Heist slug (directory name under .heist/)
         slug: String,
@@ -478,11 +478,18 @@ fn run_base(
 
     match app::base::resolve(repo_root, state_repo, git, slug) {
         Ok(app::base::BaseResolution::Null) => {
-            present::base_resolution(&format!("origin/{}", main_branch), &main_branch, false);
+            present::base_resolution(&format!("origin/{}", main_branch), &main_branch, None);
             ExitCode::Success
         }
-        Ok(app::base::BaseResolution::Live { base_ref, stale }) => {
-            present::base_resolution(base_ref.as_ref(), base_ref.as_ref(), stale);
+        Ok(app::base::BaseResolution::Live {
+            base_ref,
+            verification_error,
+        }) => {
+            present::base_resolution(
+                base_ref.as_ref(),
+                base_ref.as_ref(),
+                verification_error.as_deref(),
+            );
             ExitCode::Success
         }
         Ok(app::base::BaseResolution::Expired { base_ref }) => {

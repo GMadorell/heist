@@ -84,7 +84,7 @@ fn perform_merges_live_base_cleanly_on_multi_commit_squashed_scenario_where_reba
 
     let resolution = BaseResolution::Live {
         base_ref: NonBlankValue::parse("base", "heist/piece-01").unwrap(),
-        stale: false,
+        verification_error: None,
     };
 
     let result = heist_cli::app::sync::perform(repo_dir.path(), &RealGit, "main", &resolution);

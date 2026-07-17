@@ -8,7 +8,13 @@ pub enum BaseResolution {
     Null,
     Live {
         base_ref: NonBlankValue,
-        stale: bool,
+        // R5 (stale-base detection: local base ref outrunning its remote
+        // counterpart) is intentionally not implemented yet; deferred to a
+        // follow-up. This variant only reports liveness, not staleness.
+        /// `Some` when the PR-state check couldn't run (missing `gh`, no
+        /// auth, etc.) rather than having actually confirmed the base's PR
+        /// state; the base ref still resolves, so it's usable.
+        verification_error: Option<String>,
     },
     Expired {
         base_ref: NonBlankValue,
@@ -50,17 +56,14 @@ pub fn resolve(
     // Ancestry pre-check (only if ref exists): a fast-forward/non-squash
     // merge may already have landed, in which case there's no need for a
     // `gh` call at all.
-    let ancestry_result = if ref_exists {
+    if ref_exists {
         let ancestry = git.is_ancestor(repo_root, base_ref, &format!("origin/{}", main_branch));
         if matches!(ancestry, Ok(true)) {
             return Ok(BaseResolution::Expired {
                 base_ref: state.base.unwrap(),
             });
         }
-        ancestry
-    } else {
-        Ok(false) // Placeholder, won't be used
-    };
+    }
 
     // PR state check
     match git.pr_state(repo_root, base_ref) {
@@ -72,10 +75,9 @@ pub fn resolve(
         }),
         Ok(PrState::Open) | Ok(PrState::None) => {
             if ref_exists {
-                let stale = matches!(ancestry_result, Ok(true));
                 Ok(BaseResolution::Live {
                     base_ref: state.base.unwrap(),
-                    stale,
+                    verification_error: None,
                 })
             } else {
                 Err(ResolveError::RefMissingWithOpenPr {
@@ -83,11 +85,11 @@ pub fn resolve(
                 })
             }
         }
-        Err(_) => {
+        Err(e) => {
             if ref_exists {
                 Ok(BaseResolution::Live {
                     base_ref: state.base.unwrap(),
-                    stale: false,
+                    verification_error: Some(e.to_string()),
                 })
             } else {
                 Err(ResolveError::Ambiguous {
@@ -196,7 +198,10 @@ mod tests {
 
         assert!(matches!(
             result,
-            Ok(BaseResolution::Live { stale: false, .. })
+            Ok(BaseResolution::Live {
+                verification_error: None,
+                ..
+            })
         ));
     }
 
@@ -221,6 +226,42 @@ mod tests {
             result,
             Err(ResolveError::RefMissingWithOpenPr { .. })
         ));
+    }
+
+    #[test]
+    fn resolve_returns_live_with_verification_error_when_gh_fails_but_ref_exists() {
+        let mut state = test_state("foo");
+        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+
+        let repo = InMemoryStateRepository::new().with_state("foo", state);
+        let git = FakeGit::new().failing_pr_state_for(
+            "heist/piece-01",
+            GitError::CommandFailed {
+                command: "gh pr list".into(),
+                message: "gh not found".into(),
+            },
+        );
+
+        let result = resolve(Path::new("."), &repo, &git, "foo");
+
+        match result {
+            Ok(BaseResolution::Live {
+                verification_error, ..
+            }) => {
+                let message = verification_error.expect("expected a verification error");
+                assert!(
+                    message.contains("gh not found"),
+                    "expected verification_error to mention the underlying failure, got: {}",
+                    message
+                );
+            }
+            other => panic!("expected Live with verification_error, got {:?}", {
+                match other {
+                    Ok(_) => "Ok(non-Live)".to_string(),
+                    Err(_) => "Err".to_string(),
+                }
+            }),
+        }
     }
 
     #[test]

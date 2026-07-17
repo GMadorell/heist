@@ -352,6 +352,10 @@ impl GitRepository for RealGit {
     }
 
     fn rebase(&self, repo_root: &Path, onto: &str) -> Result<(), GitError> {
+        if rebase_in_progress(repo_root) {
+            return continue_rebase(repo_root);
+        }
+
         let output = std::process::Command::new("git")
             .current_dir(repo_root)
             .args(["rebase", onto])
@@ -371,6 +375,10 @@ impl GitRepository for RealGit {
     }
 
     fn merge(&self, repo_root: &Path, other_ref: &str) -> Result<(), GitError> {
+        if merge_in_progress(repo_root) {
+            return continue_merge(repo_root);
+        }
+
         let output = std::process::Command::new("git")
             .current_dir(repo_root)
             .args(["merge", "--no-edit", other_ref])
@@ -388,6 +396,87 @@ impl GitRepository for RealGit {
             message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
         })
     }
+}
+
+/// Resolves a git-dir-relative path (e.g. `rebase-merge`, `MERGE_HEAD`) via
+/// git's own porcelain (`git rev-parse --git-path`), which correctly
+/// accounts for worktrees where `.git` is a file pointing elsewhere rather
+/// than a directory.
+fn git_path(repo_root: &Path, relative: &str) -> Option<PathBuf> {
+    let output = std::process::Command::new("git")
+        .current_dir(repo_root)
+        .args(["rev-parse", "--git-path", relative])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if raw.is_empty() {
+        return None;
+    }
+
+    let path = PathBuf::from(raw);
+    Some(if path.is_absolute() {
+        path
+    } else {
+        repo_root.join(path)
+    })
+}
+
+fn rebase_in_progress(repo_root: &Path) -> bool {
+    git_path(repo_root, "rebase-merge").is_some_and(|p| p.exists())
+        || git_path(repo_root, "rebase-apply").is_some_and(|p| p.exists())
+}
+
+fn merge_in_progress(repo_root: &Path) -> bool {
+    git_path(repo_root, "MERGE_HEAD").is_some_and(|p| p.exists())
+}
+
+fn continue_rebase(repo_root: &Path) -> Result<(), GitError> {
+    let output = std::process::Command::new("git")
+        .current_dir(repo_root)
+        .args(["rebase", "--continue"])
+        .output()
+        .map_err(|e| GitError::CommandFailed {
+            command: "git rebase --continue".to_string(),
+            message: e.to_string(),
+        })?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    Err(GitError::Rebase {
+        message: format!(
+            "rebase still has unresolved conflicts: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ),
+    })
+}
+
+fn continue_merge(repo_root: &Path) -> Result<(), GitError> {
+    let output = std::process::Command::new("git")
+        .current_dir(repo_root)
+        .args(["commit", "--no-edit"])
+        .output()
+        .map_err(|e| GitError::CommandFailed {
+            command: "git commit --no-edit".to_string(),
+            message: e.to_string(),
+        })?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    Err(GitError::Merge {
+        message: format!(
+            "merge still has unresolved conflicts: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ),
+    })
 }
 
 fn is_pr_merged_on_github(repo_root: &Path, branch: &str) -> Result<bool, String> {

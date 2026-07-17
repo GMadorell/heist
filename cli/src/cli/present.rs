@@ -142,16 +142,17 @@ pub fn no_remote_default_for_review(slug: &str, e: impl Display) {
     );
 }
 
-pub fn base_resolution(merge_ref: &str, pr_base: &str, stale: bool) {
+pub fn base_resolution(merge_ref: &str, pr_base: &str, verification_error: Option<&str>) {
     println!("merge_ref: {}", merge_ref);
     println!("pr_base: {}", pr_base);
-    println!("stale: {}", stale);
+    if let Some(message) = verification_error {
+        eprintln!("warning: could not verify base's PR state: {}", message);
+    }
 }
 
 pub fn base_resolution_expired(merge_ref: &str, pr_base: &str, base_ref: &str) {
     println!("merge_ref: {}", merge_ref);
     println!("pr_base: {}", pr_base);
-    println!("stale: false");
     eprintln!("note: {} merged", base_ref);
 }
 
