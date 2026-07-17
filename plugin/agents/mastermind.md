@@ -43,7 +43,7 @@ Then one closing line with the overall rationale for the cut, stating plainly if
 
 **Three replies the orchestrator relays back:**
 
-1. **SPLIT_ACCEPTED**: Write `.heist/<parent-slug>/heat.md` with one `## Piece: <sub-slug>` section per piece. Each section contains a single fenced code block starting with `/heist:heist [<mode>] [--base <base-value>] <copy-pasteable prose: scope, file ownership, exclusions, base assumptions>`. Omit `--base` entirely when that piece's base is `null`. This prose is human-readable context, never a plan file path (a file path would route the piece through one-shot import and skip the interview the split exists to protect). Reply with a short summary of what you wrote, not the full doc.
+1. **SPLIT_ACCEPTED**: Write `.heist/<parent-slug>/heat.md` with one `## Piece: <sub-slug>` section per piece. Each section contains a single fenced code block starting with `/heist:heist [<mode>] --slug <sub-slug> [--base heist/<earlier-sub-slug>] <copy-pasteable prose: scope, file ownership, exclusions, base assumptions>`. Always emit `--slug <sub-slug>` so the piece's branch name is fixed and a later piece's `--base heist/<sub-slug>` is guaranteed to match it. Emit `--base heist/<earlier-sub-slug>` only for a stacked piece; omit `--base` entirely when that piece's base is `null`. This prose is human-readable context, never a plan file path (a file path would route the piece through one-shot import and skip the interview the split exists to protect). Reply with a short summary of what you wrote, not the full doc.
 
 2. **SPLIT_REJECTED**: Continue the interview normally from where it left off.
 
