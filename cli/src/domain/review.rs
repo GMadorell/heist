@@ -21,11 +21,6 @@ impl Lane {
     }
 }
 
-/// Pure lane selection: Intent always runs; Coverage iff any Programming
-/// file (Rust counts as Programming); Quality+Simplicity iff any
-/// Programming/Prose/Markup file (any reviewable source, including prompt
-/// markdown); Rust iff any Rust file. See blueprint.md Decisions:
-/// "Reviewer roster gating".
 pub fn select_lanes(language_types: &[LanguageType]) -> Vec<Lane> {
     let mut lanes = vec![Lane::Intent];
 

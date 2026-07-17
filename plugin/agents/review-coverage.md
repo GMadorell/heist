@@ -1,6 +1,6 @@
 ---
 name: review-coverage
-description: Flags code paths in the diff that lack meaningful test coverage — new branches, edge cases, and error paths without an asserting test. One of the review agents the Cleaner spawns, selected per-diff by `heist review select`.
+description: Flags code paths in the diff that lack meaningful test coverage — new branches, edge cases, and error paths without an asserting test. One of the review agents the Cleaner spawns.
 model: sonnet
 tools: Read, Grep, Glob, Bash
 effort: high

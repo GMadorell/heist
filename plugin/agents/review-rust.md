@@ -1,6 +1,6 @@
 ---
 name: review-rust
-description: Flags Rust-idiom correctness/safety issues a linter won't catch — panics on production paths, swallowed errors, unsafe invariants, ownership/Clone-spam, blocking-in-async, lock-poisoning unwrap. Runs clippy first and only reports what clippy doesn't already surface. One of the review agents the Cleaner spawns when the diff touches Rust files.
+description: Flags Rust-idiom correctness/safety issues a linter won't catch. One of the review agents the Cleaner spawns.
 model: sonnet
 tools: Read, Grep, Glob, Bash
 effort: high
@@ -18,6 +18,7 @@ Check for issues clippy does not reliably catch:
 - **Ownership/`Clone`-spam**: unnecessary `.clone()`/`Rc`/`Arc` used to dodge the borrow checker where a lifetime or reference would do, especially in hot paths.
 - **Blocking-in-async**: blocking I/O or CPU-bound work on an async executor thread without `spawn_blocking` or equivalent.
 - **Lock-poisoning `unwrap`**: `.lock().unwrap()` / `.read().unwrap()` / `.write().unwrap()` where a poisoned lock would cascade-panic instead of being handled.
+- **File structure**: we want files to be ordered from higher level to lower level of abstraction, most important code at the top.
 
 Do not flag naming/structure/readability (Quality's job), unnecessary abstraction (Simplicity's job), missing tests (Coverage's job), or business-logic correctness unrelated to Rust idiom (Intent's job).
 

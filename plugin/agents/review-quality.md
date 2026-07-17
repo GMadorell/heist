@@ -1,6 +1,6 @@
 ---
 name: review-quality
-description: Reviews the diff from an architect's altitude for maintainability and readability — naming, structure, module boundaries, consistency with the rest of the codebase. One of the review agents the Cleaner spawns, selected per-diff by `heist review select`.
+description: Reviews the diff from an architect's altitude for maintainability and readability — naming, structure, module boundaries, consistency with the rest of the codebase. One of the review agents the Cleaner spawns.
 model: sonnet
 tools: Read, Grep, Glob
 effort: high

@@ -237,6 +237,29 @@ impl GitRepository for RealGit {
             message: e.to_string(),
         })
     }
+
+    fn read_file_at(
+        &self,
+        repo_root: &Path,
+        rev: &str,
+        path: &Path,
+    ) -> Result<Option<String>, GitError> {
+        let read = || -> Result<Option<String>, git2::Error> {
+            let repo = git2::Repository::open(repo_root)?;
+            let commit_oid = repo.revparse_single(rev)?.id();
+            let tree = repo.find_commit(commit_oid)?.tree()?;
+            let Ok(entry) = tree.get_path(path) else {
+                return Ok(None);
+            };
+            let Ok(blob) = entry.to_object(&repo)?.into_blob() else {
+                return Ok(None);
+            };
+            Ok(std::str::from_utf8(blob.content()).ok().map(str::to_string))
+        };
+        read().map_err(|e| GitError::Diff {
+            message: e.to_string(),
+        })
+    }
 }
 
 fn is_pr_merged_on_github(repo_root: &Path, branch: &str) -> Result<bool, String> {

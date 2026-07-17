@@ -10,13 +10,6 @@ pub enum SelectError {
     NoState,
     NoBranch,
     Load(StateError),
-    /// `origin/<default>` doesn't resolve, so there is no valid diff base.
-    /// Distinct from `Git` so the CLI can report a clear precondition
-    /// instead of an opaque git2 error: `default_branch`'s current-branch
-    /// fallback (meant for `worktree add`, run from the main repo before
-    /// the feature branch exists) would otherwise silently diff against
-    /// `origin/<feature-branch>`, which almost never resolves, when run
-    /// from inside the worktree as `review select` is.
     NoRemoteDefault(GitError),
     Git(GitError),
 }
@@ -40,7 +33,15 @@ pub fn select(
         .changed_paths(repo_root, &main_branch, branch.as_ref())
         .map_err(SelectError::Git)?;
 
-    let language_types: Vec<_> = paths.iter().map(|p| language::classify(p)).collect();
+    let language_types: Vec<_> = paths
+        .iter()
+        .map(|p| {
+            let content = git
+                .read_file_at(repo_root, branch.as_ref(), p)
+                .unwrap_or(None);
+            language::classify(p, content.as_deref())
+        })
+        .collect();
     Ok(review::select_lanes(&language_types))
 }
 

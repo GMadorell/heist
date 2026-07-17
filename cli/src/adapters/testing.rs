@@ -43,9 +43,7 @@ impl WorktreeFs for FakeWorktreeFs {
 
 pub struct InMemoryStateRepository {
     states: std::cell::RefCell<std::collections::HashMap<String, State>>,
-    /// Slug -> error to return from `load`, simulating a state file that
-    /// exists but fails to deserialize (corrupt/unreadable). Kept separate
-    /// from `states` since `StateError` isn't `Clone`.
+    /// Slug -> error to return from `load`
     load_errors: std::cell::RefCell<std::collections::HashMap<String, StateError>>,
 }
 
@@ -68,8 +66,7 @@ impl InMemoryStateRepository {
         self
     }
 
-    /// Makes `exists(slug)` true but `load(slug)` fail with `error`,
-    /// simulating a state file present on disk but corrupt/unreadable.
+    /// Makes `exists(slug)` true but `load(slug)` fail with `error`
     pub fn with_load_error(self, slug: &str, error: StateError) -> Self {
         self.load_errors
             .borrow_mut()
@@ -142,6 +139,7 @@ pub struct FakeGit {
     deleted_branch_names: RefCell<Vec<String>>,
     changed_paths: Vec<PathBuf>,
     changed_paths_error: Option<GitError>,
+    file_contents: std::collections::HashMap<PathBuf, String>,
 }
 
 impl Default for FakeGit {
@@ -167,6 +165,7 @@ impl FakeGit {
             deleted_branch_names: RefCell::new(Vec::new()),
             changed_paths: Vec::new(),
             changed_paths_error: None,
+            file_contents: std::collections::HashMap::new(),
         }
     }
 
@@ -235,6 +234,12 @@ impl FakeGit {
 
     pub fn failing_changed_paths(mut self, error: GitError) -> Self {
         self.changed_paths_error = Some(error);
+        self
+    }
+
+    pub fn with_file_content(mut self, path: &str, content: &str) -> Self {
+        self.file_contents
+            .insert(PathBuf::from(path), content.to_string());
         self
     }
 
@@ -343,6 +348,15 @@ impl GitRepository for FakeGit {
             return Err(err.clone());
         }
         Ok(self.changed_paths.clone())
+    }
+
+    fn read_file_at(
+        &self,
+        _repo_root: &Path,
+        _rev: &str,
+        path: &Path,
+    ) -> Result<Option<String>, GitError> {
+        Ok(self.file_contents.get(path).cloned())
     }
 }
 
