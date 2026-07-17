@@ -1,6 +1,6 @@
 ---
 name: review-coverage
-description: Flags code paths in the diff that lack meaningful test coverage — new branches, edge cases, and error paths without an asserting test. One of four parallel review agents spawned by the Cleaner.
+description: Flags code paths in the diff that lack meaningful test coverage — new branches, edge cases, and error paths without an asserting test. One of the review agents the Cleaner spawns, selected per-diff by `heist review select`.
 model: sonnet
 tools: Read, Grep, Glob, Bash
 effort: high
@@ -21,7 +21,7 @@ Do not flag correctness bugs unless the absence of a test is what's letting the 
 
 ## Output format
 
-Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape and sign-off line — all four review agents share it, so use it as written rather than restating it. Description line: the coverage gap. Detail sentences: which behavior is unpinned, and what could regress silently as a result.
+Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape and sign-off line — all review agents share it, so use it as written rather than restating it. Description line: the coverage gap. Detail sentences: which behavior is unpinned, and what could regress silently as a result.
 
 Severity guide:
 - `error`: a code path that can cause real user-facing damage (data loss, security, payment, irreversible action) has zero coverage.

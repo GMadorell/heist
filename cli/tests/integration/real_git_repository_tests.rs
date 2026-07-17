@@ -304,3 +304,36 @@ fn changed_paths_errors_on_unresolvable_base() {
     let result = RealGit.changed_paths(temp_dir.path(), "no-such-remote-branch", "HEAD");
     assert!(result.is_err());
 }
+
+#[test]
+fn changed_paths_includes_deleted_files_via_old_file_path() {
+    let origin_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(origin_dir.path());
+    commit_file(origin_dir.path(), "doomed.rs", "fn gone() {}");
+
+    run_git(repo_dir.path(), &["init", "-q", "-b", "main"]);
+    run_git(
+        repo_dir.path(),
+        &[
+            "remote",
+            "add",
+            "origin",
+            origin_dir.path().to_string_lossy().as_ref(),
+        ],
+    );
+    run_git(repo_dir.path(), &["fetch", "-q", "origin"]);
+    run_git(
+        repo_dir.path(),
+        &["checkout", "-q", "-b", "main", "origin/main"],
+    );
+    run_git(repo_dir.path(), &["checkout", "-q", "-b", "feature"]);
+    run_git(repo_dir.path(), &["rm", "-q", "doomed.rs"]);
+    run_git(repo_dir.path(), &["commit", "-q", "-m", "remove doomed.rs"]);
+
+    let paths = RealGit
+        .changed_paths(repo_dir.path(), "main", "feature")
+        .expect("changed_paths should succeed");
+
+    assert_eq!(paths, vec![PathBuf::from("doomed.rs")]);
+}

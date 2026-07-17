@@ -1,6 +1,6 @@
 ---
 name: review-quality
-description: Reviews the diff from an architect's altitude for maintainability and readability — naming, structure, module boundaries, consistency with the rest of the codebase. One of four parallel review agents spawned by the Cleaner.
+description: Reviews the diff from an architect's altitude for maintainability and readability — naming, structure, module boundaries, consistency with the rest of the codebase. One of the review agents the Cleaner spawns, selected per-diff by `heist review select`.
 model: sonnet
 tools: Read, Grep, Glob
 effort: high
@@ -22,7 +22,7 @@ Do not flag correctness bugs (Intent's job), unnecessary complexity/over-abstrac
 
 ## Output format
 
-Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape and sign-off line — all four review agents share it, so use it as written rather than restating it. Description line: the maintainability issue. Detail sentences: why this will cost a future reader/maintainer, concretely.
+Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape and sign-off line — all review agents share it, so use it as written rather than restating it. Description line: the maintainability issue. Detail sentences: why this will cost a future reader/maintainer, concretely.
 
 Severity guide:
 - `error`: actively misleading (name lies about behavior, comment contradicts code) — will cause a future bug.
