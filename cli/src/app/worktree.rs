@@ -26,9 +26,14 @@ pub fn add(
     fs: &dyn WorktreeFs,
     clock: &dyn Clock,
     slug: &str,
+    base: Option<&str>,
 ) -> Result<NonBlankValue, AddError> {
     if !state_repo.exists(slug) {
         return Err(AddError::NoState);
+    }
+
+    if let Some(b) = base {
+        git.resolve_ref(repo_root, b).map_err(AddError::Git)?;
     }
 
     let main_branch = git.default_branch(repo_root);
@@ -38,14 +43,13 @@ pub fn add(
     let worktree_path = worktree::worktree_path(repo_root, slug);
     let branch = worktree::branch_name(slug).map_err(AddError::Naming)?;
 
+    let start_point = base
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("origin/{}", main_branch));
+
     if !git.worktree_exists(repo_root, slug) {
-        git.add_worktree(
-            repo_root,
-            &worktree_path,
-            branch.as_ref(),
-            &format!("origin/{}", main_branch),
-        )
-        .map_err(AddError::Git)?;
+        git.add_worktree(repo_root, &worktree_path, branch.as_ref(), &start_point)
+            .map_err(AddError::Git)?;
     }
 
     fs.link_heist_dir(repo_root, &worktree_path, slug)
@@ -58,6 +62,10 @@ pub fn add(
     let mut state = state_repo.load(slug).map_err(AddError::Load)?;
     state.worktree = Some(worktree_value.clone());
     state.branch = Some(branch);
+    state.base = base
+        .map(|b| NonBlankValue::parse("base", b))
+        .transpose()
+        .map_err(AddError::Naming)?;
     state.updated = clock.today();
     state_repo.save(slug, &state).map_err(AddError::Save)?;
 
@@ -654,6 +662,106 @@ mod tests {
                 CleanupOutcome::Removed(SlugValue::parse("alpha").expect("valid slug")),
                 CleanupOutcome::Removed(SlugValue::parse("zeta").expect("valid slug")),
             ]
+        );
+    }
+
+    #[test]
+    fn add_with_base_validates_ref_before_creating_worktree_or_state() {
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(
+                "foo",
+                DateValue::parse("today", "2025-01-01").expect("valid date"),
+            )
+            .expect("valid slug"),
+        );
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .failing_resolve_ref_for(
+                "heist/piece-01",
+                GitError::MergeCheck {
+                    message: "bad ref".into(),
+                },
+            );
+
+        let result = add(
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            "foo",
+            Some("heist/piece-01"),
+        );
+
+        assert!(matches!(result, Err(AddError::Git(_))));
+        assert!(repo
+            .get("foo")
+            .expect("foo state should exist")
+            .worktree
+            .is_none());
+    }
+
+    #[test]
+    fn add_with_base_uses_verbatim_ref_as_start_point_and_persists_base_field() {
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(
+                "foo",
+                DateValue::parse("today", "2025-01-01").expect("valid date"),
+            )
+            .expect("valid slug"),
+        );
+        let git = FakeGit::new().with_default_branch("main");
+
+        let result = add(
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            "foo",
+            Some("heist/piece-01"),
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(
+            git.add_worktree_start_points(),
+            vec!["heist/piece-01".to_string()]
+        );
+        let saved_state = repo.get("foo").expect("foo state should exist");
+        assert_eq!(
+            saved_state.base,
+            Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"))
+        );
+    }
+
+    #[test]
+    fn add_without_base_uses_origin_default_start_point() {
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(
+                "foo",
+                DateValue::parse("today", "2025-01-01").expect("valid date"),
+            )
+            .expect("valid slug"),
+        );
+        let git = FakeGit::new().with_default_branch("main");
+
+        let result = add(
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            "foo",
+            None,
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(
+            git.add_worktree_start_points(),
+            vec!["origin/main".to_string()]
         );
     }
 }

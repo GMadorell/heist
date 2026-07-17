@@ -97,6 +97,9 @@ enum WorktreeCommands {
     Add {
         /// Heist slug (directory name under .heist/)
         slug: String,
+        /// Git ref to use as start point instead of origin/<default>
+        #[arg(long)]
+        base: Option<String>,
     },
     /// Remove the worktree and branch, then set stage: done; refuses if unmerged
     Remove {
@@ -244,8 +247,16 @@ fn run_worktree(
     clock: &dyn crate::ports::clock::Clock,
 ) -> ExitCode {
     match command {
-        WorktreeCommands::Add { slug } => {
-            match app::worktree::add(repo_root, state_repo, git, fs, clock, &slug) {
+        WorktreeCommands::Add { slug, base } => {
+            match app::worktree::add(
+                repo_root,
+                state_repo,
+                git,
+                fs,
+                clock,
+                &slug,
+                base.as_deref(),
+            ) {
                 Ok(worktree_value) => {
                     present::line(worktree_value);
                     ExitCode::Success
@@ -551,7 +562,10 @@ mod tests {
         let git = FakeGit::new();
 
         let code = run_worktree(
-            WorktreeCommands::Add { slug: "foo".into() },
+            WorktreeCommands::Add {
+                slug: "foo".into(),
+                base: None,
+            },
             temp_dir.path(),
             &repo,
             &git,
@@ -573,7 +587,10 @@ mod tests {
         });
 
         let code = run_worktree(
-            WorktreeCommands::Add { slug: "foo".into() },
+            WorktreeCommands::Add {
+                slug: "foo".into(),
+                base: None,
+            },
             temp_dir.path(),
             &repo,
             &git,

@@ -138,6 +138,7 @@ pub struct FakeGit {
     resolve_ref_error_for: Option<(String, GitError)>,
     removed_worktree_paths: RefCell<Vec<PathBuf>>,
     deleted_branch_names: RefCell<Vec<String>>,
+    add_worktree_start_points: RefCell<Vec<String>>,
     changed_paths: Vec<PathBuf>,
     changed_paths_error: Option<GitError>,
     file_contents: std::collections::HashMap<PathBuf, String>,
@@ -165,6 +166,7 @@ impl FakeGit {
             resolve_ref_error_for: None,
             removed_worktree_paths: RefCell::new(Vec::new()),
             deleted_branch_names: RefCell::new(Vec::new()),
+            add_worktree_start_points: RefCell::new(Vec::new()),
             changed_paths: Vec::new(),
             changed_paths_error: None,
             file_contents: std::collections::HashMap::new(),
@@ -257,6 +259,10 @@ impl FakeGit {
     pub fn deleted_branch_names(&self) -> Vec<String> {
         self.deleted_branch_names.borrow().clone()
     }
+
+    pub fn add_worktree_start_points(&self) -> Vec<String> {
+        self.add_worktree_start_points.borrow().clone()
+    }
 }
 
 impl GitRepository for FakeGit {
@@ -299,11 +305,14 @@ impl GitRepository for FakeGit {
         _repo_root: &Path,
         _path: &Path,
         branch: &str,
-        _start_point: &str,
+        start_point: &str,
     ) -> Result<(), GitError> {
         if let Some(err) = &self.add_error {
             return Err(err.clone());
         }
+        self.add_worktree_start_points
+            .borrow_mut()
+            .push(start_point.to_string());
         // Register by the branch's slug suffix (`heist/<slug>` -> `<slug>`).
         let slug = branch.rsplit('/').next().unwrap_or(branch);
         self.worktrees.borrow_mut().insert(slug.to_string());
