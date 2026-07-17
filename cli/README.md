@@ -16,7 +16,7 @@ All commands read/write `.heist/<slug>/state.json` relative to the current direc
 
 ### `state init <slug>`
 
-Creates `.heist/<slug>/state.json` with defaults (`stage: casing`, counters at 0, `worktree`/`branch` null). Fails if the slug directory already exists.
+Creates `.heist/<slug>/state.json` with defaults (`stage: casing`, counters at 0, `worktree`/`branch`/`base` null). Fails if the slug directory already exists.
 
 ### `state get <slug> <field>`
 
@@ -34,9 +34,11 @@ Reads a numeric field, adds 1, and writes it back (bumping `updated` to today). 
 
 Prints the field list and an example `state.json`. No slug required, deterministic output.
 
-### `worktree add <slug>`
+### `worktree add [--base <ref>] <slug>`
 
 Creates a git worktree at `.worktrees/<slug>` on branch `heist/<slug>`, symlinks `.heist/<slug>` into it, and writes `worktree`/`branch` into state. Idempotent: re-running recreates a missing symlink instead of failing. Requires `state init` to have run first.
+
+`--base <ref>` starts the branch from `<ref>` instead of `origin/<default>` (e.g. to stack a split piece on the previous piece's branch) and persists `base` in state. The ref must exist. On an already-existing worktree, re-adding with the same `--base` is idempotent, a different `--base` is refused (exit 2), and omitting `--base` leaves a previously persisted base untouched.
 
 ### `worktree remove <slug>`
 
@@ -57,6 +59,21 @@ Requires absolute paths; a relative or out-of-project path exits 4. For each pat
 ### `review select <slug>`
 
 Prints the reviewer lanes to run for the diff since the default branch, one bare lane name per line (e.g. `intent`, `coverage`, `quality`, `simplicity`, `rust`). Computes changed paths and classifies each by file type; `intent` always runs, `coverage` runs iff a programming file changed, `quality`/`simplicity` run iff any programming/prose/markup file changed, `rust` runs iff a Rust file changed. Exits 2 if state/branch is missing, or if `origin/<default>` doesn't resolve; exits 3 on any other git failure.
+
+### `base <slug>`
+
+Resolves the heist's recorded `base` against its PR state and prints three lines: `resolution:` (`null` | `live` | `expired` | `abandoned`), `merge_ref:` (the ref `sync` would use), and `pr_base:` (what the heist's own PR should target). `null` means no base is recorded, `live` means the base's PR is still open, `expired` means it merged, `abandoned` means it was closed unmerged. `abandoned` exits 2; the others exit 0. If the base's PR state can't be verified (no `gh`, no auth), resolves as `live` and warns on stderr.
+
+### `sync <slug>`
+
+Fetches origin, resolves the base like `heist base`, and updates the heist's branch accordingly; this is the only heist command that runs `git rebase`/`git merge`:
+
+- `null`: rebase onto `origin/<default>`.
+- `live`: merge the base branch (never rebase, so a later squash-merge of the base doesn't get its commits replayed).
+- `expired`: merge `origin/<default>`.
+- `abandoned`: refuse with exit 2; a human must decide whether to drop, salvage, or reopen the base's commits.
+
+Prints one `synced: ...` line naming what it did. Operates on the worktree recorded in state (safe to run from anywhere) and refuses (exit 2) if no worktree is recorded or the worktree is checked out on a different branch. A failed fetch warns on stderr but syncs against the refs already local.
 
 ### `resume <slug>`
 
