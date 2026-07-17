@@ -134,3 +134,10 @@ pub fn no_branch_for_review(slug: &str) {
         slug
     );
 }
+
+pub fn no_remote_default_for_review(slug: &str, e: impl Display) {
+    eprintln!(
+        "cannot compute diff for slug {}: origin's default branch doesn't resolve ({}); fetch the remote or set `refs/remotes/origin/HEAD`",
+        slug, e
+    );
+}

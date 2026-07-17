@@ -117,6 +117,34 @@ fn rust_change_selects_all_lanes() {
 }
 
 #[test]
+fn unresolvable_origin_default_exits_precondition_with_clear_message() {
+    let (main_temp, _bare_temp) = setup_repo_with_worktree();
+    let main_repo = main_temp.path();
+
+    // Simulate a repo where `origin/<default>` can no longer be resolved
+    // (e.g. remote removed, or `refs/remotes/origin/HEAD` unset and the
+    // fallback branch name doesn't exist on the remote either).
+    run_git(main_repo, &["remote", "remove", "origin"]);
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(main_repo)
+        .arg("review")
+        .arg("select")
+        .arg("my-slug")
+        .output()
+        .expect("failed to run review select");
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("origin's default branch doesn't resolve"),
+        "stderr should explain the precondition failure, got: {}",
+        stderr
+    );
+}
+
+#[test]
 fn missing_state_exits_precondition() {
     let main_temp = TempDir::new().expect("failed to create main temp dir");
     let main_repo = main_temp.path();

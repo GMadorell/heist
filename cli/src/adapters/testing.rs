@@ -43,6 +43,10 @@ impl WorktreeFs for FakeWorktreeFs {
 
 pub struct InMemoryStateRepository {
     states: std::cell::RefCell<std::collections::HashMap<String, State>>,
+    /// Slug -> error to return from `load`, simulating a state file that
+    /// exists but fails to deserialize (corrupt/unreadable). Kept separate
+    /// from `states` since `StateError` isn't `Clone`.
+    load_errors: std::cell::RefCell<std::collections::HashMap<String, StateError>>,
 }
 
 impl Default for InMemoryStateRepository {
@@ -55,11 +59,21 @@ impl InMemoryStateRepository {
     pub fn new() -> Self {
         InMemoryStateRepository {
             states: std::cell::RefCell::new(std::collections::HashMap::new()),
+            load_errors: std::cell::RefCell::new(std::collections::HashMap::new()),
         }
     }
 
     pub fn with_state(self, slug: &str, state: State) -> Self {
         self.states.borrow_mut().insert(slug.to_string(), state);
+        self
+    }
+
+    /// Makes `exists(slug)` true but `load(slug)` fail with `error`,
+    /// simulating a state file present on disk but corrupt/unreadable.
+    pub fn with_load_error(self, slug: &str, error: StateError) -> Self {
+        self.load_errors
+            .borrow_mut()
+            .insert(slug.to_string(), error);
         self
     }
 
@@ -70,7 +84,7 @@ impl InMemoryStateRepository {
 
 impl StateRepository for InMemoryStateRepository {
     fn exists(&self, slug: &str) -> bool {
-        self.states.borrow().contains_key(slug)
+        self.states.borrow().contains_key(slug) || self.load_errors.borrow().contains_key(slug)
     }
 
     fn init(&self, slug: &str, state: &State) -> Result<(), StateError> {
@@ -83,6 +97,9 @@ impl StateRepository for InMemoryStateRepository {
     }
 
     fn load(&self, slug: &str) -> Result<State, StateError> {
+        if let Some(error) = self.load_errors.borrow_mut().remove(slug) {
+            return Err(error);
+        }
         self.states
             .borrow()
             .get(slug)

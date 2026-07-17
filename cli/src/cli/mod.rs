@@ -402,6 +402,10 @@ fn run_review(
                     present::state_load_failed(&slug, &e);
                     ExitCode::from(&e)
                 }
+                Err(app::review::SelectError::NoRemoteDefault(e)) => {
+                    present::no_remote_default_for_review(&slug, &e);
+                    ExitCode::Precondition
+                }
                 Err(app::review::SelectError::Git(e)) => {
                     present::error(&e);
                     ExitCode::from(&e)

@@ -10,6 +10,14 @@ pub enum SelectError {
     NoState,
     NoBranch,
     Load(StateError),
+    /// `origin/<default>` doesn't resolve, so there is no valid diff base.
+    /// Distinct from `Git` so the CLI can report a clear precondition
+    /// instead of an opaque git2 error: `default_branch`'s current-branch
+    /// fallback (meant for `worktree add`, run from the main repo before
+    /// the feature branch exists) would otherwise silently diff against
+    /// `origin/<feature-branch>`, which almost never resolves, when run
+    /// from inside the worktree as `review select` is.
+    NoRemoteDefault(GitError),
     Git(GitError),
 }
 
@@ -26,6 +34,8 @@ pub fn select(
     let branch = state.branch.ok_or(SelectError::NoBranch)?;
 
     let main_branch = git.default_branch(repo_root);
+    git.remote_default_resolves(repo_root, &main_branch)
+        .map_err(SelectError::NoRemoteDefault)?;
     let paths = git
         .changed_paths(repo_root, &main_branch, branch.as_ref())
         .map_err(SelectError::Git)?;
@@ -98,6 +108,37 @@ mod tests {
                 Lane::Rust
             ]
         );
+    }
+
+    #[test]
+    fn corrupt_state_is_load_error() {
+        let repo = InMemoryStateRepository::new()
+            .with_load_error("foo", StateError::Unparseable(invalid_json_error()));
+        let git = FakeGit::new();
+
+        let err =
+            select(Path::new("."), &repo, &git, "foo").expect_err("should fail to load state");
+        assert!(matches!(err, SelectError::Load(StateError::Unparseable(_))));
+    }
+
+    fn invalid_json_error() -> serde_json::Error {
+        serde_json::from_str::<State>("not json").expect_err("should fail to parse")
+    }
+
+    #[test]
+    fn unresolvable_remote_default_is_no_remote_default_error() {
+        let mut state = State::new("foo", fixed_date()).expect("valid slug");
+        state.branch = Some(NonBlankValue::parse("branch", "heist/foo").expect("valid branch"));
+        let repo = InMemoryStateRepository::new().with_state("foo", state);
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .failing_remote_default_resolve(crate::ports::git::GitError::MergeCheck {
+                message: "no origin/main".into(),
+            });
+
+        let err = select(Path::new("."), &repo, &git, "foo")
+            .expect_err("should fail when origin/<default> doesn't resolve");
+        assert!(matches!(err, SelectError::NoRemoteDefault(_)));
     }
 
     #[test]
