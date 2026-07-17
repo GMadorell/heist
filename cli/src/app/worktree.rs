@@ -16,6 +16,12 @@ pub enum AddError {
     Git(GitError),
     Load(StateError),
     Save(StateError),
+    /// `--base` was passed for a worktree that already exists and was created
+    /// from a different start point; its start point can't be changed in place.
+    BaseImmutable {
+        existing: Option<String>,
+        requested: String,
+    },
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -47,7 +53,27 @@ pub fn add(
         .map(str::to_string)
         .unwrap_or_else(|| format!("origin/{}", main_branch));
 
-    if !git.worktree_exists(repo_root, slug) {
+    let worktree_exists = git.worktree_exists(repo_root, slug);
+
+    // A `--base` only takes effect when the worktree (and its branch) is
+    // created. Passing one for an existing worktree that was built from a
+    // different start point would silently record a base the branch never
+    // forked from, which a later `sync` would then merge in. Refuse instead.
+    if worktree_exists {
+        if let Some(requested) = base {
+            let existing = state_repo
+                .load(slug)
+                .map_err(AddError::Load)?
+                .base
+                .map(|b| b.as_ref().to_string());
+            if existing.as_deref() != Some(requested) {
+                return Err(AddError::BaseImmutable {
+                    existing,
+                    requested: requested.to_string(),
+                });
+            }
+        }
+    } else {
         git.add_worktree(repo_root, &worktree_path, branch.as_ref(), &start_point)
             .map_err(AddError::Git)?;
     }
@@ -763,6 +789,65 @@ mod tests {
             Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base")),
             "re-running `heist worktree add` without --base must not null an already-persisted base"
         );
+    }
+
+    #[test]
+    fn add_with_differing_base_on_existing_worktree_is_refused_and_state_unchanged() {
+        let mut state = State::new(
+            "foo",
+            DateValue::parse("today", "2025-01-01").expect("valid date"),
+        )
+        .expect("valid slug");
+        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let repo = InMemoryStateRepository::new().with_state("foo", state);
+        // Worktree already exists, created from heist/piece-01.
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_existing_worktree("foo");
+
+        let result = add(
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            "foo",
+            Some("heist/piece-02"),
+        );
+
+        assert!(matches!(result, Err(AddError::BaseImmutable { .. })));
+        let saved_state = repo.get("foo").expect("foo state should exist");
+        assert_eq!(
+            saved_state.base,
+            Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base")),
+            "a refused re-add must not rewrite the persisted base"
+        );
+    }
+
+    #[test]
+    fn add_with_same_base_on_existing_worktree_is_idempotent() {
+        let mut state = State::new(
+            "foo",
+            DateValue::parse("today", "2025-01-01").expect("valid date"),
+        )
+        .expect("valid slug");
+        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let repo = InMemoryStateRepository::new().with_state("foo", state);
+        let git = FakeGit::new()
+            .with_default_branch("main")
+            .with_existing_worktree("foo");
+
+        let result = add(
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            "foo",
+            Some("heist/piece-01"),
+        );
+
+        assert!(result.is_ok());
     }
 
     #[test]

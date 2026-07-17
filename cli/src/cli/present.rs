@@ -142,7 +142,13 @@ pub fn no_remote_default_for_review(slug: &str, e: impl Display) {
     );
 }
 
-pub fn base_resolution(merge_ref: &str, pr_base: &str, verification_error: Option<&str>) {
+pub fn base_resolution(
+    kind: &str,
+    merge_ref: &str,
+    pr_base: &str,
+    verification_error: Option<&str>,
+) {
+    println!("resolution: {}", kind);
     println!("merge_ref: {}", merge_ref);
     println!("pr_base: {}", pr_base);
     if let Some(message) = verification_error {
@@ -151,12 +157,14 @@ pub fn base_resolution(merge_ref: &str, pr_base: &str, verification_error: Optio
 }
 
 pub fn base_resolution_expired(merge_ref: &str, pr_base: &str, base_ref: &str) {
+    println!("resolution: expired");
     println!("merge_ref: {}", merge_ref);
     println!("pr_base: {}", pr_base);
     eprintln!("note: {} merged", base_ref);
 }
 
 pub fn abandoned_base(base_ref: &str) {
+    println!("resolution: abandoned");
     eprintln!("base {} has its PR closed unmerged", base_ref);
 }
 
@@ -168,5 +176,49 @@ pub fn abandoned_base_sync_refused(base_ref: &str) {
     eprintln!(
         "refusing to sync: base {} has its PR closed unmerged; a human must decide whether to drop, salvage, or reopen it",
         base_ref
+    );
+}
+
+pub fn base_immutable(slug: &str, existing: Option<&str>, requested: &str) {
+    let existing = existing.unwrap_or("origin's default branch");
+    eprintln!(
+        "worktree for {} already exists; its start point ({}) cannot be changed to {}. Drop --base, or remove and re-add the worktree.",
+        slug, existing, requested
+    );
+}
+
+/// One stdout line naming what `sync` actually did, plus any warnings on
+/// stderr, so a transcript shows the action and the caller sees problems.
+pub fn sync_outcome(outcome: &crate::app::sync::SyncOutcome) {
+    use crate::app::sync::SyncAction;
+    match &outcome.action {
+        SyncAction::RebasedOntoMain { onto } => println!("synced: rebased onto {}", onto),
+        SyncAction::MergedBase { base_ref } => println!("synced: merged {}", base_ref),
+        SyncAction::MergedMainBaseMerged { onto } => {
+            println!("synced: merged {} (base already merged)", onto)
+        }
+    }
+    if let Some(message) = &outcome.fetch_warning {
+        eprintln!(
+            "warning: could not fetch origin before syncing: {}",
+            message
+        );
+    }
+    if let Some(message) = &outcome.verification_warning {
+        eprintln!("warning: could not verify base's PR state: {}", message);
+    }
+}
+
+pub fn sync_wrong_checkout(slug: &str, expected: &str, actual: &str) {
+    eprintln!(
+        "refusing to sync {}: run this from the heist's worktree on branch {}, but the checkout is on {}",
+        slug, expected, actual
+    );
+}
+
+pub fn sync_not_set_up(slug: &str) {
+    eprintln!(
+        "cannot sync {}: no worktree recorded; run `heist worktree add` first",
+        slug
     );
 }

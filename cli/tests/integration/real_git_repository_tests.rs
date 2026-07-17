@@ -50,6 +50,51 @@ fn detects_main_branch_via_git() {
 }
 
 #[test]
+fn current_branch_reports_checked_out_branch() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_root = temp_dir.path();
+    init_repo_with_commit(repo_root);
+    run_git(repo_root, &["checkout", "-q", "-b", "heist/piece-01"]);
+
+    let branch = RealGit
+        .current_branch(repo_root)
+        .expect("current_branch should succeed");
+
+    assert_eq!(branch, Some("heist/piece-01".to_string()));
+}
+
+#[test]
+fn current_branch_reports_none_when_head_detached() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_root = temp_dir.path();
+    init_repo_with_commit(repo_root);
+    // Detach HEAD at the current commit.
+    run_git(repo_root, &["checkout", "-q", "--detach"]);
+
+    let branch = RealGit
+        .current_branch(repo_root)
+        .expect("current_branch should succeed");
+
+    assert_eq!(branch, None);
+}
+
+#[test]
+fn resolve_ref_errors_with_ref_resolve_on_missing_ref() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_root = temp_dir.path();
+    init_repo_with_commit(repo_root);
+
+    let result = RealGit.resolve_ref(repo_root, "does-not-exist");
+
+    match result {
+        Err(GitError::RefResolve { ref_spec, .. }) => {
+            assert_eq!(ref_spec, "does-not-exist");
+        }
+        other => panic!("expected RefResolve error, got {:?}", other),
+    }
+}
+
+#[test]
 fn reports_branch_merged_when_equal_to_origin_main() {
     let origin_dir = TempDir::new().expect("failed to create temp directory");
     let repo_dir = TempDir::new().expect("failed to create temp directory");

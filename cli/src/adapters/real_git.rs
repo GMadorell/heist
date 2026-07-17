@@ -28,6 +28,42 @@ impl GitRepository for RealGit {
             .unwrap_or_default()
     }
 
+    fn current_branch(&self, repo_root: &Path) -> Result<Option<String>, GitError> {
+        let repo = git2::Repository::open(repo_root).map_err(|e| GitError::CommandFailed {
+            command: "git rev-parse".to_string(),
+            message: e.message().to_string(),
+        })?;
+        let head = match repo.head() {
+            Ok(head) => head,
+            // Unborn branch (no commits yet) reads as detached for our purposes.
+            Err(_) => return Ok(None),
+        };
+        if !head.is_branch() {
+            return Ok(None);
+        }
+        Ok(head.shorthand().ok().map(str::to_string))
+    }
+
+    fn fetch(&self, repo_root: &Path, remote: &str) -> Result<(), GitError> {
+        let output = std::process::Command::new("git")
+            .current_dir(repo_root)
+            .args(["fetch", remote])
+            .output()
+            .map_err(|e| GitError::CommandFailed {
+                command: "git fetch".to_string(),
+                message: e.to_string(),
+            })?;
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        Err(GitError::CommandFailed {
+            command: "git fetch".to_string(),
+            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        })
+    }
+
     fn is_branch_merged(
         &self,
         repo_root: &Path,
@@ -178,8 +214,9 @@ impl GitRepository for RealGit {
             repo.revparse_single(ref_spec)?;
             Ok(())
         };
-        resolve().map_err(|e| GitError::MergeCheck {
-            message: e.to_string(),
+        resolve().map_err(|e| GitError::RefResolve {
+            ref_spec: ref_spec.to_string(),
+            message: e.message().to_string(),
         })
     }
 
@@ -288,8 +325,9 @@ impl GitRepository for RealGit {
             }
             repo.graph_descendant_of(descendant_oid, ancestor_oid)
         };
-        check().map_err(|e| GitError::MergeCheck {
-            message: e.to_string(),
+        check().map_err(|e| GitError::RefResolve {
+            ref_spec: ancestor_ref.to_string(),
+            message: e.message().to_string(),
         })
     }
 
@@ -305,8 +343,6 @@ impl GitRepository for RealGit {
                 "all",
                 "--json",
                 "state,mergedAt",
-                "--limit",
-                "1",
             ])
             .output()
             .map_err(|e| GitError::CommandFailed {
@@ -336,19 +372,33 @@ impl GitRepository for RealGit {
             return Ok(PrState::None);
         }
 
-        let first = &arr[0];
-        let merged_at = first.get("mergedAt");
-        if merged_at.is_some() && merged_at != Some(&serde_json::Value::Null) {
-            return Ok(PrState::Merged);
-        }
+        // A branch can carry several historical PRs (a closed attempt, then a
+        // reopened one). Rank across all of them rather than trusting gh's
+        // default ordering: an open PR wins, else a merged one, else the
+        // branch is abandoned.
+        let classify = |pr: &serde_json::Value| -> PrState {
+            let merged_at = pr.get("mergedAt");
+            if merged_at.is_some() && merged_at != Some(&serde_json::Value::Null) {
+                return PrState::Merged;
+            }
+            match pr.get("state").and_then(|v| v.as_str()) {
+                Some("OPEN") => PrState::Open,
+                _ => PrState::ClosedUnmerged,
+            }
+        };
 
-        let state = first.get("state").and_then(|v| v.as_str()).unwrap_or("");
+        let rank = |state: &PrState| match state {
+            PrState::Open => 3,
+            PrState::Merged => 2,
+            PrState::ClosedUnmerged => 1,
+            PrState::None => 0,
+        };
 
-        if state == "OPEN" {
-            Ok(PrState::Open)
-        } else {
-            Ok(PrState::ClosedUnmerged)
-        }
+        Ok(arr
+            .iter()
+            .map(classify)
+            .max_by_key(|state| rank(state))
+            .unwrap_or(PrState::None))
     }
 
     fn rebase(&self, repo_root: &Path, onto: &str) -> Result<(), GitError> {

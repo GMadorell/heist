@@ -150,6 +150,12 @@ pub struct FakeGit {
     merge_calls: RefCell<Vec<String>>,
     failing_rebase: Option<GitError>,
     failing_merge: Option<GitError>,
+    current_branch: Option<String>,
+    fetch_calls: RefCell<Vec<String>>,
+    fetch_error: Option<GitError>,
+    /// Ordered log of mutating/fetch operations (`fetch`, `rebase`, `merge`)
+    /// so tests can assert a fetch happened before any rebase/merge.
+    call_log: RefCell<Vec<String>>,
 }
 
 impl Default for FakeGit {
@@ -186,6 +192,10 @@ impl FakeGit {
             merge_calls: RefCell::new(Vec::new()),
             failing_rebase: None,
             failing_merge: None,
+            current_branch: None,
+            fetch_calls: RefCell::new(Vec::new()),
+            fetch_error: None,
+            call_log: RefCell::new(Vec::new()),
         }
     }
 
@@ -317,11 +327,42 @@ impl FakeGit {
         self.failing_merge = Some(error);
         self
     }
+
+    pub fn with_current_branch(mut self, branch: &str) -> Self {
+        self.current_branch = Some(branch.to_string());
+        self
+    }
+
+    pub fn failing_fetch(mut self, error: GitError) -> Self {
+        self.fetch_error = Some(error);
+        self
+    }
+
+    pub fn fetch_calls(&self) -> Vec<String> {
+        self.fetch_calls.borrow().clone()
+    }
+
+    pub fn call_log(&self) -> Vec<String> {
+        self.call_log.borrow().clone()
+    }
 }
 
 impl GitRepository for FakeGit {
     fn default_branch(&self, _repo_root: &Path) -> String {
         self.default_branch.clone()
+    }
+
+    fn current_branch(&self, _repo_root: &Path) -> Result<Option<String>, GitError> {
+        Ok(self.current_branch.clone())
+    }
+
+    fn fetch(&self, _repo_root: &Path, remote: &str) -> Result<(), GitError> {
+        self.fetch_calls.borrow_mut().push(remote.to_string());
+        self.call_log.borrow_mut().push("fetch".to_string());
+        if let Some(err) = &self.fetch_error {
+            return Err(err.clone());
+        }
+        Ok(())
     }
 
     fn is_branch_merged(
@@ -464,6 +505,7 @@ impl GitRepository for FakeGit {
 
     fn rebase(&self, _repo_root: &Path, onto: &str) -> Result<(), GitError> {
         self.rebase_calls.borrow_mut().push(onto.to_string());
+        self.call_log.borrow_mut().push("rebase".to_string());
         if let Some(err) = &self.failing_rebase {
             return Err(err.clone());
         }
@@ -472,6 +514,7 @@ impl GitRepository for FakeGit {
 
     fn merge(&self, _repo_root: &Path, other_ref: &str) -> Result<(), GitError> {
         self.merge_calls.borrow_mut().push(other_ref.to_string());
+        self.call_log.borrow_mut().push("merge".to_string());
         if let Some(err) = &self.failing_merge {
             return Err(err.clone());
         }

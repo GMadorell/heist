@@ -29,6 +29,15 @@ pub enum PrState {
 pub trait GitRepository {
     fn default_branch(&self, repo_root: &Path) -> String;
 
+    /// The short name of the branch currently checked out at `repo_root`, or
+    /// `None` if `HEAD` is detached. Used to confirm a mutating command is
+    /// running against the branch it thinks it is.
+    fn current_branch(&self, repo_root: &Path) -> Result<Option<String>, GitError>;
+
+    /// Fetches `remote` so that `origin/<...>` refs reflect the remote's
+    /// current state before any ancestry check or rebase/merge onto them.
+    fn fetch(&self, repo_root: &Path, remote: &str) -> Result<(), GitError>;
+
     fn is_branch_merged(
         &self,
         repo_root: &Path,
@@ -101,6 +110,7 @@ pub enum GitError {
     WorktreeRemove { message: String },
     BranchDelete { message: String },
     MergeCheck { message: String },
+    RefResolve { ref_spec: String, message: String },
     CommandFailed { command: String, message: String },
     Diff { message: String },
     Rebase { message: String },
@@ -118,12 +128,15 @@ impl fmt::Display for GitError {
             GitError::MergeCheck { message } => {
                 write!(f, "failed to check merged branches: {}", message)
             }
+            GitError::RefResolve { ref_spec, message } => {
+                write!(f, "base ref '{}' not found: {}", ref_spec, message)
+            }
             GitError::CommandFailed { command, message } => {
                 write!(f, "failed to run {}: {}", command, message)
             }
             GitError::Diff { message } => write!(f, "failed to compute changed paths: {}", message),
-            GitError::Rebase { message } => write!(f, "rebase-failed: {}", message),
-            GitError::Merge { message } => write!(f, "merge-failed: {}", message),
+            GitError::Rebase { message } => write!(f, "rebase failed: {}", message),
+            GitError::Merge { message } => write!(f, "merge failed: {}", message),
         }
     }
 }

@@ -28,6 +28,7 @@ pub enum ResolveError {
     NoState,
     Load(StateError),
     RefMissingWithOpenPr { base_ref: String },
+    RefMissingNoPr { base_ref: String },
     Ambiguous { base_ref: String },
 }
 
@@ -43,11 +44,10 @@ pub fn resolve(
 
     let state = state_repo.load(slug).map_err(ResolveError::Load)?;
 
-    if state.base.is_none() {
+    let Some(base_value) = state.base else {
         return Ok(BaseResolution::Null);
-    }
-
-    let base_ref = state.base.as_ref().unwrap().as_ref();
+    };
+    let base_ref = base_value.as_ref();
     let main_branch = git.default_branch(repo_root);
 
     // Check if ref exists
@@ -60,7 +60,7 @@ pub fn resolve(
         let ancestry = git.is_ancestor(repo_root, base_ref, &format!("origin/{}", main_branch));
         if matches!(ancestry, Ok(true)) {
             return Ok(BaseResolution::Expired {
-                base_ref: state.base.unwrap(),
+                base_ref: base_value,
             });
         }
     }
@@ -68,19 +68,35 @@ pub fn resolve(
     // PR state check
     match git.pr_state(repo_root, base_ref) {
         Ok(PrState::Merged) => Ok(BaseResolution::Expired {
-            base_ref: state.base.unwrap(),
+            base_ref: base_value,
         }),
         Ok(PrState::ClosedUnmerged) => Ok(BaseResolution::Abandoned {
-            base_ref: state.base.unwrap(),
+            base_ref: base_value,
         }),
-        Ok(PrState::Open) | Ok(PrState::None) => {
+        Ok(PrState::Open) => {
             if ref_exists {
                 Ok(BaseResolution::Live {
-                    base_ref: state.base.unwrap(),
+                    base_ref: base_value,
                     verification_error: None,
                 })
             } else {
+                // The branch is gone but a PR still reports open: the human
+                // must reconcile that, we can't guess the effective base.
                 Err(ResolveError::RefMissingWithOpenPr {
+                    base_ref: base_ref.to_string(),
+                })
+            }
+        }
+        Ok(PrState::None) => {
+            if ref_exists {
+                Ok(BaseResolution::Live {
+                    base_ref: base_value,
+                    verification_error: None,
+                })
+            } else {
+                // No ref and no PR ever found: the base branch was most
+                // likely deleted. Don't claim a PR is open (it isn't).
+                Err(ResolveError::RefMissingNoPr {
                     base_ref: base_ref.to_string(),
                 })
             }
@@ -88,7 +104,7 @@ pub fn resolve(
         Err(e) => {
             if ref_exists {
                 Ok(BaseResolution::Live {
-                    base_ref: state.base.unwrap(),
+                    base_ref: base_value,
                     verification_error: Some(e.to_string()),
                 })
             } else {
@@ -226,6 +242,27 @@ mod tests {
             result,
             Err(ResolveError::RefMissingWithOpenPr { .. })
         ));
+    }
+
+    #[test]
+    fn resolve_errors_ref_missing_no_pr_when_ref_gone_and_no_pr_exists() {
+        let mut state = test_state("foo");
+        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+
+        let repo = InMemoryStateRepository::new().with_state("foo", state);
+        // Ref does not resolve, and no PR was ever found (FakeGit's default
+        // pr_state is `None`).
+        let git = FakeGit::new().failing_resolve_ref_for(
+            "heist/piece-01",
+            GitError::RefResolve {
+                ref_spec: "heist/piece-01".into(),
+                message: "not found".into(),
+            },
+        );
+
+        let result = resolve(Path::new("."), &repo, &git, "foo");
+
+        assert!(matches!(result, Err(ResolveError::RefMissingNoPr { .. })));
     }
 
     #[test]
