@@ -33,9 +33,13 @@ Run `heist validation check <repo-root-absolute-path>`.
 #### 2a. No plan detected: relay loop with the Mastermind
 
 1. Spawn `heist:mastermind` (foreground) with: raw description, slug, worktree absolute path, explicit `cd <worktree-path>` instruction.
-2. Relay loop — each Mastermind reply is a structured question or `INTERVIEW_COMPLETE`.
+2. Relay loop — each Mastermind reply is a structured question, `SPLIT_PROPOSED`, or `INTERVIEW_COMPLETE`.
    - Every structured question gets an `AskUserQuestion` call. Never answer on the human's behalf.
    - Structured question has `QUESTION:`, `OPTIONS:`, `RECOMMENDATION:` lines. Map to `AskUserQuestion`: `question` = QUESTION text; `header` = short invented label; `options` = OPTIONS reordered with the recommended one first, `(Recommended)` appended to its label. Relay the human's answer verbatim via `SendMessage`, wait for the next reply. Loop.
+   - `SPLIT_PROPOSED`: show the human the piece list via `AskUserQuestion` with exactly three options: `accept`, `reject (continue unsplit)`, `redraw`.
+     - Reject: relay `SPLIT_REJECTED` to the Mastermind, then continue the existing relay loop unchanged (treat as any other turn).
+     - Redraw: relay `SPLIT_REDRAW` plus the human's stated feedback, expect a fresh `SPLIT_PROPOSED` reply, and re-run this gate.
+     - Accept: relay `SPLIT_ACCEPTED`. The Mastermind writes `.heist/<slug>/heat.md`. Run it through `crit` the same way step 4 (human review) runs `crit` over `blueprint.md`: relay any comments to the Mastermind, ask it to apply them, repeat until the human leaves no comments. Once approved: run `heist worktree remove <slug>` (this already sets `stage done`; the parent branch has zero commits so the merge check passes). Tell the human the parent heist is done, and that `.heist/<slug>/heat.md` (which survives worktree teardown via the `.heist/<slug>` symlink) now holds one copy-pasteable `/heist:heist` prompt per piece: paste them one at a time (sequential flow) or all at once (stacked flow), per their own judgment of which flow fits.
    - `INTERVIEW_COMPLETE`: the Mastermind has written `.heist/<slug>/blueprint.md`. Run `heist state set <slug> stage fence_review` (heavy) or `stage human_review` (medium/light). Show the human the summary and blueprint path. Keep the Mastermind subagent alive.
    - Reply matches neither shape: remind it of the expected format once; if it repeats, stop and show the human the raw reply.
 3. heavy: continue to fence review below. medium/light: continue to human review below (stage already set).

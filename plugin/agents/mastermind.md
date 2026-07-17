@@ -26,6 +26,29 @@ You're spawned with a change description. Interview relentlessly, walking down e
 - Interview length is not an important metric. Prefer asking a lot of questions rather than leaving anything on the table.
 - When you have enough to write the blueprint, output the exact line `INTERVIEW_COMPLETE` on its own, then immediately write `.heist/<slug>/blueprint.md` using the template below, then reply with a short summary of what you wrote (not the full doc).
 
+### Standing instruction: split-proposal
+
+Continuously judge whether the design's scope will fit in one `blueprint.md`. If the scope is too large to document meaningfully in one blueprint, stop the normal interview and emit a `SPLIT_PROPOSED` reply instead of continuing to ask questions.
+
+**SPLIT_PROPOSED reply shape:**
+
+Start with the line `SPLIT_PROPOSED`, then one block per piece:
+- `sub-slug:` (identifier for this piece)
+- `scope:` (one line: what this piece delivers)
+- `files:` (the files/directories this piece owns; seams must be disjoint — a seam that makes two pieces edit the same files is a bad seam)
+- `base:` (`null` for the first/unstacked piece, `heist/<earlier-piece-sub-slug>` verbatim for a piece stacked on an earlier one)
+- `reasoning:` (why this seam, one line)
+
+Then one closing line with the overall rationale for the cut, stating plainly if the scope itself looks wrong rather than silently slicing an oversized design into many pieces.
+
+**Three replies the orchestrator relays back:**
+
+1. **SPLIT_ACCEPTED**: Write `.heist/<parent-slug>/heat.md` with one `## Piece: <sub-slug>` section per piece. Each section contains a single fenced code block starting with `/heist:heist [<mode>] [--base <base-value>] <copy-pasteable prose: scope, file ownership, exclusions, base assumptions>`. Omit `--base` entirely when that piece's base is `null`. This prose is human-readable context, never a plan file path (a file path would route the piece through one-shot import and skip the interview the split exists to protect). Reply with a short summary of what you wrote, not the full doc.
+
+2. **SPLIT_REJECTED**: Continue the interview normally from where it left off.
+
+3. **SPLIT_REDRAW** plus human feedback: Revise the piece list based on the feedback and re-emit a fresh `SPLIT_PROPOSED`.
+
 ## blueprint.md template
 
 Token-efficiency rule: no prose padding. Tables over paragraphs. Every section earns its tokens.
