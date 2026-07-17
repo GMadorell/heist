@@ -135,6 +135,7 @@ pub struct FakeGit {
     merge_check_error_for: Option<(String, GitError)>,
     verification_error_for: Option<(String, String)>,
     remote_default_resolve_error: Option<GitError>,
+    resolve_ref_error_for: Option<(String, GitError)>,
     removed_worktree_paths: RefCell<Vec<PathBuf>>,
     deleted_branch_names: RefCell<Vec<String>>,
     changed_paths: Vec<PathBuf>,
@@ -161,6 +162,7 @@ impl FakeGit {
             merge_check_error_for: None,
             verification_error_for: None,
             remote_default_resolve_error: None,
+            resolve_ref_error_for: None,
             removed_worktree_paths: RefCell::new(Vec::new()),
             deleted_branch_names: RefCell::new(Vec::new()),
             changed_paths: Vec::new(),
@@ -224,6 +226,11 @@ impl FakeGit {
     /// `cleanup` runs before sweeping worktrees.
     pub fn failing_remote_default_resolve(mut self, error: GitError) -> Self {
         self.remote_default_resolve_error = Some(error);
+        self
+    }
+
+    pub fn failing_resolve_ref_for(mut self, ref_spec: &str, error: GitError) -> Self {
+        self.resolve_ref_error_for = Some((ref_spec.to_string(), error));
         self
     }
 
@@ -334,6 +341,15 @@ impl GitRepository for FakeGit {
     ) -> Result<(), GitError> {
         if let Some(err) = &self.remote_default_resolve_error {
             return Err(err.clone());
+        }
+        Ok(())
+    }
+
+    fn resolve_ref(&self, _repo_root: &Path, ref_spec: &str) -> Result<(), GitError> {
+        if let Some((ref_name, err)) = &self.resolve_ref_error_for {
+            if ref_name == ref_spec {
+                return Err(err.clone());
+            }
         }
         Ok(())
     }

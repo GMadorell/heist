@@ -172,6 +172,17 @@ impl GitRepository for RealGit {
         })
     }
 
+    fn resolve_ref(&self, repo_root: &Path, ref_spec: &str) -> Result<(), GitError> {
+        let resolve = || -> Result<(), git2::Error> {
+            let repo = git2::Repository::open(repo_root)?;
+            repo.revparse_single(ref_spec)?;
+            Ok(())
+        };
+        resolve().map_err(|e| GitError::MergeCheck {
+            message: e.to_string(),
+        })
+    }
+
     fn list_worktrees(&self, repo_root: &Path) -> Result<Vec<WorktreeInfo>, GitError> {
         let list = || -> Result<Vec<WorktreeInfo>, git2::Error> {
             let repo = git2::Repository::open(repo_root)?;

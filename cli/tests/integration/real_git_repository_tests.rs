@@ -337,3 +337,22 @@ fn changed_paths_includes_deleted_files_via_old_file_path() {
 
     assert_eq!(paths, vec![PathBuf::from("doomed.rs")]);
 }
+
+#[test]
+fn resolve_ref_errors_on_missing_ref() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(temp_dir.path());
+
+    let result = RealGit.resolve_ref(temp_dir.path(), "no-such-ref");
+    assert!(result.is_err());
+}
+
+#[test]
+fn resolve_ref_succeeds_for_existing_branch() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(temp_dir.path());
+    run_git(temp_dir.path(), &["branch", "feature"]);
+
+    let result = RealGit.resolve_ref(temp_dir.path(), "feature");
+    assert!(result.is_ok());
+}

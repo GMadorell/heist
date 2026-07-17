@@ -14,6 +14,8 @@ pub struct State {
     pub mode: Mode,
     pub worktree: Option<NonBlankValue>,
     pub branch: Option<NonBlankValue>,
+    #[serde(default)]
+    pub base: Option<NonBlankValue>,
     pub score_wave: ScoreWave,
     pub score_waves_total: ScoreWavesTotal,
     pub score_steps_total: ScoreStepsTotal,
@@ -31,6 +33,7 @@ impl State {
             mode: Mode::default(),
             worktree: None,
             branch: None,
+            base: None,
             score_wave: ScoreWave::new(0),
             score_waves_total: ScoreWavesTotal::new(0),
             score_steps_total: ScoreStepsTotal::new(0),
@@ -56,6 +59,11 @@ impl State {
                 .as_ref()
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "null".to_string()),
+            "base" => self
+                .base
+                .as_ref()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "null".to_string()),
             "score_wave" => self.score_wave.to_string(),
             "score_waves_total" => self.score_waves_total.to_string(),
             "score_steps_total" => self.score_steps_total.to_string(),
@@ -75,6 +83,7 @@ impl State {
             "mode" => self.mode = Mode::parse(value)?,
             "worktree" => self.worktree = Some(NonBlankValue::parse(cli_field, value)?),
             "branch" => self.branch = Some(NonBlankValue::parse(cli_field, value)?),
+            "base" => self.base = Some(NonBlankValue::parse(cli_field, value)?),
             "score_wave" => self.score_wave = ScoreWave::parse(cli_field, value)?,
             "score_waves_total" => {
                 self.score_waves_total = ScoreWavesTotal::parse(cli_field, value)?
@@ -200,6 +209,7 @@ mod tests {
                 "mode": "heavy",
                 "worktree": null,
                 "branch": null,
+                "base": null,
                 "score_wave": 0,
                 "score_waves_total": 0,
                 "score_steps_total": 0,
@@ -282,5 +292,25 @@ mod tests {
             }
             _ => panic!("expected FieldError::InvalidValue, got a different variant"),
         }
+    }
+
+    #[test]
+    fn state_without_base_key_deserializes_to_none() {
+        let json = json!({
+            "schema_version": 1,
+            "slug": "my-slug",
+            "stage": "casing",
+            "mode": "heavy",
+            "worktree": null,
+            "branch": null,
+            "score_wave": 0,
+            "score_waves_total": 0,
+            "score_steps_total": 0,
+            "fence_rounds": 0,
+            "created": "2026-01-01",
+            "updated": "2026-01-01",
+        });
+        let state: State = serde_json::from_value(json).expect("should deserialize");
+        assert_eq!(state.base, None);
     }
 }

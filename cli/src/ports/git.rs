@@ -48,6 +48,10 @@ pub trait GitRepository {
     /// requiring a local branch of the same name to exist.
     fn remote_default_resolves(&self, repo_root: &Path, main_branch: &str) -> Result<(), GitError>;
 
+    /// Resolves `ref_spec` verbatim (no `origin/` prefixing, unlike `remote_default_resolves`),
+    /// existence-only check, no ancestry verification.
+    fn resolve_ref(&self, repo_root: &Path, ref_spec: &str) -> Result<(), GitError>;
+
     /// Changed paths between the merge-base of `origin/<base_branch>` and
     /// `head_ref`, and `head_ref` itself (three-dot semantics).
     fn changed_paths(
