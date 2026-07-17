@@ -35,9 +35,6 @@ pub struct SyncOutcome {
     /// `Some` when the pre-sync `git fetch` failed; the sync still ran against
     /// whatever refs were already local.
     pub fetch_warning: Option<String>,
-    /// `Some` when the base's PR state could not be verified (missing `gh`,
-    /// no auth), carried up from resolution so the caller can warn.
-    pub verification_warning: Option<String>,
 }
 
 pub fn perform(
@@ -52,7 +49,7 @@ pub fn perform(
             git.rebase(repo_root, &onto).map_err(SyncError::Git)?;
             Ok(SyncAction::RebasedOntoMain { onto })
         }
-        BaseResolution::Live { base_ref, .. } => {
+        BaseResolution::Live { base_ref } => {
             git.merge(repo_root, base_ref.as_ref())
                 .map_err(SyncError::Git)?;
             Ok(SyncAction::MergedBase {
@@ -113,19 +110,12 @@ pub fn sync(
 
     let resolution = crate::app::base::resolve(worktree_path, state_repo, git, slug)
         .map_err(SyncError::Resolve)?;
-    let verification_warning = match &resolution {
-        BaseResolution::Live {
-            verification_error, ..
-        } => verification_error.clone(),
-        _ => None,
-    };
     let main_branch = git.default_branch(worktree_path);
     let action = perform(worktree_path, git, &main_branch, &resolution)?;
 
     Ok(SyncOutcome {
         action,
         fetch_warning,
-        verification_warning,
     })
 }
 
@@ -207,6 +197,32 @@ mod tests {
         let result = sync(&repo, &git, "foo");
 
         assert!(matches!(result, Err(SyncError::Abandoned { .. })));
+        assert!(git.rebase_calls().is_empty());
+        assert!(git.merge_calls().is_empty());
+    }
+
+    #[test]
+    fn sync_halts_without_touching_git_when_base_pr_state_unverifiable() {
+        let mut state = set_up_state("foo");
+        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+
+        let repo = InMemoryStateRepository::new().with_state("foo", state);
+        let git = git_on_branch("foo").failing_pr_state_for(
+            "heist/piece-01",
+            crate::ports::git::GitError::CommandFailed {
+                command: "gh pr list".into(),
+                message: "gh not found".into(),
+            },
+        );
+
+        let result = sync(&repo, &git, "foo");
+
+        assert!(matches!(
+            result,
+            Err(SyncError::Resolve(
+                crate::app::base::ResolveError::VerificationFailed { .. }
+            ))
+        ));
         assert!(git.rebase_calls().is_empty());
         assert!(git.merge_calls().is_empty());
     }

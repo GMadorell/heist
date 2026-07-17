@@ -20,7 +20,7 @@ Run this pipeline in order. Stop and report at the first failing stage — no pa
    Risk label from surviving findings: `low`/`medium`/`high`/`critical` — any `error`-severity `ask-user` is at least `high`; more than one, or anything touching security/data-loss, is `critical`.
 3. **Mechanical**: build, lint, full test suite. All green or bounce back with a concrete failure report (heist returns to `implementing` — say so).
 4. **Docs pass**: per `heist validation resolve <absolute-path>`'s Docs section.
-5. **Getaway**: before `gh pr create`, run `heist base <slug>` and read its `pr_base` line; pass it explicitly as `gh pr create --base <pr_base>` (rather than omitting `--base`). If `heist base <slug>` prints a `warning: could not verify base's PR state` line to stderr, note it in the PR body as a heads-up that the base's PR state is unconfirmed, so a human should double check before assuming it's still open. Push and open the PR. PR body: summary, risk label, auto-fixes applied, remaining `ask-user`/`no-op` findings.
+5. **Getaway**: before `gh pr create`, run `heist base <slug>` and read its `pr_base` line; pass it explicitly as `gh pr create --base <pr_base>` (rather than omitting `--base`). If `heist base <slug>` exits 3 (base's PR state unverifiable: `gh` missing or unauthenticated), stop and report the environment problem to the human instead of opening the PR. Push and open the PR. PR body: summary, risk label, auto-fixes applied, remaining `ask-user`/`no-op` findings.
 
 `critical` review verdict: stop before pushing, hand the decision to the human.
 

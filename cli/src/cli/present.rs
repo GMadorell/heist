@@ -142,18 +142,17 @@ pub fn no_remote_default_for_review(slug: &str, e: impl Display) {
     );
 }
 
-pub fn base_resolution(
-    kind: &str,
-    merge_ref: &str,
-    pr_base: &str,
-    verification_error: Option<&str>,
-) {
+pub fn base_resolution(kind: &str, merge_ref: &str, pr_base: &str) {
     println!("resolution: {}", kind);
     println!("merge_ref: {}", merge_ref);
     println!("pr_base: {}", pr_base);
-    if let Some(message) = verification_error {
-        eprintln!("warning: could not verify base's PR state: {}", message);
-    }
+}
+
+pub fn base_verification_failed(base_ref: &str, message: &str) {
+    eprintln!(
+        "cannot verify PR state of base {}: {}\nfix the environment (install `gh`, run `gh auth login`, check network) and retry",
+        base_ref, message
+    );
 }
 
 pub fn base_resolution_expired(merge_ref: &str, pr_base: &str, base_ref: &str) {
@@ -203,9 +202,6 @@ pub fn sync_outcome(outcome: &crate::app::sync::SyncOutcome) {
             "warning: could not fetch origin before syncing: {}",
             message
         );
-    }
-    if let Some(message) = &outcome.verification_warning {
-        eprintln!("warning: could not verify base's PR state: {}", message);
     }
 }
 

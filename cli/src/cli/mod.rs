@@ -485,24 +485,11 @@ fn run_base(
 
     match app::base::resolve(repo_root, state_repo, git, slug) {
         Ok(app::base::BaseResolution::Null) => {
-            present::base_resolution(
-                "null",
-                &format!("origin/{}", main_branch),
-                &main_branch,
-                None,
-            );
+            present::base_resolution("null", &format!("origin/{}", main_branch), &main_branch);
             ExitCode::Success
         }
-        Ok(app::base::BaseResolution::Live {
-            base_ref,
-            verification_error,
-        }) => {
-            present::base_resolution(
-                "live",
-                base_ref.as_ref(),
-                base_ref.as_ref(),
-                verification_error.as_deref(),
-            );
+        Ok(app::base::BaseResolution::Live { base_ref }) => {
+            present::base_resolution("live", base_ref.as_ref(), base_ref.as_ref());
             ExitCode::Success
         }
         Ok(app::base::BaseResolution::Expired { base_ref }) => {
@@ -539,6 +526,10 @@ fn run_base(
         Err(app::base::ResolveError::Ambiguous { base_ref }) => {
             present::base_resolve_failed(&base_ref, "cannot determine PR state");
             ExitCode::Precondition
+        }
+        Err(app::base::ResolveError::VerificationFailed { base_ref, message }) => {
+            present::base_verification_failed(&base_ref, &message);
+            ExitCode::Git
         }
     }
 }
@@ -595,6 +586,13 @@ fn run_sync(
         Err(app::sync::SyncError::Resolve(app::base::ResolveError::Ambiguous { base_ref })) => {
             present::base_resolve_failed(&base_ref, "cannot determine PR state");
             ExitCode::Precondition
+        }
+        Err(app::sync::SyncError::Resolve(app::base::ResolveError::VerificationFailed {
+            base_ref,
+            message,
+        })) => {
+            present::base_verification_failed(&base_ref, &message);
+            ExitCode::Git
         }
     }
 }

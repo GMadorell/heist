@@ -62,7 +62,7 @@ Prints the reviewer lanes to run for the diff since the default branch, one bare
 
 ### `base <slug>`
 
-Resolves the heist's recorded `base` against its PR state and prints three lines: `resolution:` (`null` | `live` | `expired` | `abandoned`), `merge_ref:` (the ref `sync` would use), and `pr_base:` (what the heist's own PR should target). `null` means no base is recorded, `live` means the base's PR is still open, `expired` means it merged, `abandoned` means it was closed unmerged. `abandoned` exits 2; the others exit 0. If the base's PR state can't be verified (no `gh`, no auth), resolves as `live` and warns on stderr.
+Resolves the heist's recorded `base` against its PR state and prints three lines: `resolution:` (`null` | `live` | `expired` | `abandoned`), `merge_ref:` (the ref `sync` would use), and `pr_base:` (what the heist's own PR should target). `null` means no base is recorded, `live` means the base's PR is still open, `expired` means it merged, `abandoned` means it was closed unmerged. `abandoned` exits 2; the others exit 0. If the base's PR state can't be verified (no `gh`, no auth, network down), the command halts with exit 3 instead of guessing: the workflow depends on `gh`, so fix the environment and rerun. `sync` halts the same way.
 
 ### `sync <slug>`
 

@@ -11,10 +11,6 @@ pub enum BaseResolution {
         // R5 (stale-base detection: local base ref outrunning its remote
         // counterpart) is intentionally not implemented yet; deferred to a
         // follow-up. This variant only reports liveness, not staleness.
-        /// `Some` when the PR-state check couldn't run (missing `gh`, no
-        /// auth, etc.) rather than having actually confirmed the base's PR
-        /// state; the base ref still resolves, so it's usable.
-        verification_error: Option<String>,
     },
     Expired {
         base_ref: NonBlankValue,
@@ -30,6 +26,10 @@ pub enum ResolveError {
     RefMissingWithOpenPr { base_ref: String },
     RefMissingNoPr { base_ref: String },
     Ambiguous { base_ref: String },
+    /// The PR-state check couldn't run (missing `gh`, no auth, network). The
+    /// workflow depends on `gh`, so this is an environment problem to fix,
+    /// not a state to guess around.
+    VerificationFailed { base_ref: String, message: String },
 }
 
 pub fn resolve(
@@ -77,7 +77,6 @@ pub fn resolve(
             if ref_exists {
                 Ok(BaseResolution::Live {
                     base_ref: base_value,
-                    verification_error: None,
                 })
             } else {
                 // The branch is gone but a PR still reports open: the human
@@ -91,7 +90,6 @@ pub fn resolve(
             if ref_exists {
                 Ok(BaseResolution::Live {
                     base_ref: base_value,
-                    verification_error: None,
                 })
             } else {
                 // No ref and no PR ever found: the base branch was most
@@ -103,9 +101,9 @@ pub fn resolve(
         }
         Err(e) => {
             if ref_exists {
-                Ok(BaseResolution::Live {
-                    base_ref: base_value,
-                    verification_error: Some(e.to_string()),
+                Err(ResolveError::VerificationFailed {
+                    base_ref: base_ref.to_string(),
+                    message: e.to_string(),
                 })
             } else {
                 Err(ResolveError::Ambiguous {
@@ -212,13 +210,7 @@ mod tests {
 
         let result = resolve(Path::new("."), &repo, &git, "foo");
 
-        assert!(matches!(
-            result,
-            Ok(BaseResolution::Live {
-                verification_error: None,
-                ..
-            })
-        ));
+        assert!(matches!(result, Ok(BaseResolution::Live { .. })));
     }
 
     #[test]
@@ -266,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_returns_live_with_verification_error_when_gh_fails_but_ref_exists() {
+    fn resolve_errors_verification_failed_when_gh_fails_even_if_ref_exists() {
         let mut state = test_state("foo");
         state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
 
@@ -282,22 +274,15 @@ mod tests {
         let result = resolve(Path::new("."), &repo, &git, "foo");
 
         match result {
-            Ok(BaseResolution::Live {
-                verification_error, ..
-            }) => {
-                let message = verification_error.expect("expected a verification error");
+            Err(ResolveError::VerificationFailed { base_ref, message }) => {
+                assert_eq!(base_ref, "heist/piece-01");
                 assert!(
                     message.contains("gh not found"),
-                    "expected verification_error to mention the underlying failure, got: {}",
+                    "expected message to mention the underlying failure, got: {}",
                     message
                 );
             }
-            other => panic!("expected Live with verification_error, got {:?}", {
-                match other {
-                    Ok(_) => "Ok(non-Live)".to_string(),
-                    Err(_) => "Err".to_string(),
-                }
-            }),
+            _ => panic!("expected VerificationFailed"),
         }
     }
 
