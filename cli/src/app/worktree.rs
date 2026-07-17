@@ -62,10 +62,9 @@ pub fn add(
     let mut state = state_repo.load(slug).map_err(AddError::Load)?;
     state.worktree = Some(worktree_value.clone());
     state.branch = Some(branch);
-    state.base = base
-        .map(|b| NonBlankValue::parse("base", b))
-        .transpose()
-        .map_err(AddError::Naming)?;
+    if let Some(b) = base {
+        state.base = Some(NonBlankValue::parse("base", b).map_err(AddError::Naming)?);
+    }
     state.updated = clock.today();
     state_repo.save(slug, &state).map_err(AddError::Save)?;
 
@@ -733,6 +732,36 @@ mod tests {
         assert_eq!(
             saved_state.base,
             Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"))
+        );
+    }
+
+    #[test]
+    fn add_without_base_preserves_previously_persisted_base() {
+        let mut state = State::new(
+            "foo",
+            DateValue::parse("today", "2025-01-01").expect("valid date"),
+        )
+        .expect("valid slug");
+        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let repo = InMemoryStateRepository::new().with_state("foo", state);
+        let git = FakeGit::new().with_default_branch("main");
+
+        let result = add(
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            "foo",
+            None,
+        );
+
+        assert!(result.is_ok());
+        let saved_state = repo.get("foo").expect("foo state should exist");
+        assert_eq!(
+            saved_state.base,
+            Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base")),
+            "re-running `heist worktree add` without --base must not null an already-persisted base"
         );
     }
 
