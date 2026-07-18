@@ -62,18 +62,18 @@ Prints the reviewer lanes to run for the diff since the default branch, one bare
 
 ### `base <slug>`
 
-Resolves the heist's recorded `base` against its PR state and prints three lines: `resolution:` (`null` | `live` | `expired` | `abandoned`), `merge_ref:` (the ref `sync` would use), and `pr_base:` (what the heist's own PR should target). `null` means no base is recorded, `live` means the base's PR is still open, `expired` means it merged, `abandoned` means it was closed unmerged. `abandoned` exits 2; the others exit 0. If the base's PR state can't be verified (no `gh`, no auth, network down), the command halts with exit 3 instead of guessing: the workflow depends on `gh`, so fix the environment and rerun. `sync` halts the same way.
+Resolves the heist's recorded `base` against its PR state and prints three lines: `resolution:` (`null` | `live` | `expired` | `abandoned`), `merge_ref:` (the ref `sync` would use), and `pr_base:` (what the heist's own PR should target). `null` means no base is recorded, `live` means the base's PR is still open, `expired` means it merged, `abandoned` means it was closed unmerged. `abandoned` exits 2; the others exit 0. If the base's PR state can't be verified (no `gh`, no auth, network down), the command halts with exit 3 instead of guessing: user should fix their env.
 
 ### `sync <slug>`
 
-Fetches origin, resolves the base like `heist base`, and updates the heist's branch accordingly; this is the only heist command that runs `git rebase`/`git merge`:
+Fetches origin, resolves the base like `heist base`, and updates the heist's branch accordingly:
 
 - `null`: rebase onto `origin/<default>`.
 - `live`: merge the base branch (never rebase, so a later squash-merge of the base doesn't get its commits replayed).
 - `expired`: merge `origin/<default>`.
 - `abandoned`: refuse with exit 2; a human must decide whether to drop, salvage, or reopen the base's commits.
 
-Prints one `synced: ...` line naming what it did. Operates on the worktree recorded in state (safe to run from anywhere) and refuses (exit 2) if no worktree is recorded or the worktree is checked out on a different branch. A failed fetch warns on stderr but syncs against the refs already local.
+Prints one `synced: ...` line naming what it did. Operates on the worktree recorded in state (safe to run from anywhere) and refuses (exit 2) if no worktree is recorded or the worktree is checked out on a different branch. A failed fetch aborts the sync: stale refs could rebase or merge the wrong thing, so fix the environment (network, auth, `origin` remote) and re-run.
 
 ### `resume <slug>`
 

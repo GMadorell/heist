@@ -186,23 +186,24 @@ pub fn base_immutable(slug: &str, existing: Option<&str>, requested: &str) {
     );
 }
 
-/// One stdout line naming what `sync` actually did, plus any warnings on
-/// stderr, so a transcript shows the action and the caller sees problems.
-pub fn sync_outcome(outcome: &crate::app::sync::SyncOutcome) {
+/// One stdout line naming what `sync` actually did, so a transcript shows
+/// the action.
+pub fn sync_action(action: &crate::app::sync::SyncAction) {
     use crate::app::sync::SyncAction;
-    match &outcome.action {
+    match action {
         SyncAction::RebasedOntoMain { onto } => println!("synced: rebased onto {}", onto),
         SyncAction::MergedBase { base_ref } => println!("synced: merged {}", base_ref),
         SyncAction::MergedMainBaseMerged { onto } => {
             println!("synced: merged {} (base already merged)", onto)
         }
     }
-    if let Some(message) = &outcome.fetch_warning {
-        eprintln!(
-            "warning: could not fetch origin before syncing: {}",
-            message
-        );
-    }
+}
+
+pub fn sync_fetch_failed(error: &crate::ports::git::GitError) {
+    eprintln!(
+        "refusing to sync: could not fetch origin, so local refs may be stale: {}. Fix the environment and re-run.",
+        error
+    );
 }
 
 pub fn sync_wrong_checkout(slug: &str, expected: &str, actual: &str) {

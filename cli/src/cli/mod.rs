@@ -540,9 +540,13 @@ fn run_sync(
     git: &dyn crate::ports::git::GitRepository,
 ) -> ExitCode {
     match app::sync::sync(state_repo, git, slug) {
-        Ok(outcome) => {
-            present::sync_outcome(&outcome);
+        Ok(action) => {
+            present::sync_action(&action);
             ExitCode::Success
+        }
+        Err(app::sync::SyncError::FetchFailed(e)) => {
+            present::sync_fetch_failed(&e);
+            ExitCode::from(&e)
         }
         Err(app::sync::SyncError::Abandoned { base_ref }) => {
             present::abandoned_base_sync_refused(&base_ref);

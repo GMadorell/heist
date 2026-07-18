@@ -17,6 +17,10 @@ pub enum SyncError {
         expected: String,
         actual: String,
     },
+    /// The pre-sync `git fetch origin` failed. Syncing against stale refs
+    /// could rebase or merge the wrong thing, so refuse and let the caller
+    /// fix the environment and re-run.
+    FetchFailed(GitError),
     Git(GitError),
 }
 
@@ -28,13 +32,6 @@ pub enum SyncAction {
     MergedBase { base_ref: String },
     /// Stacked on a base whose PR already merged: merged `origin/<main>` in.
     MergedMainBaseMerged { onto: String },
-}
-
-pub struct SyncOutcome {
-    pub action: SyncAction,
-    /// `Some` when the pre-sync `git fetch` failed; the sync still ran against
-    /// whatever refs were already local.
-    pub fetch_warning: Option<String>,
 }
 
 pub fn perform(
@@ -74,7 +71,7 @@ pub fn sync(
     state_repo: &dyn StateRepository,
     git: &dyn GitRepository,
     slug: &str,
-) -> Result<SyncOutcome, SyncError> {
+) -> Result<SyncAction, SyncError> {
     if !state_repo.exists(slug) {
         return Err(SyncError::Resolve(crate::app::base::ResolveError::NoState));
     }
@@ -103,20 +100,15 @@ pub fn sync(
 
     // Refresh `origin/*` so the ancestry pre-check and any rebase/merge onto
     // `origin/<main>` see the remote's current state rather than stale refs.
-    let fetch_warning = git
-        .fetch(worktree_path, "origin")
-        .err()
-        .map(|e| e.to_string());
+    // A failed fetch means stale refs, and every downstream decision assumes
+    // fresh ones, so it is a hard stop.
+    git.fetch(worktree_path, "origin")
+        .map_err(SyncError::FetchFailed)?;
 
     let resolution = crate::app::base::resolve(worktree_path, state_repo, git, slug)
         .map_err(SyncError::Resolve)?;
     let main_branch = git.default_branch(worktree_path);
-    let action = perform(worktree_path, git, &main_branch, &resolution)?;
-
-    Ok(SyncOutcome {
-        action,
-        fetch_warning,
-    })
+    perform(worktree_path, git, &main_branch, &resolution)
 }
 
 #[cfg(test)]
@@ -292,19 +284,18 @@ mod tests {
     }
 
     #[test]
-    fn sync_reports_fetch_warning_but_still_syncs_when_fetch_fails() {
+    fn sync_fails_without_touching_git_when_fetch_fails() {
         let repo = InMemoryStateRepository::new().with_state("foo", set_up_state("foo"));
         let git = git_on_branch("foo").failing_fetch(GitError::CommandFailed {
             command: "git fetch".into(),
             message: "network down".into(),
         });
 
-        let Ok(outcome) = sync(&repo, &git, "foo") else {
-            panic!("sync should still run when fetch fails");
-        };
+        let result = sync(&repo, &git, "foo");
 
-        assert!(outcome.fetch_warning.is_some());
-        assert_eq!(git.rebase_calls(), vec!["origin/main".to_string()]);
+        assert!(matches!(result, Err(SyncError::FetchFailed(_))));
+        assert!(git.rebase_calls().is_empty());
+        assert!(git.merge_calls().is_empty());
     }
 
     #[test]
@@ -312,10 +303,10 @@ mod tests {
         let repo = InMemoryStateRepository::new().with_state("foo", set_up_state("foo"));
         let git = git_on_branch("foo");
 
-        let Ok(outcome) = sync(&repo, &git, "foo") else {
+        let Ok(action) = sync(&repo, &git, "foo") else {
             panic!("sync should succeed");
         };
 
-        assert!(matches!(outcome.action, SyncAction::RebasedOntoMain { .. }));
+        assert!(matches!(action, SyncAction::RebasedOntoMain { .. }));
     }
 }
