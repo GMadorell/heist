@@ -92,6 +92,7 @@ Prints one line per heist under `.heist/` (`slug  stage  next_step  worktree`), 
 | 2 | Precondition failed (missing/invalid state, unmerged branch, validation.md missing, bad input) |
 | 3 | Underlying git command failed |
 | 4 | Invalid path argument (not absolute, or outside the project) |
+| 5 | Abandoned-base halt (`sync` only): base PR closed unmerged, human decision required |
 
 ## Tests
 
