@@ -19,7 +19,7 @@ use std::path::Path;
     long_about = "Deterministic, token-free half of the Heist pipeline: state tracking, worktree \
 setup/teardown, and validation.md lookup. All commands read/write `.heist/<slug>/state.json` \
 relative to the current directory unless noted.\n\n\
-Exit codes: 0 success, 1 internal error, 2 precondition failed, 3 git command failed, 4 invalid path argument."
+Exit codes: 0 success, 1 internal error, 2 precondition failed, 3 git command failed, 4 invalid path argument, 5 <abandoned-base halt: base PR closed unmerged, human decision required>."
 )]
 pub struct Cli {
     #[command(subcommand)]
