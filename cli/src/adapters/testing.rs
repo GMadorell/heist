@@ -2,12 +2,12 @@ use crate::domain::error::StateError;
 use crate::domain::state::State;
 use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
-use crate::ports::git::{GitError, GitRepository, MergeCheck, WorktreeInfo};
+use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
 use crate::ports::state_repository::StateRepository;
 use crate::ports::validation_source::ValidationSource;
 use crate::ports::worktree_fs::WorktreeFs;
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
@@ -135,11 +135,27 @@ pub struct FakeGit {
     merge_check_error_for: Option<(String, GitError)>,
     verification_error_for: Option<(String, String)>,
     remote_default_resolve_error: Option<GitError>,
+    resolve_ref_error_for: Option<(String, GitError)>,
     removed_worktree_paths: RefCell<Vec<PathBuf>>,
     deleted_branch_names: RefCell<Vec<String>>,
+    add_worktree_start_points: RefCell<Vec<String>>,
     changed_paths: Vec<PathBuf>,
     changed_paths_error: Option<GitError>,
     file_contents: std::collections::HashMap<PathBuf, String>,
+    ancestors: HashSet<(String, String)>,
+    pr_states: HashMap<String, PrState>,
+    pr_state_error_for: Option<(String, GitError)>,
+    is_ancestor_calls: RefCell<u32>,
+    rebase_calls: RefCell<Vec<String>>,
+    merge_calls: RefCell<Vec<String>>,
+    failing_rebase: Option<GitError>,
+    failing_merge: Option<GitError>,
+    current_branch: Option<String>,
+    fetch_calls: RefCell<Vec<String>>,
+    fetch_error: Option<GitError>,
+    /// Ordered log of mutating/fetch operations (`fetch`, `rebase`, `merge`)
+    /// so tests can assert a fetch happened before any rebase/merge.
+    call_log: RefCell<Vec<String>>,
 }
 
 impl Default for FakeGit {
@@ -161,11 +177,25 @@ impl FakeGit {
             merge_check_error_for: None,
             verification_error_for: None,
             remote_default_resolve_error: None,
+            resolve_ref_error_for: None,
             removed_worktree_paths: RefCell::new(Vec::new()),
             deleted_branch_names: RefCell::new(Vec::new()),
+            add_worktree_start_points: RefCell::new(Vec::new()),
             changed_paths: Vec::new(),
             changed_paths_error: None,
             file_contents: std::collections::HashMap::new(),
+            ancestors: HashSet::new(),
+            pr_states: HashMap::new(),
+            pr_state_error_for: None,
+            is_ancestor_calls: RefCell::new(0),
+            rebase_calls: RefCell::new(Vec::new()),
+            merge_calls: RefCell::new(Vec::new()),
+            failing_rebase: None,
+            failing_merge: None,
+            current_branch: None,
+            fetch_calls: RefCell::new(Vec::new()),
+            fetch_error: None,
+            call_log: RefCell::new(Vec::new()),
         }
     }
 
@@ -227,6 +257,11 @@ impl FakeGit {
         self
     }
 
+    pub fn failing_resolve_ref_for(mut self, ref_spec: &str, error: GitError) -> Self {
+        self.resolve_ref_error_for = Some((ref_spec.to_string(), error));
+        self
+    }
+
     pub fn with_changed_paths(mut self, paths: &[&str]) -> Self {
         self.changed_paths = paths.iter().map(PathBuf::from).collect();
         self
@@ -243,6 +278,26 @@ impl FakeGit {
         self
     }
 
+    pub fn with_ancestor(mut self, ancestor: &str, descendant: &str) -> Self {
+        self.ancestors
+            .insert((ancestor.to_string(), descendant.to_string()));
+        self
+    }
+
+    pub fn with_pr_state(mut self, branch: &str, state: PrState) -> Self {
+        self.pr_states.insert(branch.to_string(), state);
+        self
+    }
+
+    pub fn failing_pr_state_for(mut self, branch: &str, error: GitError) -> Self {
+        self.pr_state_error_for = Some((branch.to_string(), error));
+        self
+    }
+
+    pub fn is_ancestor_call_count(&self) -> u32 {
+        *self.is_ancestor_calls.borrow()
+    }
+
     pub fn removed_worktree_paths(&self) -> Vec<PathBuf> {
         self.removed_worktree_paths.borrow().clone()
     }
@@ -250,11 +305,64 @@ impl FakeGit {
     pub fn deleted_branch_names(&self) -> Vec<String> {
         self.deleted_branch_names.borrow().clone()
     }
+
+    pub fn add_worktree_start_points(&self) -> Vec<String> {
+        self.add_worktree_start_points.borrow().clone()
+    }
+
+    pub fn rebase_calls(&self) -> Vec<String> {
+        self.rebase_calls.borrow().clone()
+    }
+
+    pub fn merge_calls(&self) -> Vec<String> {
+        self.merge_calls.borrow().clone()
+    }
+
+    pub fn failing_rebase(mut self, error: GitError) -> Self {
+        self.failing_rebase = Some(error);
+        self
+    }
+
+    pub fn failing_merge(mut self, error: GitError) -> Self {
+        self.failing_merge = Some(error);
+        self
+    }
+
+    pub fn with_current_branch(mut self, branch: &str) -> Self {
+        self.current_branch = Some(branch.to_string());
+        self
+    }
+
+    pub fn failing_fetch(mut self, error: GitError) -> Self {
+        self.fetch_error = Some(error);
+        self
+    }
+
+    pub fn fetch_calls(&self) -> Vec<String> {
+        self.fetch_calls.borrow().clone()
+    }
+
+    pub fn call_log(&self) -> Vec<String> {
+        self.call_log.borrow().clone()
+    }
 }
 
 impl GitRepository for FakeGit {
     fn default_branch(&self, _repo_root: &Path) -> String {
         self.default_branch.clone()
+    }
+
+    fn current_branch(&self, _repo_root: &Path) -> Result<Option<String>, GitError> {
+        Ok(self.current_branch.clone())
+    }
+
+    fn fetch(&self, _repo_root: &Path, remote: &str) -> Result<(), GitError> {
+        self.fetch_calls.borrow_mut().push(remote.to_string());
+        self.call_log.borrow_mut().push("fetch".to_string());
+        if let Some(err) = &self.fetch_error {
+            return Err(err.clone());
+        }
+        Ok(())
     }
 
     fn is_branch_merged(
@@ -292,11 +400,14 @@ impl GitRepository for FakeGit {
         _repo_root: &Path,
         _path: &Path,
         branch: &str,
-        _start_point: &str,
+        start_point: &str,
     ) -> Result<(), GitError> {
         if let Some(err) = &self.add_error {
             return Err(err.clone());
         }
+        self.add_worktree_start_points
+            .borrow_mut()
+            .push(start_point.to_string());
         // Register by the branch's slug suffix (`heist/<slug>` -> `<slug>`).
         let slug = branch.rsplit('/').next().unwrap_or(branch);
         self.worktrees.borrow_mut().insert(slug.to_string());
@@ -338,6 +449,15 @@ impl GitRepository for FakeGit {
         Ok(())
     }
 
+    fn resolve_ref(&self, _repo_root: &Path, ref_spec: &str) -> Result<(), GitError> {
+        if let Some((ref_name, err)) = &self.resolve_ref_error_for {
+            if ref_name == ref_spec {
+                return Err(err.clone());
+            }
+        }
+        Ok(())
+    }
+
     fn changed_paths(
         &self,
         _repo_root: &Path,
@@ -357,6 +477,48 @@ impl GitRepository for FakeGit {
         path: &Path,
     ) -> Result<Option<String>, GitError> {
         Ok(self.file_contents.get(path).cloned())
+    }
+
+    fn is_ancestor(
+        &self,
+        _repo_root: &Path,
+        ancestor_ref: &str,
+        descendant_ref: &str,
+    ) -> Result<bool, GitError> {
+        *self.is_ancestor_calls.borrow_mut() += 1;
+        if ancestor_ref == descendant_ref {
+            return Ok(true);
+        }
+        Ok(self
+            .ancestors
+            .contains(&(ancestor_ref.to_string(), descendant_ref.to_string())))
+    }
+
+    fn pr_state(&self, _repo_root: &Path, branch: &str) -> Result<PrState, GitError> {
+        if let Some((failing_branch, err)) = &self.pr_state_error_for {
+            if failing_branch == branch {
+                return Err(err.clone());
+            }
+        }
+        Ok(self.pr_states.get(branch).cloned().unwrap_or(PrState::None))
+    }
+
+    fn rebase(&self, _repo_root: &Path, onto: &str) -> Result<(), GitError> {
+        self.rebase_calls.borrow_mut().push(onto.to_string());
+        self.call_log.borrow_mut().push("rebase".to_string());
+        if let Some(err) = &self.failing_rebase {
+            return Err(err.clone());
+        }
+        Ok(())
+    }
+
+    fn merge(&self, _repo_root: &Path, other_ref: &str) -> Result<(), GitError> {
+        self.merge_calls.borrow_mut().push(other_ref.to_string());
+        self.call_log.borrow_mut().push("merge".to_string());
+        if let Some(err) = &self.failing_merge {
+            return Err(err.clone());
+        }
+        Ok(())
     }
 }
 

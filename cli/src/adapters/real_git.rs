@@ -1,4 +1,4 @@
-use crate::ports::git::{GitError, GitRepository, MergeCheck, WorktreeInfo};
+use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
 use std::path::{Path, PathBuf};
 
 pub struct RealGit;
@@ -26,6 +26,42 @@ impl GitRepository for RealGit {
             .ok()
             .and_then(|head| head.shorthand().ok().map(str::to_string))
             .unwrap_or_default()
+    }
+
+    fn current_branch(&self, repo_root: &Path) -> Result<Option<String>, GitError> {
+        let repo = git2::Repository::open(repo_root).map_err(|e| GitError::CommandFailed {
+            command: "git rev-parse".to_string(),
+            message: e.message().to_string(),
+        })?;
+        let head = match repo.head() {
+            Ok(head) => head,
+            // Unborn branch (no commits yet) reads as detached for our purposes.
+            Err(_) => return Ok(None),
+        };
+        if !head.is_branch() {
+            return Ok(None);
+        }
+        Ok(head.shorthand().ok().map(str::to_string))
+    }
+
+    fn fetch(&self, repo_root: &Path, remote: &str) -> Result<(), GitError> {
+        let output = std::process::Command::new("git")
+            .current_dir(repo_root)
+            .args(["fetch", remote])
+            .output()
+            .map_err(|e| GitError::CommandFailed {
+                command: "git fetch".to_string(),
+                message: e.to_string(),
+            })?;
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        Err(GitError::CommandFailed {
+            command: "git fetch".to_string(),
+            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        })
     }
 
     fn is_branch_merged(
@@ -172,6 +208,18 @@ impl GitRepository for RealGit {
         })
     }
 
+    fn resolve_ref(&self, repo_root: &Path, ref_spec: &str) -> Result<(), GitError> {
+        let resolve = || -> Result<(), git2::Error> {
+            let repo = git2::Repository::open(repo_root)?;
+            repo.revparse_single(ref_spec)?;
+            Ok(())
+        };
+        resolve().map_err(|e| GitError::RefResolve {
+            ref_spec: ref_spec.to_string(),
+            message: e.message().to_string(),
+        })
+    }
+
     fn list_worktrees(&self, repo_root: &Path) -> Result<Vec<WorktreeInfo>, GitError> {
         let list = || -> Result<Vec<WorktreeInfo>, git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
@@ -260,6 +308,225 @@ impl GitRepository for RealGit {
             message: e.to_string(),
         })
     }
+
+    fn is_ancestor(
+        &self,
+        repo_root: &Path,
+        ancestor_ref: &str,
+        descendant_ref: &str,
+    ) -> Result<bool, GitError> {
+        let check = || -> Result<bool, git2::Error> {
+            let repo = git2::Repository::open(repo_root)?;
+            let ancestor_oid = repo.revparse_single(ancestor_ref)?.id();
+            let descendant_oid = repo.revparse_single(descendant_ref)?.id();
+
+            if ancestor_oid == descendant_oid {
+                return Ok(true);
+            }
+            repo.graph_descendant_of(descendant_oid, ancestor_oid)
+        };
+        check().map_err(|e| GitError::RefResolve {
+            ref_spec: ancestor_ref.to_string(),
+            message: e.message().to_string(),
+        })
+    }
+
+    fn pr_state(&self, repo_root: &Path, branch: &str) -> Result<PrState, GitError> {
+        let output = std::process::Command::new("gh")
+            .current_dir(repo_root)
+            .args([
+                "pr",
+                "list",
+                "--head",
+                branch,
+                "--state",
+                "all",
+                "--json",
+                "state,mergedAt",
+            ])
+            .output()
+            .map_err(|e| GitError::CommandFailed {
+                command: "gh pr list".into(),
+                message: e.to_string(),
+            })?;
+
+        if !output.status.success() {
+            return Err(GitError::CommandFailed {
+                command: "gh pr list".into(),
+                message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            });
+        }
+
+        let value: serde_json::Value =
+            serde_json::from_slice(&output.stdout).map_err(|e| GitError::CommandFailed {
+                command: "gh pr list".into(),
+                message: format!("failed to parse gh output: {}", e),
+            })?;
+
+        let arr = value.as_array().ok_or_else(|| GitError::CommandFailed {
+            command: "gh pr list".into(),
+            message: "expected JSON array".to_string(),
+        })?;
+
+        if arr.is_empty() {
+            return Ok(PrState::None);
+        }
+
+        // A branch can carry several historical PRs (a closed attempt, then a
+        // reopened one). Rank across all of them rather than trusting gh's
+        // default ordering: an open PR wins, else a merged one, else the
+        // branch is abandoned.
+        let classify = |pr: &serde_json::Value| -> PrState {
+            let merged_at = pr.get("mergedAt");
+            if merged_at.is_some() && merged_at != Some(&serde_json::Value::Null) {
+                return PrState::Merged;
+            }
+            match pr.get("state").and_then(|v| v.as_str()) {
+                Some("OPEN") => PrState::Open,
+                _ => PrState::ClosedUnmerged,
+            }
+        };
+
+        let rank = |state: &PrState| match state {
+            PrState::Open => 3,
+            PrState::Merged => 2,
+            PrState::ClosedUnmerged => 1,
+            PrState::None => 0,
+        };
+
+        Ok(arr
+            .iter()
+            .map(classify)
+            .max_by_key(|state| rank(state))
+            .unwrap_or(PrState::None))
+    }
+
+    fn rebase(&self, repo_root: &Path, onto: &str) -> Result<(), GitError> {
+        if rebase_in_progress(repo_root) {
+            return continue_rebase(repo_root);
+        }
+
+        let output = std::process::Command::new("git")
+            .current_dir(repo_root)
+            .args(["rebase", onto])
+            .output()
+            .map_err(|e| GitError::CommandFailed {
+                command: "git rebase".to_string(),
+                message: e.to_string(),
+            })?;
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        Err(GitError::Rebase {
+            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        })
+    }
+
+    fn merge(&self, repo_root: &Path, other_ref: &str) -> Result<(), GitError> {
+        if merge_in_progress(repo_root) {
+            return continue_merge(repo_root);
+        }
+
+        let output = std::process::Command::new("git")
+            .current_dir(repo_root)
+            .args(["merge", "--no-edit", other_ref])
+            .output()
+            .map_err(|e| GitError::CommandFailed {
+                command: "git merge".to_string(),
+                message: e.to_string(),
+            })?;
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        Err(GitError::Merge {
+            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        })
+    }
+}
+
+/// Resolves a git-dir-relative path (e.g. `rebase-merge`, `MERGE_HEAD`) via
+/// git's own porcelain (`git rev-parse --git-path`), which correctly
+/// accounts for worktrees where `.git` is a file pointing elsewhere rather
+/// than a directory.
+fn git_path(repo_root: &Path, relative: &str) -> Option<PathBuf> {
+    let output = std::process::Command::new("git")
+        .current_dir(repo_root)
+        .args(["rev-parse", "--git-path", relative])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if raw.is_empty() {
+        return None;
+    }
+
+    let path = PathBuf::from(raw);
+    Some(if path.is_absolute() {
+        path
+    } else {
+        repo_root.join(path)
+    })
+}
+
+fn rebase_in_progress(repo_root: &Path) -> bool {
+    git_path(repo_root, "rebase-merge").is_some_and(|p| p.exists())
+        || git_path(repo_root, "rebase-apply").is_some_and(|p| p.exists())
+}
+
+fn merge_in_progress(repo_root: &Path) -> bool {
+    git_path(repo_root, "MERGE_HEAD").is_some_and(|p| p.exists())
+}
+
+fn continue_rebase(repo_root: &Path) -> Result<(), GitError> {
+    let output = std::process::Command::new("git")
+        .current_dir(repo_root)
+        .args(["rebase", "--continue"])
+        .output()
+        .map_err(|e| GitError::CommandFailed {
+            command: "git rebase --continue".to_string(),
+            message: e.to_string(),
+        })?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    Err(GitError::Rebase {
+        message: format!(
+            "rebase still has unresolved conflicts: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ),
+    })
+}
+
+fn continue_merge(repo_root: &Path) -> Result<(), GitError> {
+    let output = std::process::Command::new("git")
+        .current_dir(repo_root)
+        .args(["commit", "--no-edit"])
+        .output()
+        .map_err(|e| GitError::CommandFailed {
+            command: "git commit --no-edit".to_string(),
+            message: e.to_string(),
+        })?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    Err(GitError::Merge {
+        message: format!(
+            "merge still has unresolved conflicts: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ),
+    })
 }
 
 fn is_pr_merged_on_github(repo_root: &Path, branch: &str) -> Result<bool, String> {

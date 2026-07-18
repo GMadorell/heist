@@ -18,8 +18,20 @@ pub enum MergeCheck {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrState {
+    None,
+    Open,
+    Merged,
+    ClosedUnmerged,
+}
+
 pub trait GitRepository {
     fn default_branch(&self, repo_root: &Path) -> String;
+
+    fn current_branch(&self, repo_root: &Path) -> Result<Option<String>, GitError>;
+
+    fn fetch(&self, repo_root: &Path, remote: &str) -> Result<(), GitError>;
 
     fn is_branch_merged(
         &self,
@@ -48,8 +60,10 @@ pub trait GitRepository {
     /// requiring a local branch of the same name to exist.
     fn remote_default_resolves(&self, repo_root: &Path, main_branch: &str) -> Result<(), GitError>;
 
-    /// Changed paths between the merge-base of `origin/<base_branch>` and
-    /// `head_ref`, and `head_ref` itself (three-dot semantics).
+    /// Resolves `ref_spec` verbatim (no `origin/` prefixing, unlike `remote_default_resolves`),
+    /// existence-only check, no ancestry verification.
+    fn resolve_ref(&self, repo_root: &Path, ref_spec: &str) -> Result<(), GitError>;
+
     fn changed_paths(
         &self,
         repo_root: &Path,
@@ -57,14 +71,27 @@ pub trait GitRepository {
         head_ref: &str,
     ) -> Result<Vec<PathBuf>, GitError>;
 
-    /// Reads `path` as it exists in `rev`'s tree, straight from the object
-    /// database rather than the working directory.
     fn read_file_at(
         &self,
         repo_root: &Path,
         rev: &str,
         path: &Path,
     ) -> Result<Option<String>, GitError>;
+
+    /// Returns true if `ancestor_ref` is reachable from `descendant_ref`,
+    /// or if they are equal.
+    fn is_ancestor(
+        &self,
+        repo_root: &Path,
+        ancestor_ref: &str,
+        descendant_ref: &str,
+    ) -> Result<bool, GitError>;
+
+    fn pr_state(&self, repo_root: &Path, branch: &str) -> Result<PrState, GitError>;
+
+    fn rebase(&self, repo_root: &Path, onto: &str) -> Result<(), GitError>;
+
+    fn merge(&self, repo_root: &Path, other_ref: &str) -> Result<(), GitError>;
 }
 
 #[derive(Debug, Clone)]
@@ -73,8 +100,11 @@ pub enum GitError {
     WorktreeRemove { message: String },
     BranchDelete { message: String },
     MergeCheck { message: String },
+    RefResolve { ref_spec: String, message: String },
     CommandFailed { command: String, message: String },
     Diff { message: String },
+    Rebase { message: String },
+    Merge { message: String },
 }
 
 impl fmt::Display for GitError {
@@ -88,10 +118,15 @@ impl fmt::Display for GitError {
             GitError::MergeCheck { message } => {
                 write!(f, "failed to check merged branches: {}", message)
             }
+            GitError::RefResolve { ref_spec, message } => {
+                write!(f, "base ref '{}' not found: {}", ref_spec, message)
+            }
             GitError::CommandFailed { command, message } => {
                 write!(f, "failed to run {}: {}", command, message)
             }
             GitError::Diff { message } => write!(f, "failed to compute changed paths: {}", message),
+            GitError::Rebase { message } => write!(f, "rebase failed: {}", message),
+            GitError::Merge { message } => write!(f, "merge failed: {}", message),
         }
     }
 }

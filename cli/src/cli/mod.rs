@@ -55,6 +55,16 @@ enum Commands {
     },
     /// Print one line per heist under .heist/, sorted by slug
     List,
+    /// Resolve a heist's base: prints `resolution:` (null|live|expired|abandoned), `merge_ref:`, and `pr_base:`
+    Base {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
+    /// Rebase or merge onto the recorded base, per `heist base`'s resolution; the only place this heist ever runs `git rebase`/`git merge`
+    Sync {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -97,6 +107,9 @@ enum WorktreeCommands {
     Add {
         /// Heist slug (directory name under .heist/)
         slug: String,
+        /// Git ref to use as start point instead of origin/<default>
+        #[arg(long)]
+        base: Option<String>,
     },
     /// Remove the worktree and branch, then set stage: done; refuses if unmerged
     Remove {
@@ -151,6 +164,8 @@ pub fn run(cli: Cli) -> ExitCode {
         Commands::Review { command } => run_review(command, repo_root, &state_repo, &git),
         Commands::Resume { slug } => run_resume(&slug, &state_repo),
         Commands::List => run_list(&state_repo),
+        Commands::Base { slug } => run_base(&slug, repo_root, &state_repo, &git),
+        Commands::Sync { slug } => run_sync(&slug, &state_repo, &git),
     }
 }
 
@@ -244,8 +259,16 @@ fn run_worktree(
     clock: &dyn crate::ports::clock::Clock,
 ) -> ExitCode {
     match command {
-        WorktreeCommands::Add { slug } => {
-            match app::worktree::add(repo_root, state_repo, git, fs, clock, &slug) {
+        WorktreeCommands::Add { slug, base } => {
+            match app::worktree::add(
+                repo_root,
+                state_repo,
+                git,
+                fs,
+                clock,
+                &slug,
+                base.as_deref(),
+            ) {
                 Ok(worktree_value) => {
                     present::line(worktree_value);
                     ExitCode::Success
@@ -273,6 +296,13 @@ fn run_worktree(
                 Err(app::worktree::AddError::Save(e)) => {
                     present::state_save_failed(&slug, &e);
                     ExitCode::from(&e)
+                }
+                Err(app::worktree::AddError::BaseImmutable {
+                    existing,
+                    requested,
+                }) => {
+                    present::base_immutable(&slug, existing.as_deref(), &requested);
+                    ExitCode::Precondition
                 }
             }
         }
@@ -445,13 +475,139 @@ fn run_list(repo: &dyn StateRepository) -> ExitCode {
     }
 }
 
+fn run_base(
+    slug: &str,
+    repo_root: &Path,
+    state_repo: &dyn StateRepository,
+    git: &dyn crate::ports::git::GitRepository,
+) -> ExitCode {
+    let main_branch = git.default_branch(repo_root);
+
+    match app::base::resolve(repo_root, state_repo, git, slug) {
+        Ok(app::base::BaseResolution::Null) => {
+            present::base_resolution("null", &format!("origin/{}", main_branch), &main_branch);
+            ExitCode::Success
+        }
+        Ok(app::base::BaseResolution::Live { base_ref }) => {
+            present::base_resolution("live", base_ref.as_ref(), base_ref.as_ref());
+            ExitCode::Success
+        }
+        Ok(app::base::BaseResolution::Expired { base_ref }) => {
+            present::base_resolution_expired(
+                &format!("origin/{}", main_branch),
+                &main_branch,
+                base_ref.as_ref(),
+            );
+            ExitCode::Success
+        }
+        Ok(app::base::BaseResolution::Abandoned { base_ref }) => {
+            present::abandoned_base(base_ref.as_ref());
+            ExitCode::Precondition
+        }
+        Err(app::base::ResolveError::NoState) => {
+            present::no_state_for_review(slug);
+            ExitCode::Precondition
+        }
+        Err(app::base::ResolveError::Load(e)) => {
+            present::state_load_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+        Err(app::base::ResolveError::RefMissingWithOpenPr { base_ref }) => {
+            present::base_resolve_failed(&base_ref, "ref does not exist but PR is still open");
+            ExitCode::Precondition
+        }
+        Err(app::base::ResolveError::RefMissingNoPr { base_ref }) => {
+            present::base_resolve_failed(
+                &base_ref,
+                "ref does not exist and no PR was found; the base branch may have been deleted, re-check state.json's base field",
+            );
+            ExitCode::Precondition
+        }
+        Err(app::base::ResolveError::Ambiguous { base_ref }) => {
+            present::base_resolve_failed(&base_ref, "cannot determine PR state");
+            ExitCode::Precondition
+        }
+        Err(app::base::ResolveError::VerificationFailed { base_ref, message }) => {
+            present::base_verification_failed(&base_ref, &message);
+            ExitCode::Git
+        }
+    }
+}
+
+fn run_sync(
+    slug: &str,
+    state_repo: &dyn StateRepository,
+    git: &dyn crate::ports::git::GitRepository,
+) -> ExitCode {
+    match app::sync::sync(state_repo, git, slug) {
+        Ok(action) => {
+            present::sync_action(&action);
+            ExitCode::Success
+        }
+        Err(app::sync::SyncError::FetchFailed(e)) => {
+            present::sync_fetch_failed(&e);
+            ExitCode::from(&e)
+        }
+        Err(app::sync::SyncError::Abandoned { base_ref }) => {
+            present::abandoned_base_sync_refused(&base_ref);
+            ExitCode::Precondition
+        }
+        Err(app::sync::SyncError::NotSetUp) => {
+            present::sync_not_set_up(slug);
+            ExitCode::Precondition
+        }
+        Err(app::sync::SyncError::WrongCheckout { expected, actual }) => {
+            present::sync_wrong_checkout(slug, &expected, &actual);
+            ExitCode::Precondition
+        }
+        Err(app::sync::SyncError::Git(e)) => {
+            present::error(&e);
+            ExitCode::from(&e)
+        }
+        Err(app::sync::SyncError::Resolve(app::base::ResolveError::NoState)) => {
+            present::no_state_for_review(slug);
+            ExitCode::Precondition
+        }
+        Err(app::sync::SyncError::Resolve(app::base::ResolveError::Load(e))) => {
+            present::state_load_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+        Err(app::sync::SyncError::Resolve(app::base::ResolveError::RefMissingWithOpenPr {
+            base_ref,
+        })) => {
+            present::base_resolve_failed(&base_ref, "ref does not exist but PR is still open");
+            ExitCode::Precondition
+        }
+        Err(app::sync::SyncError::Resolve(app::base::ResolveError::RefMissingNoPr {
+            base_ref,
+        })) => {
+            present::base_resolve_failed(
+                &base_ref,
+                "ref does not exist and no PR was found; the base branch may have been deleted, re-check state.json's base field",
+            );
+            ExitCode::Precondition
+        }
+        Err(app::sync::SyncError::Resolve(app::base::ResolveError::Ambiguous { base_ref })) => {
+            present::base_resolve_failed(&base_ref, "cannot determine PR state");
+            ExitCode::Precondition
+        }
+        Err(app::sync::SyncError::Resolve(app::base::ResolveError::VerificationFailed {
+            base_ref,
+            message,
+        })) => {
+            present::base_verification_failed(&base_ref, &message);
+            ExitCode::Git
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::adapters::testing::{FakeGit, FakeWorktreeFs, FixedClock, InMemoryStateRepository};
     use crate::domain::state::{Stage, State};
-    use crate::domain::value::{DateValue, ScoreWave};
-    use crate::ports::git::GitError;
+    use crate::domain::value::{DateValue, NonBlankValue, ScoreWave};
+    use crate::ports::git::{GitError, PrState};
     use tempfile::TempDir;
 
     fn fixed_date() -> DateValue {
@@ -551,7 +707,10 @@ mod tests {
         let git = FakeGit::new();
 
         let code = run_worktree(
-            WorktreeCommands::Add { slug: "foo".into() },
+            WorktreeCommands::Add {
+                slug: "foo".into(),
+                base: None,
+            },
             temp_dir.path(),
             &repo,
             &git,
@@ -573,7 +732,10 @@ mod tests {
         });
 
         let code = run_worktree(
-            WorktreeCommands::Add { slug: "foo".into() },
+            WorktreeCommands::Add {
+                slug: "foo".into(),
+                base: None,
+            },
             temp_dir.path(),
             &repo,
             &git,
@@ -763,5 +925,35 @@ mod tests {
         );
 
         assert_eq!(code, ExitCode::Git);
+    }
+
+    #[test]
+    fn base_command_reports_abandoned_as_precondition_exit_code() {
+        let mut state = State::new("foo", fixed_date()).expect("valid slug");
+        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+
+        let repo = InMemoryStateRepository::new().with_state("foo", state);
+        let git = FakeGit::new().with_pr_state("heist/piece-01", PrState::ClosedUnmerged);
+
+        let code = run_base("foo", Path::new("."), &repo, &git);
+
+        assert_eq!(code, ExitCode::Precondition);
+    }
+
+    #[test]
+    fn sync_command_refuses_abandoned_base_with_precondition_exit_code() {
+        let mut state = State::new("foo", fixed_date()).expect("valid slug");
+        state.worktree = Some(NonBlankValue::parse("worktree", "/tmp/wt").expect("valid worktree"));
+        state.branch = Some(NonBlankValue::parse("branch", "heist/foo").expect("valid branch"));
+        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+
+        let repo = InMemoryStateRepository::new().with_state("foo", state);
+        let git = FakeGit::new()
+            .with_current_branch("heist/foo")
+            .with_pr_state("heist/piece-01", PrState::ClosedUnmerged);
+
+        let code = run_sync("foo", &repo, &git);
+
+        assert_eq!(code, ExitCode::Precondition);
     }
 }

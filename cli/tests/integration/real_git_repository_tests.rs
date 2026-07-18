@@ -50,6 +50,51 @@ fn detects_main_branch_via_git() {
 }
 
 #[test]
+fn current_branch_reports_checked_out_branch() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_root = temp_dir.path();
+    init_repo_with_commit(repo_root);
+    run_git(repo_root, &["checkout", "-q", "-b", "heist/piece-01"]);
+
+    let branch = RealGit
+        .current_branch(repo_root)
+        .expect("current_branch should succeed");
+
+    assert_eq!(branch, Some("heist/piece-01".to_string()));
+}
+
+#[test]
+fn current_branch_reports_none_when_head_detached() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_root = temp_dir.path();
+    init_repo_with_commit(repo_root);
+    // Detach HEAD at the current commit.
+    run_git(repo_root, &["checkout", "-q", "--detach"]);
+
+    let branch = RealGit
+        .current_branch(repo_root)
+        .expect("current_branch should succeed");
+
+    assert_eq!(branch, None);
+}
+
+#[test]
+fn resolve_ref_errors_with_ref_resolve_on_missing_ref() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_root = temp_dir.path();
+    init_repo_with_commit(repo_root);
+
+    let result = RealGit.resolve_ref(repo_root, "does-not-exist");
+
+    match result {
+        Err(GitError::RefResolve { ref_spec, .. }) => {
+            assert_eq!(ref_spec, "does-not-exist");
+        }
+        other => panic!("expected RefResolve error, got {:?}", other),
+    }
+}
+
+#[test]
 fn reports_branch_merged_when_equal_to_origin_main() {
     let origin_dir = TempDir::new().expect("failed to create temp directory");
     let repo_dir = TempDir::new().expect("failed to create temp directory");
@@ -336,4 +381,270 @@ fn changed_paths_includes_deleted_files_via_old_file_path() {
         .expect("changed_paths should succeed");
 
     assert_eq!(paths, vec![PathBuf::from("doomed.rs")]);
+}
+
+#[test]
+fn resolve_ref_errors_on_missing_ref() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(temp_dir.path());
+
+    let result = RealGit.resolve_ref(temp_dir.path(), "no-such-ref");
+    assert!(result.is_err());
+}
+
+#[test]
+fn resolve_ref_succeeds_for_existing_branch() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(temp_dir.path());
+    run_git(temp_dir.path(), &["branch", "feature"]);
+
+    let result = RealGit.resolve_ref(temp_dir.path(), "feature");
+    assert!(result.is_ok());
+}
+
+#[test]
+fn is_ancestor_false_when_not_reachable() {
+    let origin_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(origin_dir.path());
+
+    run_git(repo_dir.path(), &["init", "-q", "-b", "main"]);
+    run_git(
+        repo_dir.path(),
+        &[
+            "remote",
+            "add",
+            "origin",
+            origin_dir.path().to_string_lossy().as_ref(),
+        ],
+    );
+    run_git(repo_dir.path(), &["fetch", "-q", "origin"]);
+    run_git(
+        repo_dir.path(),
+        &["checkout", "-q", "-b", "main", "origin/main"],
+    );
+    run_git(repo_dir.path(), &["checkout", "-q", "-b", "feature"]);
+    commit_file(repo_dir.path(), "feature.txt", "unmerged");
+
+    assert!(!RealGit
+        .is_ancestor(repo_dir.path(), "feature", "main")
+        .expect("is_ancestor should succeed"));
+}
+
+/// Builds the load-bearing stacked-squash scenario shared by
+/// `rebase_conflicts_on_multi_commit_squashed_base` and
+/// `merge_succeeds_on_multi_commit_squashed_base_where_rebase_would_conflict`.
+///
+/// `heist/piece-01` makes *two sequential* commits that each rewrite the same
+/// line of `a.txt` (`orig` -> `v1` -> `v2`). `heist/piece-02` forks from
+/// `heist/piece-01` and adds its own unrelated `c.txt`. `origin/main` then
+/// lands piece-01's net change as a single squash commit (`orig` -> `v2`
+/// directly, in one commit, not two).
+///
+/// This must stay a *two-commit* base, not a one-commit one: a single-commit
+/// base's diff is byte-identical to the squash's diff, so git's "patch
+/// contents already upstream" empty-commit skip silently (and correctly)
+/// drops it during rebase, and the rebase falsely succeeds either way. With
+/// two sequential commits touching the same line, replaying the *first* of
+/// them lands on a tree that already reflects the *second* commit's result;
+/// the patch's expected context (`orig`) no longer exists (the line already
+/// reads `v2`), so `git rebase` conflicts even though the net diff is
+/// identical. A three-way `git merge` compares final tree states directly
+/// (`v2` locally vs. `v2` upstream) and sees no divergence at all.
+fn build_stacked_squash_scenario() -> (TempDir, TempDir) {
+    let origin_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(origin_dir.path());
+
+    run_git(repo_dir.path(), &["init", "-q", "-b", "main"]);
+    run_git(
+        repo_dir.path(),
+        &[
+            "remote",
+            "add",
+            "origin",
+            origin_dir.path().to_string_lossy().as_ref(),
+        ],
+    );
+    run_git(repo_dir.path(), &["fetch", "-q", "origin"]);
+    run_git(
+        repo_dir.path(),
+        &["checkout", "-q", "-b", "main", "origin/main"],
+    );
+
+    run_git(repo_dir.path(), &["checkout", "-q", "-b", "heist/piece-01"]);
+    commit_file(repo_dir.path(), "a.txt", "v1");
+    commit_file(repo_dir.path(), "a.txt", "v2");
+
+    run_git(repo_dir.path(), &["checkout", "-q", "-b", "heist/piece-02"]);
+    commit_file(repo_dir.path(), "c.txt", "c");
+
+    fs::write(origin_dir.path().join("a.txt"), "v2").expect("failed to write a.txt");
+    run_git(origin_dir.path(), &["add", "."]);
+    run_git(
+        origin_dir.path(),
+        &["commit", "-q", "-m", "squash piece-01: orig -> v2 directly"],
+    );
+
+    run_git(repo_dir.path(), &["fetch", "-q", "origin"]);
+    run_git(repo_dir.path(), &["checkout", "-q", "heist/piece-02"]);
+
+    (origin_dir, repo_dir)
+}
+
+#[test]
+fn rebase_conflicts_on_multi_commit_squashed_base() {
+    let (_origin_dir, repo_dir) = build_stacked_squash_scenario();
+
+    let result = RealGit.rebase(repo_dir.path(), "origin/main");
+    assert!(result.is_err());
+}
+
+#[test]
+fn merge_succeeds_on_multi_commit_squashed_base_where_rebase_would_conflict() {
+    let (_origin_dir, repo_dir) = build_stacked_squash_scenario();
+
+    let result = RealGit.merge(repo_dir.path(), "origin/main");
+    assert!(result.is_ok());
+
+    assert!(repo_dir.path().join("a.txt").exists());
+    assert!(repo_dir.path().join("c.txt").exists());
+    assert_eq!(
+        fs::read_to_string(repo_dir.path().join("a.txt")).expect("failed to read a.txt"),
+        "v2"
+    );
+
+    let status_output = std::process::Command::new("git")
+        .arg("-c")
+        .arg("commit.gpgsign=false")
+        .args(["status", "--porcelain"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("failed to run git status");
+    assert!(
+        status_output.stdout.is_empty(),
+        "expected clean working directory, got: {}",
+        String::from_utf8_lossy(&status_output.stdout)
+    );
+}
+
+/// Builds a scenario where a direct three-way `git merge` (not a rebase)
+/// conflicts: both `origin/main` and the local branch touch the same line
+/// of the same file in incompatible ways, so there is no clean auto-merge.
+fn build_merge_conflict_scenario() -> (TempDir, TempDir) {
+    let origin_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_dir = TempDir::new().expect("failed to create temp directory");
+    init_repo_with_commit(origin_dir.path());
+    commit_file(origin_dir.path(), "a.txt", "orig");
+
+    run_git(repo_dir.path(), &["init", "-q", "-b", "main"]);
+    run_git(
+        repo_dir.path(),
+        &[
+            "remote",
+            "add",
+            "origin",
+            origin_dir.path().to_string_lossy().as_ref(),
+        ],
+    );
+    run_git(repo_dir.path(), &["fetch", "-q", "origin"]);
+    run_git(
+        repo_dir.path(),
+        &["checkout", "-q", "-b", "main", "origin/main"],
+    );
+    run_git(repo_dir.path(), &["checkout", "-q", "-b", "feature"]);
+    commit_file(repo_dir.path(), "a.txt", "feature-value");
+
+    commit_file(origin_dir.path(), "a.txt", "main-value");
+    run_git(repo_dir.path(), &["fetch", "-q", "origin"]);
+    run_git(repo_dir.path(), &["checkout", "-q", "feature"]);
+
+    (origin_dir, repo_dir)
+}
+
+#[test]
+fn rebase_resumes_in_progress_rebase_instead_of_starting_fresh() {
+    let (_origin_dir, repo_dir) = build_stacked_squash_scenario();
+
+    let first = RealGit.rebase(repo_dir.path(), "origin/main");
+    assert!(first.is_err(), "expected the rebase to conflict first");
+
+    // Resolve the conflict as a human/Cleaner would: take the upstream
+    // content (which already reflects the net change) and stage it.
+    fs::write(repo_dir.path().join("a.txt"), "v2").expect("failed to write a.txt");
+    run_git(repo_dir.path(), &["add", "a.txt"]);
+
+    // Re-running `rebase` mid-conflict must *resume* (`git rebase
+    // --continue`), not attempt a fresh `git rebase origin/main`, which
+    // would fail with "rebase-merge directory already exists".
+    let second = RealGit.rebase(repo_dir.path(), "origin/main");
+    assert!(
+        second.is_ok(),
+        "expected resumed rebase to succeed, got: {:?}",
+        second.err()
+    );
+
+    assert!(!repo_dir.path().join(".git").join("rebase-merge").exists());
+    assert!(!repo_dir.path().join(".git").join("rebase-apply").exists());
+}
+
+#[test]
+fn rebase_resume_with_unresolved_conflicts_fails_with_bounded_diagnostic() {
+    let (_origin_dir, repo_dir) = build_stacked_squash_scenario();
+
+    let first = RealGit.rebase(repo_dir.path(), "origin/main");
+    assert!(first.is_err(), "expected the rebase to conflict first");
+
+    // Re-run without resolving anything: this must fail loudly rather than
+    // loop forever or silently start a new rebase.
+    let second = RealGit.rebase(repo_dir.path(), "origin/main");
+    assert!(
+        second.is_err(),
+        "expected resume with unresolved conflicts to fail"
+    );
+}
+
+#[test]
+fn merge_resumes_in_progress_merge_instead_of_starting_fresh() {
+    let (_origin_dir, repo_dir) = build_merge_conflict_scenario();
+
+    let first = RealGit.merge(repo_dir.path(), "origin/main");
+    assert!(first.is_err(), "expected the merge to conflict first");
+    assert!(repo_dir.path().join(".git").join("MERGE_HEAD").exists());
+
+    // Resolve the conflict and stage it.
+    fs::write(repo_dir.path().join("a.txt"), "resolved").expect("failed to write a.txt");
+    run_git(repo_dir.path(), &["add", "a.txt"]);
+
+    // Re-running `merge` mid-conflict must *resume* (`git commit
+    // --no-edit`), not attempt a fresh `git merge origin/main`, which
+    // would fail with "fatal: MERGE_HEAD exists".
+    let second = RealGit.merge(repo_dir.path(), "origin/main");
+    assert!(
+        second.is_ok(),
+        "expected resumed merge to succeed, got: {:?}",
+        second.err()
+    );
+
+    assert!(!repo_dir.path().join(".git").join("MERGE_HEAD").exists());
+    assert_eq!(
+        fs::read_to_string(repo_dir.path().join("a.txt")).expect("failed to read a.txt"),
+        "resolved"
+    );
+}
+
+#[test]
+fn merge_resume_with_unresolved_conflicts_fails_with_bounded_diagnostic() {
+    let (_origin_dir, repo_dir) = build_merge_conflict_scenario();
+
+    let first = RealGit.merge(repo_dir.path(), "origin/main");
+    assert!(first.is_err(), "expected the merge to conflict first");
+
+    // Re-run without resolving anything: this must fail loudly rather than
+    // loop forever or silently start a new merge.
+    let second = RealGit.merge(repo_dir.path(), "origin/main");
+    assert!(
+        second.is_err(),
+        "expected resume with unresolved conflicts to fail"
+    );
 }

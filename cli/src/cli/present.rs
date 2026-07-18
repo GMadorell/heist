@@ -141,3 +141,79 @@ pub fn no_remote_default_for_review(slug: &str, e: impl Display) {
         slug, e
     );
 }
+
+pub fn sync_action(action: &crate::app::sync::SyncAction) {
+    use crate::app::sync::SyncAction;
+    match action {
+        SyncAction::RebasedOntoMain { onto } => println!("synced: rebased onto {}", onto),
+        SyncAction::MergedBase { base_ref } => println!("synced: merged {}", base_ref),
+        SyncAction::MergedMainBaseMerged { onto } => {
+            println!("synced: merged {} (base already merged)", onto)
+        }
+    }
+}
+
+pub fn base_resolution(kind: &str, merge_ref: &str, pr_base: &str) {
+    println!("resolution: {}", kind);
+    println!("merge_ref: {}", merge_ref);
+    println!("pr_base: {}", pr_base);
+}
+
+pub fn base_resolution_expired(merge_ref: &str, pr_base: &str, base_ref: &str) {
+    println!("resolution: expired");
+    println!("merge_ref: {}", merge_ref);
+    println!("pr_base: {}", pr_base);
+    eprintln!("note: {} merged", base_ref);
+}
+
+pub fn abandoned_base(base_ref: &str) {
+    println!("resolution: abandoned");
+    eprintln!("base {} has its PR closed unmerged", base_ref);
+}
+
+pub fn base_resolve_failed(base_ref: &str, diagnostic: &str) {
+    eprintln!("cannot resolve base {} ({})", base_ref, diagnostic);
+}
+
+pub fn base_verification_failed(base_ref: &str, message: &str) {
+    eprintln!(
+        "cannot verify PR state of base {}: {}\nfix the environment (install `gh`, run `gh auth login`, check network) and retry",
+        base_ref, message
+    );
+}
+
+pub fn base_immutable(slug: &str, existing: Option<&str>, requested: &str) {
+    let existing = existing.unwrap_or("origin's default branch");
+    eprintln!(
+        "worktree for {} already exists; its start point ({}) cannot be changed to {}. Drop --base, or remove and re-add the worktree.",
+        slug, existing, requested
+    );
+}
+
+pub fn sync_not_set_up(slug: &str) {
+    eprintln!(
+        "cannot sync {}: no worktree recorded; run `heist worktree add` first",
+        slug
+    );
+}
+
+pub fn sync_wrong_checkout(slug: &str, expected: &str, actual: &str) {
+    eprintln!(
+        "refusing to sync {}: run this from the heist's worktree on branch {}, but the checkout is on {}",
+        slug, expected, actual
+    );
+}
+
+pub fn sync_fetch_failed(error: &crate::ports::git::GitError) {
+    eprintln!(
+        "refusing to sync: could not fetch origin, so local refs may be stale: {}. Fix the environment and re-run.",
+        error
+    );
+}
+
+pub fn abandoned_base_sync_refused(base_ref: &str) {
+    eprintln!(
+        "refusing to sync: base {} has its PR closed unmerged; a human must decide whether to drop, salvage, or reopen it",
+        base_ref
+    );
+}

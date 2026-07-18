@@ -23,9 +23,10 @@ fn prints_field_list_and_example() {
     let expected = r#"schema_version: u32
 slug: string
 stage: string (casing|planning|fence_review|human_review|forging|safehouse|implementing|cleaning|done)
-mode: string (heavy|medium|light), defaults to heavy if unset
+mode: string (heavy|medium|light)
 worktree: string|null
 branch: string|null
+base: string|null
 score_wave: u32
 score_waves_total: u32
 score_steps_total: u32
@@ -40,6 +41,7 @@ updated: string
   "mode": "heavy",
   "worktree": null,
   "branch": null,
+  "base": null,
   "score_wave": 0,
   "score_waves_total": 0,
   "score_steps_total": 0,
