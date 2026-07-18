@@ -29,13 +29,8 @@ pub enum PrState {
 pub trait GitRepository {
     fn default_branch(&self, repo_root: &Path) -> String;
 
-    /// The short name of the branch currently checked out at `repo_root`, or
-    /// `None` if `HEAD` is detached. Used to confirm a mutating command is
-    /// running against the branch it thinks it is.
     fn current_branch(&self, repo_root: &Path) -> Result<Option<String>, GitError>;
 
-    /// Fetches `remote` so that `origin/<...>` refs reflect the remote's
-    /// current state before any ancestry check or rebase/merge onto them.
     fn fetch(&self, repo_root: &Path, remote: &str) -> Result<(), GitError>;
 
     fn is_branch_merged(
@@ -69,8 +64,6 @@ pub trait GitRepository {
     /// existence-only check, no ancestry verification.
     fn resolve_ref(&self, repo_root: &Path, ref_spec: &str) -> Result<(), GitError>;
 
-    /// Changed paths between the merge-base of `origin/<base_branch>` and
-    /// `head_ref`, and `head_ref` itself (three-dot semantics).
     fn changed_paths(
         &self,
         repo_root: &Path,
@@ -78,8 +71,6 @@ pub trait GitRepository {
         head_ref: &str,
     ) -> Result<Vec<PathBuf>, GitError>;
 
-    /// Reads `path` as it exists in `rev`'s tree, straight from the object
-    /// database rather than the working directory.
     fn read_file_at(
         &self,
         repo_root: &Path,
@@ -96,7 +87,6 @@ pub trait GitRepository {
         descendant_ref: &str,
     ) -> Result<bool, GitError>;
 
-    /// Returns the state of the pull request for the given branch.
     fn pr_state(&self, repo_root: &Path, branch: &str) -> Result<PrState, GitError>;
 
     fn rebase(&self, repo_root: &Path, onto: &str) -> Result<(), GitError>;
