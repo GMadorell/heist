@@ -10,11 +10,9 @@ pub struct State {
     pub schema_version: SchemaVersion,
     pub slug: SlugValue,
     pub stage: Stage,
-    #[serde(default)]
     pub mode: Mode,
     pub worktree: Option<NonBlankValue>,
     pub branch: Option<NonBlankValue>,
-    #[serde(default)]
     pub base: Option<NonBlankValue>,
     pub score_wave: ScoreWave,
     pub score_waves_total: ScoreWavesTotal,
@@ -264,25 +262,6 @@ mod tests {
     }
 
     #[test]
-    fn state_without_mode_key_deserializes_to_heavy_default() {
-        let json = json!({
-            "schema_version": 1,
-            "slug": "my-slug",
-            "stage": "casing",
-            "worktree": null,
-            "branch": null,
-            "score_wave": 0,
-            "score_waves_total": 0,
-            "score_steps_total": 0,
-            "fence_rounds": 0,
-            "created": "2026-01-01",
-            "updated": "2026-01-01",
-        });
-        let state: State = serde_json::from_value(json).expect("should deserialize");
-        assert_eq!(state.mode, Mode::Heavy);
-    }
-
-    #[test]
     fn mode_parse_rejects_unknown_value() {
         let err = Mode::parse("bogus").expect_err("should reject unknown mode");
         match err {
@@ -294,23 +273,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn state_without_base_key_deserializes_to_none() {
-        let json = json!({
-            "schema_version": 1,
-            "slug": "my-slug",
-            "stage": "casing",
-            "mode": "heavy",
-            "worktree": null,
-            "branch": null,
-            "score_wave": 0,
-            "score_waves_total": 0,
-            "score_steps_total": 0,
-            "fence_rounds": 0,
-            "created": "2026-01-01",
-            "updated": "2026-01-01",
-        });
-        let state: State = serde_json::from_value(json).expect("should deserialize");
-        assert_eq!(state.base, None);
-    }
 }
