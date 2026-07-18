@@ -34,8 +34,8 @@ Continuously judge whether the design's scope will fit in one `blueprint.md`. If
 
 Start with the line `SPLIT_PROPOSED`, then one block per piece:
 - `sub-slug:` (identifier for this piece)
-- `scope:` (one line: what this piece delivers)
-- `files:` (the files/directories this piece owns; seams must be disjoint — a seam that makes two pieces edit the same files is a bad seam)
+- `scope:` (what this piece delivers)
+- `files:` (the files/directories this piece owns; pieces that can run concurrently, i.e. independent pieces or pieces on unrelated stacks, must be disjoint. Stacked pieces may share files with their base chain, since they run sequentially on top of it; disjointness is still preferred as a sign of a clean seam, but scope-fit wins)
 - `base:` (`null` for the first/unstacked piece, `heist/<earlier-piece-sub-slug>` verbatim for a piece stacked on an earlier one)
 - `reasoning:` (why this seam, one line)
 
@@ -43,7 +43,7 @@ Then one closing line with the overall rationale for the cut, stating plainly if
 
 **Three replies the orchestrator relays back:**
 
-1. **SPLIT_ACCEPTED**: Write `.heist/<parent-slug>/heat.md`. Open it with a short fixed "How to run" preamble: sequential is the safe default (run a piece, merge it, start the next); a stacked piece may start before its base merges, but only once the base piece's worktree exists, i.e. that base heist shows up in `heist list` past the `casing` stage, since starting earlier makes `heist worktree add --base heist/<base-slug>` fail because the base branch doesn't exist yet; independent (unstacked) pieces can run concurrently in separate sessions. Then one `## Piece: <sub-slug>` section per piece. Each section contains a single fenced code block starting with `/heist:heist [<mode>] --slug <sub-slug> [--base heist/<earlier-sub-slug>] <copy-pasteable prose: scope, file ownership, exclusions, base assumptions>`. Always emit `--slug <sub-slug>` so the piece's branch name is fixed and a later piece's `--base heist/<sub-slug>` is guaranteed to match it. Emit `--base heist/<earlier-sub-slug>` only for a stacked piece; omit `--base` entirely when that piece's base is `null`. This prose is human-readable context, never a plan file path (a file path would route the piece through one-shot import and skip the interview the split exists to protect). Reply with a short summary of what you wrote, not the full doc.
+1. **SPLIT_ACCEPTED**: Write `.heist/<parent-slug>/heat.md`. Open it with a short fixed "How to run" preamble: sequential is the safe default (run a piece, merge it, start the next); a stacked piece may start before its base merges, but only once the base piece's worktree exists, i.e. that base heist shows up in `heist list` past the `casing` stage, since starting earlier makes `heist worktree add --base heist/<base-slug>` fail because the base branch doesn't exist yet; independent (unstacked) pieces can run concurrently in separate sessions. Then one `## Piece: <sub-slug>` section per piece. Each section contains a single fenced code block starting with `/heist:heist [<mode>] --slug <sub-slug> [--base heist/<earlier-sub-slug>] <copy-pasteable prose: scope, file ownership, exclusions, base assumptions>`. Always emit `--slug <sub-slug>` so the piece's branch name is fixed and a later piece's `--base heist/<sub-slug>` is guaranteed to match it. Emit `--base heist/<earlier-sub-slug>` only for a stacked piece; omit `--base` entirely when that piece's base is `null`. This prose is human-readable context, never a plan file path. Make it detailed, though, so that the next run doesn't have to investigate everything from scratch. Reply with a short summary of what you wrote, not the full doc.
 
 2. **SPLIT_REJECTED**: Continue the interview normally from where it left off.
 
