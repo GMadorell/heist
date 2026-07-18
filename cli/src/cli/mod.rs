@@ -606,8 +606,8 @@ mod tests {
     use super::*;
     use crate::adapters::testing::{FakeGit, FakeWorktreeFs, FixedClock, InMemoryStateRepository};
     use crate::domain::state::{Stage, State};
-    use crate::domain::value::{DateValue, ScoreWave};
-    use crate::ports::git::GitError;
+    use crate::domain::value::{DateValue, NonBlankValue, ScoreWave};
+    use crate::ports::git::{GitError, PrState};
     use tempfile::TempDir;
 
     fn fixed_date() -> DateValue {
@@ -929,9 +929,6 @@ mod tests {
 
     #[test]
     fn base_command_reports_abandoned_as_precondition_exit_code() {
-        use crate::domain::value::NonBlankValue;
-        use crate::ports::git::PrState;
-
         let mut state = State::new("foo", fixed_date()).expect("valid slug");
         state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
 
@@ -945,9 +942,6 @@ mod tests {
 
     #[test]
     fn sync_command_refuses_abandoned_base_with_precondition_exit_code() {
-        use crate::domain::value::NonBlankValue;
-        use crate::ports::git::PrState;
-
         let mut state = State::new("foo", fixed_date()).expect("valid slug");
         state.worktree = Some(NonBlankValue::parse("worktree", "/tmp/wt").expect("valid worktree"));
         state.branch = Some(NonBlankValue::parse("branch", "heist/foo").expect("valid branch"));
