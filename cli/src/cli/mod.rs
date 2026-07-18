@@ -502,9 +502,6 @@ fn run_base(
         }
         Ok(app::base::BaseResolution::Abandoned { base_ref }) => {
             present::abandoned_base(base_ref.as_ref());
-            // Intentionally stays Precondition: `base` only reports the resolution,
-            // it doesn't refuse to act like `sync` does, so it doesn't get the
-            // dedicated AbandonedBase code.
             ExitCode::Precondition
         }
         Err(app::base::ResolveError::NoState) => {
