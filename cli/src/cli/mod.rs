@@ -19,7 +19,7 @@ use std::path::Path;
     long_about = "Deterministic, token-free half of the Heist pipeline: state tracking, worktree \
 setup/teardown, and validation.md lookup. All commands read/write `.heist/<slug>/state.json` \
 relative to the current directory unless noted.\n\n\
-Exit codes: 0 success, 1 internal error, 2 precondition failed, 3 git command failed, 4 invalid path argument."
+Exit codes: 0 success, 1 internal error, 2 precondition failed, 3 git command failed, 4 invalid path argument, 5 <abandoned-base halt: base PR closed unmerged, human decision required>."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -550,7 +550,7 @@ fn run_sync(
         }
         Err(app::sync::SyncError::Abandoned { base_ref }) => {
             present::abandoned_base_sync_refused(&base_ref);
-            ExitCode::Precondition
+            ExitCode::AbandonedBase
         }
         Err(app::sync::SyncError::NotSetUp) => {
             present::sync_not_set_up(slug);
@@ -941,7 +941,7 @@ mod tests {
     }
 
     #[test]
-    fn sync_command_refuses_abandoned_base_with_precondition_exit_code() {
+    fn sync_command_refuses_abandoned_base_with_abandoned_exit_code() {
         let mut state = State::new("foo", fixed_date()).expect("valid slug");
         state.worktree = Some(NonBlankValue::parse("worktree", "/tmp/wt").expect("valid worktree"));
         state.branch = Some(NonBlankValue::parse("branch", "heist/foo").expect("valid branch"));
@@ -954,6 +954,6 @@ mod tests {
 
         let code = run_sync("foo", &repo, &git);
 
-        assert_eq!(code, ExitCode::Precondition);
+        assert_eq!(code, ExitCode::AbandonedBase);
     }
 }

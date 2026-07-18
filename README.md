@@ -115,7 +115,7 @@ A heist can carry a `base` branch, set via `heist worktree add --base <branch> <
 
 - No base: rebase onto `origin/<main>`.
 - Base with an open PR, or merged but not yet retargeted: merge instead of rebase, so a squash-merged base's commits aren't replayed.
-- Abandoned base (its commits were explicitly rejected): halt with exit code 2 instead of silently carrying those commits along.
+- Abandoned base (its commits were explicitly rejected): halt with exit code 5 instead of silently carrying those commits along.
 
 ## Model / cost table
 

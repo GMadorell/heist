@@ -11,6 +11,7 @@ pub enum ExitCode {
     Precondition = 2,
     Git = 3,
     Usage = 4,
+    AbandonedBase = 5,
 }
 
 impl ExitCode {
@@ -73,5 +74,10 @@ mod tests {
     fn other_maps_to_internal() {
         let e = ValidationError::Other("boom".into());
         assert_eq!(ExitCode::from(&e), ExitCode::Internal);
+    }
+
+    #[test]
+    fn abandoned_base_exit_code_is_5() {
+        assert_eq!(ExitCode::AbandonedBase as i32, 5);
     }
 }

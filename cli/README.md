@@ -71,7 +71,7 @@ Fetches origin, resolves the base like `heist base`, and updates the heist's bra
 - `null`: rebase onto `origin/<default>`.
 - `live`: merge the base branch (never rebase, so a later squash-merge of the base doesn't get its commits replayed).
 - `expired`: merge `origin/<default>`.
-- `abandoned`: refuse with exit 2; a human must decide whether to drop, salvage, or reopen the base's commits.
+- `abandoned`: refuse with exit 5; a human must decide whether to drop, salvage, or reopen the base's commits.
 
 Prints one `synced: ...` line naming what it did. Operates on the worktree recorded in state (safe to run from anywhere) and refuses (exit 2) if no worktree is recorded or the worktree is checked out on a different branch. A failed fetch aborts the sync: user should fix their env.
 
@@ -92,6 +92,7 @@ Prints one line per heist under `.heist/` (`slug  stage  next_step  worktree`), 
 | 2 | Precondition failed (missing/invalid state, unmerged branch, validation.md missing, bad input) |
 | 3 | Underlying git command failed |
 | 4 | Invalid path argument (not absolute, or outside the project) |
+| 5 | Abandoned-base halt (`sync` only): base PR closed unmerged, human decision required |
 
 ## Tests
 
