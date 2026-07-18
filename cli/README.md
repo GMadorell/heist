@@ -73,7 +73,7 @@ Fetches origin, resolves the base like `heist base`, and updates the heist's bra
 - `expired`: merge `origin/<default>`.
 - `abandoned`: refuse with exit 2; a human must decide whether to drop, salvage, or reopen the base's commits.
 
-Prints one `synced: ...` line naming what it did. Operates on the worktree recorded in state (safe to run from anywhere) and refuses (exit 2) if no worktree is recorded or the worktree is checked out on a different branch. A failed fetch aborts the sync: stale refs could rebase or merge the wrong thing, so fix the environment (network, auth, `origin` remote) and re-run.
+Prints one `synced: ...` line naming what it did. Operates on the worktree recorded in state (safe to run from anywhere) and refuses (exit 2) if no worktree is recorded or the worktree is checked out on a different branch. A failed fetch aborts the sync: user should fix their env.
 
 ### `resume <slug>`
 
