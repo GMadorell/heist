@@ -5,14 +5,20 @@ use std::process::Command as StdCommand;
 use tempfile::TempDir;
 
 fn run_git(dir: &Path, args: &[&str]) {
-    let status = StdCommand::new("git")
+    let output = StdCommand::new("git")
         .arg("-c")
         .arg("commit.gpgsign=false")
         .args(args)
         .current_dir(dir)
-        .status()
+        .output()
         .expect("failed to run git");
-    assert!(status.success(), "git {:?} failed", args);
+    assert!(
+        output.status.success(),
+        "git {:?} failed\nstdout: {}\nstderr: {}",
+        args,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 /// Sets up a main repo pushed to a bare origin, with `state init <slug>` and
@@ -305,15 +311,16 @@ fn continues_past_one_failure_and_exits_git_error() {
             .success();
 
         let worktree_path = main_repo.join(".worktrees").join(slug);
-        fs::write(worktree_path.join("feature.txt"), "work").expect("failed to write feature.txt");
+        // Merge each slug into main before creating the next worktree, so
+        // slug-b branches from post-merge main and --ff-only stays valid.
+        let feature_file = format!("feature-{}.txt", slug);
+        fs::write(worktree_path.join(&feature_file), "work").expect("failed to write feature file");
         run_git(&worktree_path, &["add", "."]);
         run_git(&worktree_path, &["commit", "-q", "-m", "add feature"]);
+        run_git(main_repo, &["checkout", "main"]);
+        run_git(main_repo, &["merge", "--ff-only", &format!("heist/{}", slug)]);
+        run_git(main_repo, &["push", "origin", "main"]);
     }
-
-    run_git(main_repo, &["checkout", "main"]);
-    run_git(main_repo, &["merge", "--ff-only", "heist/slug-a"]);
-    run_git(main_repo, &["merge", "--ff-only", "heist/slug-b"]);
-    run_git(main_repo, &["push", "origin", "main"]);
 
     // Make slug-a's worktree dirty (untracked+uncommitted) so `git worktree
     // remove` refuses it without --force; slug-b stays clean.
