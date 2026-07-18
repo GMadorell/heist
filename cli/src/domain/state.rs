@@ -272,5 +272,4 @@ mod tests {
             _ => panic!("expected FieldError::InvalidValue, got a different variant"),
         }
     }
-
 }

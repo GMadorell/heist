@@ -142,8 +142,6 @@ pub fn no_remote_default_for_review(slug: &str, e: impl Display) {
     );
 }
 
-/// One stdout line naming what `sync` actually did, so a transcript shows
-/// the action.
 pub fn sync_action(action: &crate::app::sync::SyncAction) {
     use crate::app::sync::SyncAction;
     match action {

@@ -1,37 +1,64 @@
-use crate::app::base::BaseResolution;
+use crate::app::base::{self, BaseResolution, ResolveError};
 use crate::ports::git::{GitError, GitRepository};
 use crate::ports::state_repository::StateRepository;
 use std::path::Path;
 
 pub enum SyncError {
-    Resolve(crate::app::base::ResolveError),
-    Abandoned {
-        base_ref: String,
-    },
-    /// The heist has no worktree recorded, so there is nothing safe to sync.
+    Resolve(ResolveError),
+    Abandoned { base_ref: String },
     NotSetUp,
-    /// The recorded worktree is checked out on a different branch than the
-    /// heist owns (or `HEAD` is detached). Refuse rather than mutate the
-    /// wrong branch.
-    WrongCheckout {
-        expected: String,
-        actual: String,
-    },
-    /// The pre-sync `git fetch origin` failed. Syncing against stale refs
-    /// could rebase or merge the wrong thing, so refuse and let the caller
-    /// fix the environment and re-run.
+    WrongCheckout { expected: String, actual: String },
     FetchFailed(GitError),
     Git(GitError),
 }
 
-/// What `sync` actually did, so the caller can report it.
 pub enum SyncAction {
-    /// Unstacked heist: rebased onto `origin/<main>` (today's behavior).
     RebasedOntoMain { onto: String },
-    /// Stacked on a still-open base: merged that base in.
     MergedBase { base_ref: String },
-    /// Stacked on a base whose PR already merged: merged `origin/<main>` in.
     MergedMainBaseMerged { onto: String },
+}
+
+/// Syncs the heist's branch against its base. Operates strictly on the
+/// worktree recorded in state, never the caller's current directory, so it is
+/// safe to invoke from anywhere.
+pub fn sync(
+    state_repo: &dyn StateRepository,
+    git: &dyn GitRepository,
+    slug: &str,
+) -> Result<SyncAction, SyncError> {
+    if !state_repo.exists(slug) {
+        return Err(SyncError::Resolve(ResolveError::NoState));
+    }
+    let state = state_repo
+        .load(slug)
+        .map_err(|e| SyncError::Resolve(ResolveError::Load(e)))?;
+
+    let (worktree, branch) = match (state.worktree.as_ref(), state.branch.as_ref()) {
+        (Some(worktree), Some(branch)) => (worktree, branch),
+        _ => return Err(SyncError::NotSetUp),
+    };
+    let worktree_path = Path::new(worktree.as_ref());
+
+    // Sync mutates the branch; the worktree must actually have it checked out.
+    match git.current_branch(worktree_path).map_err(SyncError::Git)? {
+        Some(current) if current == branch.as_ref() => {}
+        other => {
+            return Err(SyncError::WrongCheckout {
+                expected: branch.to_string(),
+                actual: other.unwrap_or_else(|| "(detached HEAD)".to_string()),
+            });
+        }
+    }
+
+    // Every downstream decision assumes fresh `origin/*` refs, so a failed
+    // fetch is a hard stop.
+    git.fetch(worktree_path, "origin")
+        .map_err(SyncError::FetchFailed)?;
+
+    let resolution =
+        base::resolve(worktree_path, state_repo, git, slug).map_err(SyncError::Resolve)?;
+    let main_branch = git.default_branch(worktree_path);
+    perform(worktree_path, git, &main_branch, &resolution)
 }
 
 pub fn perform(
@@ -62,53 +89,6 @@ pub fn perform(
             base_ref: base_ref.to_string(),
         }),
     }
-}
-
-/// Syncs the heist's branch against its base. Operates strictly on the
-/// worktree recorded in state, never the caller's current directory, so it is
-/// safe to invoke from anywhere.
-pub fn sync(
-    state_repo: &dyn StateRepository,
-    git: &dyn GitRepository,
-    slug: &str,
-) -> Result<SyncAction, SyncError> {
-    if !state_repo.exists(slug) {
-        return Err(SyncError::Resolve(crate::app::base::ResolveError::NoState));
-    }
-    let state = state_repo
-        .load(slug)
-        .map_err(|e| SyncError::Resolve(crate::app::base::ResolveError::Load(e)))?;
-
-    // A sync mutates a branch; it must run in the heist's own worktree, not
-    // whatever checkout the caller happens to stand in. Resolve the worktree
-    // from state and confirm it is on the branch we own before touching git.
-    let (worktree, branch) = match (state.worktree.as_ref(), state.branch.as_ref()) {
-        (Some(worktree), Some(branch)) => (worktree, branch),
-        _ => return Err(SyncError::NotSetUp),
-    };
-    let worktree_path = Path::new(worktree.as_ref());
-
-    match git.current_branch(worktree_path).map_err(SyncError::Git)? {
-        Some(current) if current == branch.as_ref() => {}
-        other => {
-            return Err(SyncError::WrongCheckout {
-                expected: branch.to_string(),
-                actual: other.unwrap_or_else(|| "(detached HEAD)".to_string()),
-            });
-        }
-    }
-
-    // Refresh `origin/*` so the ancestry pre-check and any rebase/merge onto
-    // `origin/<main>` see the remote's current state rather than stale refs.
-    // A failed fetch means stale refs, and every downstream decision assumes
-    // fresh ones, so it is a hard stop.
-    git.fetch(worktree_path, "origin")
-        .map_err(SyncError::FetchFailed)?;
-
-    let resolution = crate::app::base::resolve(worktree_path, state_repo, git, slug)
-        .map_err(SyncError::Resolve)?;
-    let main_branch = git.default_branch(worktree_path);
-    perform(worktree_path, git, &main_branch, &resolution)
 }
 
 #[cfg(test)]
@@ -201,7 +181,7 @@ mod tests {
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = git_on_branch("foo").failing_pr_state_for(
             "heist/piece-01",
-            crate::ports::git::GitError::CommandFailed {
+            GitError::CommandFailed {
                 command: "gh pr list".into(),
                 message: "gh not found".into(),
             },
@@ -211,9 +191,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(SyncError::Resolve(
-                crate::app::base::ResolveError::VerificationFailed { .. }
-            ))
+            Err(SyncError::Resolve(ResolveError::VerificationFailed { .. }))
         ));
         assert!(git.rebase_calls().is_empty());
         assert!(git.merge_calls().is_empty());

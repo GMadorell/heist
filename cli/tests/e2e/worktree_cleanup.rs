@@ -318,7 +318,10 @@ fn continues_past_one_failure_and_exits_git_error() {
         run_git(&worktree_path, &["add", "."]);
         run_git(&worktree_path, &["commit", "-q", "-m", "add feature"]);
         run_git(main_repo, &["checkout", "main"]);
-        run_git(main_repo, &["merge", "--ff-only", &format!("heist/{}", slug)]);
+        run_git(
+            main_repo,
+            &["merge", "--ff-only", &format!("heist/{}", slug)],
+        );
         run_git(main_repo, &["push", "origin", "main"]);
     }
 

@@ -6,18 +6,9 @@ use std::path::Path;
 
 pub enum BaseResolution {
     Null,
-    Live {
-        base_ref: NonBlankValue,
-        // R5 (stale-base detection: local base ref outrunning its remote
-        // counterpart) is intentionally not implemented yet; deferred to a
-        // follow-up. This variant only reports liveness, not staleness.
-    },
-    Expired {
-        base_ref: NonBlankValue,
-    },
-    Abandoned {
-        base_ref: NonBlankValue,
-    },
+    Live { base_ref: NonBlankValue },
+    Expired { base_ref: NonBlankValue },
+    Abandoned { base_ref: NonBlankValue },
 }
 
 pub enum ResolveError {
@@ -26,9 +17,6 @@ pub enum ResolveError {
     RefMissingWithOpenPr { base_ref: String },
     RefMissingNoPr { base_ref: String },
     Ambiguous { base_ref: String },
-    /// The PR-state check couldn't run (missing `gh`, no auth, network). The
-    /// workflow depends on `gh`, so this is an environment problem to fix,
-    /// not a state to guess around.
     VerificationFailed { base_ref: String, message: String },
 }
 
@@ -50,12 +38,8 @@ pub fn resolve(
     let base_ref = base_value.as_ref();
     let main_branch = git.default_branch(repo_root);
 
-    // Check if ref exists
     let ref_exists = git.resolve_ref(repo_root, base_ref).is_ok();
 
-    // Ancestry pre-check (only if ref exists): a fast-forward/non-squash
-    // merge may already have landed, in which case there's no need for a
-    // `gh` call at all.
     if ref_exists {
         let ancestry = git.is_ancestor(repo_root, base_ref, &format!("origin/{}", main_branch));
         if matches!(ancestry, Ok(true)) {
@@ -65,7 +49,6 @@ pub fn resolve(
         }
     }
 
-    // PR state check
     match git.pr_state(repo_root, base_ref) {
         Ok(PrState::Merged) => Ok(BaseResolution::Expired {
             base_ref: base_value,
@@ -79,8 +62,6 @@ pub fn resolve(
                     base_ref: base_value,
                 })
             } else {
-                // The branch is gone but a PR still reports open: the human
-                // must reconcile that, we can't guess the effective base.
                 Err(ResolveError::RefMissingWithOpenPr {
                     base_ref: base_ref.to_string(),
                 })
@@ -92,8 +73,6 @@ pub fn resolve(
                     base_ref: base_value,
                 })
             } else {
-                // No ref and no PR ever found: the base branch was most
-                // likely deleted. Don't claim a PR is open (it isn't).
                 Err(ResolveError::RefMissingNoPr {
                     base_ref: base_ref.to_string(),
                 })
