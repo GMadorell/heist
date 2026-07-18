@@ -18,9 +18,6 @@ pub enum SyncAction {
     MergedMainBaseMerged { onto: String },
 }
 
-/// Syncs the heist's branch against its base. Operates strictly on the
-/// worktree recorded in state, never the caller's current directory, so it is
-/// safe to invoke from anywhere.
 pub fn sync(
     state_repo: &dyn StateRepository,
     git: &dyn GitRepository,

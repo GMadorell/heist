@@ -16,8 +16,6 @@ pub enum AddError {
     Git(GitError),
     Load(StateError),
     Save(StateError),
-    /// `--base` was passed for a worktree that already exists and was created
-    /// from a different start point; its start point can't be changed in place.
     BaseImmutable {
         existing: Option<String>,
         requested: String,
