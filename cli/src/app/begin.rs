@@ -7,8 +7,25 @@ use crate::ports::state_repository::StateRepository;
 use crate::ports::worktree_fs::WorktreeFs;
 use std::path::Path;
 
+pub enum CollisionArtifact {
+    State,
+    Worktree,
+    Branch,
+}
+
+impl CollisionArtifact {
+    pub fn describe(&self, slug: &str) -> String {
+        match self {
+            CollisionArtifact::State => format!(".heist/{}/", slug),
+            CollisionArtifact::Worktree => format!(".worktrees/{}", slug),
+            CollisionArtifact::Branch => format!("branch heist/{}", slug),
+        }
+    }
+}
+
 pub enum BeginError {
     InvalidSlug(FieldError),
+    Collision(CollisionArtifact),
     Mode(app::state::SetError),
     Worktree(app::worktree::AddError),
     Stage(app::state::SetError),
@@ -27,11 +44,22 @@ pub fn begin(
 ) -> Result<NonBlankValue, BeginError> {
     SlugValue::parse(slug).map_err(BeginError::InvalidSlug)?;
 
+    if state_repo.exists(slug) {
+        return Err(BeginError::Collision(CollisionArtifact::State));
+    }
+    if git.worktree_exists(repo_root, slug) {
+        return Err(BeginError::Collision(CollisionArtifact::Worktree));
+    }
+    let branch = crate::domain::worktree::branch_name(slug).map_err(BeginError::InvalidSlug)?;
+    if git.branch_exists(repo_root, branch.as_ref()) {
+        return Err(BeginError::Collision(CollisionArtifact::Branch));
+    }
+
     match app::state::init(state_repo, clock, slug) {
         Ok(()) => {}
         Err(app::state::InitError::InvalidSlug(e)) => return Err(BeginError::InvalidSlug(e)),
-        Err(app::state::InitError::Init(e)) => {
-            return Err(BeginError::Mode(app::state::SetError::Load(e)))
+        Err(app::state::InitError::Init(_)) => {
+            return Err(BeginError::Collision(CollisionArtifact::State));
         }
     }
 
@@ -95,5 +123,69 @@ mod tests {
 
         assert!(matches!(result, Err(BeginError::InvalidSlug(_))));
         assert!(!repo.exists("Not A Slug"));
+    }
+
+    #[test]
+    fn begin_rejects_precheck_collision_for_existing_state_worktree_or_branch() {
+        let repo_with_state = InMemoryStateRepository::new().with_state(
+            "foo",
+            crate::domain::state::State::new(
+                "foo",
+                DateValue::parse("today", "2026-01-01").expect("valid date"),
+            )
+            .expect("valid slug"),
+        );
+        let git = FakeGit::new().with_default_branch("main");
+        let result = begin(
+            Path::new("."),
+            &repo_with_state,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            "foo",
+            "heavy",
+            None,
+        );
+        assert!(matches!(
+            result,
+            Err(BeginError::Collision(CollisionArtifact::State))
+        ));
+
+        let repo_no_state = InMemoryStateRepository::new();
+        let git_worktree_collision = FakeGit::new()
+            .with_default_branch("main")
+            .with_existing_worktree("bar");
+        let result = begin(
+            Path::new("."),
+            &repo_no_state,
+            &git_worktree_collision,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            "bar",
+            "heavy",
+            None,
+        );
+        assert!(matches!(
+            result,
+            Err(BeginError::Collision(CollisionArtifact::Worktree))
+        ));
+
+        let git_branch_collision = FakeGit::new()
+            .with_default_branch("main")
+            .with_branch("heist/baz");
+        let result = begin(
+            Path::new("."),
+            &repo_no_state,
+            &git_branch_collision,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            "baz",
+            "heavy",
+            None,
+        );
+        assert!(matches!(
+            result,
+            Err(BeginError::Collision(CollisionArtifact::Branch))
+        ));
     }
 }
