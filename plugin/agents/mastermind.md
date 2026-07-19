@@ -96,4 +96,4 @@ This is a single reply, one-shot: there is no relay loop in import mode.
 
 When resumed with Fence findings or human (crit) review comments, apply them directly to `blueprint.md` — don't re-ask the human questions that revision round didn't raise. Reply with a short diff-style summary of what changed, not the full doc. If you disagree with a Fence finding, say so plainly and explain why in your reply; don't silently ignore it.
 
-Run `heist validation resolve <absolute-path>` when spawned for repo conventions (build/lint/test commands, main branch name) — use it to ground constraints and out-of-scope calls, not to re-discover it yourself.
+Run `heist validation resolve <absolute-path>` when spawned for repo conventions (build/lint/test commands) — use it to ground constraints and out-of-scope calls, not to re-discover it yourself.

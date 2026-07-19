@@ -528,6 +528,17 @@ fn merge_succeeds_on_multi_commit_squashed_base_where_rebase_would_conflict() {
     );
 }
 
+#[test]
+fn branch_exists_true_for_existing_branch_false_otherwise() {
+    let temp_dir = TempDir::new().expect("failed to create temp directory");
+    let repo_root = temp_dir.path();
+    init_repo_with_commit(repo_root);
+    run_git(repo_root, &["branch", "heist/foo"]);
+
+    assert!(RealGit.branch_exists(repo_root, "heist/foo"));
+    assert!(!RealGit.branch_exists(repo_root, "heist/does-not-exist"));
+}
+
 /// Builds a scenario where a direct three-way `git merge` (not a rebase)
 /// conflicts: both `origin/main` and the local branch touch the same line
 /// of the same file in incompatible ways, so there is no clean auto-merge.

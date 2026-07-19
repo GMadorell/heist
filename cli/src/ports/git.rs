@@ -44,6 +44,12 @@ pub trait GitRepository {
 
     fn worktree_exists(&self, repo_root: &Path, slug: &str) -> bool;
 
+    /// Returns true if a local branch named `branch` exists. Returns false
+    /// on any probe failure (e.g. not a git repo) rather than erroring, so
+    /// callers using this for create-tracking rollback default to NOT
+    /// deleting on an inconclusive result.
+    fn branch_exists(&self, repo_root: &Path, branch: &str) -> bool;
+
     fn add_worktree(
         &self,
         repo_root: &Path,

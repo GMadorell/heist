@@ -118,6 +118,20 @@ impl GitRepository for RealGit {
         })
     }
 
+    fn branch_exists(&self, repo_root: &Path, branch: &str) -> bool {
+        std::process::Command::new("git")
+            .current_dir(repo_root)
+            .args([
+                "show-ref",
+                "--verify",
+                "--quiet",
+                &format!("refs/heads/{}", branch),
+            ])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
     fn worktree_exists(&self, repo_root: &Path, slug: &str) -> bool {
         if let Ok(repo) = git2::Repository::open(repo_root) {
             if let Ok(worktrees) = repo.worktrees() {

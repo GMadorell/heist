@@ -121,6 +121,12 @@ impl StateRepository for InMemoryStateRepository {
         slugs.sort_by(|a, b| a.as_ref().cmp(b.as_ref()));
         Ok(slugs)
     }
+
+    fn remove(&self, slug: &str) -> Result<(), StateError> {
+        self.states.borrow_mut().remove(slug);
+        self.load_errors.borrow_mut().remove(slug);
+        Ok(())
+    }
 }
 
 /// In-memory git for unit tests
@@ -128,6 +134,7 @@ pub struct FakeGit {
     default_branch: String,
     merged_branches: std::collections::HashSet<String>,
     worktrees: std::cell::RefCell<std::collections::HashSet<String>>,
+    branches: RefCell<HashSet<String>>,
     worktree_infos: Vec<WorktreeInfo>,
     add_error: Option<GitError>,
     remove_error: Option<GitError>,
@@ -170,6 +177,7 @@ impl FakeGit {
             default_branch: "main".to_string(),
             merged_branches: std::collections::HashSet::new(),
             worktrees: std::cell::RefCell::new(std::collections::HashSet::new()),
+            branches: RefCell::new(HashSet::new()),
             worktree_infos: Vec::new(),
             add_error: None,
             remove_error: None,
@@ -206,6 +214,11 @@ impl FakeGit {
 
     pub fn with_merged_branch(mut self, branch: &str) -> Self {
         self.merged_branches.insert(branch.to_string());
+        self
+    }
+
+    pub fn with_branch(self, branch: &str) -> Self {
+        self.branches.borrow_mut().insert(branch.to_string());
         self
     }
 
@@ -352,6 +365,10 @@ impl GitRepository for FakeGit {
         self.default_branch.clone()
     }
 
+    fn branch_exists(&self, _repo_root: &Path, branch: &str) -> bool {
+        self.branches.borrow().contains(branch)
+    }
+
     fn current_branch(&self, _repo_root: &Path) -> Result<Option<String>, GitError> {
         Ok(self.current_branch.clone())
     }
@@ -411,6 +428,7 @@ impl GitRepository for FakeGit {
         // Register by the branch's slug suffix (`heist/<slug>` -> `<slug>`).
         let slug = branch.rsplit('/').next().unwrap_or(branch);
         self.worktrees.borrow_mut().insert(slug.to_string());
+        self.branches.borrow_mut().insert(branch.to_string());
         Ok(())
     }
 

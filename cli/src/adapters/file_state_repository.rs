@@ -57,6 +57,14 @@ impl StateRepository for FileStateRepository {
         slugs.sort_by(|a, b| a.as_ref().cmp(b.as_ref()));
         Ok(slugs)
     }
+
+    fn remove(&self, slug: &str) -> Result<(), StateError> {
+        let dir = Path::new(".heist").join(slug);
+        if !dir.exists() {
+            return Ok(());
+        }
+        std::fs::remove_dir_all(&dir).map_err(StateError::Unreadable)
+    }
 }
 
 fn state_file_path(slug: &str) -> PathBuf {

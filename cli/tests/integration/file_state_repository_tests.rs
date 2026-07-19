@@ -196,3 +196,26 @@ fn save_without_slug_dir_is_unreadable() {
         Err(StateError::Unreadable(_))
     ));
 }
+
+#[test]
+fn remove_deletes_slug_directory() {
+    let _cwd = TempCwd::new();
+    let repo = FileStateRepository;
+    repo.init("foo", &State::new("foo", fixed_date()).expect("valid slug"))
+        .expect("init should succeed");
+
+    repo.remove("foo").expect("remove should succeed");
+
+    assert!(!repo.exists("foo"));
+    assert!(!state_file_path("foo")
+        .parent()
+        .expect("state path has a parent")
+        .exists());
+}
+
+#[test]
+fn remove_is_a_no_op_when_slug_dir_absent() {
+    let _cwd = TempCwd::new();
+    let repo = FileStateRepository;
+    assert!(repo.remove("nope").is_ok());
+}
