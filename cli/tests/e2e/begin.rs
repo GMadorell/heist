@@ -85,3 +85,94 @@ fn creates_state_worktree_and_prints_worktree_path() {
     assert!(list_str.contains(".worktrees/my-slug"));
     assert!(list_str.contains("heist/my-slug"));
 }
+
+#[test]
+fn rejects_malformed_slug_with_precondition_exit_code() {
+    let (main_temp, _bare_temp) = setup_repo();
+    let main_repo = main_temp.path();
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(main_repo)
+        .arg("begin")
+        .arg("Not A Slug")
+        .arg("--mode")
+        .arg("heavy")
+        .output()
+        .expect("failed to run heist begin");
+
+    assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn rejects_pre_existing_state_dir_with_dedicated_collision_message() {
+    let (main_temp, _bare_temp) = setup_repo();
+    let main_repo = main_temp.path();
+    fs::create_dir_all(main_repo.join(".heist/my-slug")).expect("failed to create stray state dir");
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(main_repo)
+        .arg("begin")
+        .arg("my-slug")
+        .arg("--mode")
+        .arg("heavy")
+        .output()
+        .expect("failed to run heist begin");
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("my-slug"),
+        "stderr should name the slug, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn rejects_pre_existing_worktree_without_state_instead_of_adopting_it() {
+    let (main_temp, _bare_temp) = setup_repo();
+    let main_repo = main_temp.path();
+    run_git(
+        main_repo,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "heist/my-slug",
+            ".worktrees/my-slug",
+        ],
+    );
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(main_repo)
+        .arg("begin")
+        .arg("my-slug")
+        .arg("--mode")
+        .arg("heavy")
+        .output()
+        .expect("failed to run heist begin");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(!main_repo.join(".heist/my-slug").exists());
+}
+
+#[test]
+fn rejects_pre_existing_branch_without_state() {
+    let (main_temp, _bare_temp) = setup_repo();
+    let main_repo = main_temp.path();
+    run_git(main_repo, &["branch", "heist/my-slug"]);
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(main_repo)
+        .arg("begin")
+        .arg("my-slug")
+        .arg("--mode")
+        .arg("heavy")
+        .output()
+        .expect("failed to run heist begin");
+
+    assert_eq!(output.status.code(), Some(2));
+}
