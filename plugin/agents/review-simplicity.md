@@ -18,18 +18,8 @@ Check for:
 - **Duplication that should collapse**: same logic copy-pasted rather than extracted — but only when the duplication is real (identical rules), not incidental similarity that will diverge later.
 - **Over-engineered error handling**: fallbacks, retries, or validation for scenarios that can't occur given the surrounding guarantees.
 
-Do not flag correctness bugs (that's Intent's job), missing tests (that's Coverage's job), or naming/readability at the architecture level (that's Quality's job). Stay in your lane: this is specifically about whether the code is more complicated than it needs to be.
+Do not flag correctness bugs (that's Intent's job), missing tests (that's Coverage's job), or naming/readability at the architecture level (that's Quality's job).
 
 ## Output format
 
-Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape and sign-off line — all review agents share it, so use it as written rather than restating it. Description line: the unnecessary complexity. Detail sentences: what's overbuilt, and what the simpler version would look like.
-
-Severity guide:
-- `error`: complexity that actively risks bugs (e.g. a state machine implemented via scattered flags where a straight sequence would do).
-- `warning`: real over-engineering, no immediate bug risk, but a maintenance tax.
-- `info`: minor simplification opportunity, take-it-or-leave-it.
-
-Action guide:
-- `no-op`: informational only.
-- `auto-fix`: the simplification is mechanical and safe to apply without changing behavior or requiring a design call.
-- `ask-user`: simplifying would change an intentional tradeoff (e.g. removing an abstraction the blueprint explicitly chose for a stated reason) — a human decides. Asking the user is very expensive, as it involves stopping the agent flow, only do so if the decision is really hard. If you can take the decision yourself, use `auto-fix.`
+Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape, severity guide, action guide, lane-discipline sentence, and `<absolute-path>` convention. All review agents share it, so use it as written rather than restating it. Description line: the unnecessary complexity. Detail sentences: what's overbuilt, and what the simpler version would look like.

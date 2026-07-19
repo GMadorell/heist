@@ -21,14 +21,6 @@ Do not flag correctness bugs unless the absence of a test is what's letting the 
 
 ## Output format
 
-Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape and sign-off line — all review agents share it, so use it as written rather than restating it. Description line: the coverage gap. Detail sentences: which behavior is unpinned, and what could regress silently as a result.
+Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape, severity guide, action guide, lane-discipline sentence, and `<absolute-path>` convention. All review agents share it, so use it as written rather than restating it. Description line: the coverage gap. Detail sentences: which behavior is unpinned, and what could regress silently as a result.
 
-Severity guide:
-- `error`: a code path that can cause real user-facing damage (data loss, security, payment, irreversible action) has zero coverage.
-- `warning`: a meaningful branch or edge case is untested, moderate blast radius.
-- `info`: minor gap, low risk if it regresses.
-
-Action guide:
-- `no-op`: informational only (e.g. flagging a pre-existing gap outside this diff's scope, for awareness).
-- `auto-fix`: a straightforward test can be added mechanically (input → expected output is clear from the surrounding code, no design judgment needed).
-- `ask-user`: what "correct" behavior should be isn't obvious from the code/blueprint — a human needs to state the expected behavior before a test can assert on it.
+Calibration: `error` only when the untested path can cause real user-facing damage (data loss, security, payment, irreversible action); a lower-risk untested branch is at most `warning`.

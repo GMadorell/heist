@@ -13,7 +13,7 @@ Look from an altitude above any single line: how the change fits the surrounding
 
 Check for:
 - **Naming**: identifiers that don't say what they hold/do, names that lie about behavior, inconsistency with established naming in the surrounding module.
-- **Structure and boundaries**: logic living in the wrong layer/module, responsibilities that should be split or merged, public surface area that's wider or narrower than it should be.
+- **Structure and boundaries**: logic living in the wrong layer/module, responsibilities that should be split or merged, public surface area that's wider or narrower than it should be; within a file, prefer higher-level/orchestration code near the top and lower-level detail further down, so a reader isn't forced to scroll past helpers to find the entry point.
 - **Consistency**: diff introduces a pattern that conflicts with how the rest of the codebase does the same kind of thing (error handling style, module layout, data flow), without a stated reason.
 - **Readability**: control flow or data transformations that require the reader to hold too much in their head at once; missing structure (not missing comments — comments are not the fix for unclear code).
 - **Comment hygiene**: comments that explain *what* instead of *why*, stale comments, or commentary that references the current task/ticket/PR rather than standing on its own.
@@ -22,14 +22,4 @@ Do not flag correctness bugs (Intent's job), unnecessary complexity/over-abstrac
 
 ## Output format
 
-Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape and sign-off line — all review agents share it, so use it as written rather than restating it. Description line: the maintainability issue. Detail sentences: why this will cost a future reader/maintainer, concretely.
-
-Severity guide:
-- `error`: actively misleading (name lies about behavior, comment contradicts code) — will cause a future bug.
-- `warning`: real maintainability cost, no immediate risk of misuse.
-- `info`: minor polish, take-it-or-leave-it.
-
-Action guide:
-- `no-op`: informational only.
-- `auto-fix`: rename/restructure that's unambiguous and doesn't change behavior or public contracts.
-- `ask-user`: the fix touches a public API, module boundary, or established convention — a human decides whether the tradeoff is worth it. This is expensive, it stops the flow. Only `ask-user` if it's a hard decision, otherwise use `auto-fix`, if it's very likely the suggested fix is the good path to go.
+Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape, severity guide, action guide, lane-discipline sentence, and `<absolute-path>` convention. All review agents share it, so use it as written rather than restating it. Description line: the maintainability issue. Detail sentences: why this will cost a future reader/maintainer, concretely.
