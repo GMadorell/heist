@@ -58,6 +58,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
     let mut i = 0;
     let mut current_enclosing_wave = 0u32;
     let mut in_fence: Option<&'static str> = None;
+    let mut seen_numbers = std::collections::HashSet::new();
 
     while i < lines.len() {
         let line = lines[i];
@@ -218,6 +219,13 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                             verify: String::new(),
                         }
                     };
+
+                    if !seen_numbers.insert(step_num) {
+                        findings.push(Finding {
+                            step: step_num,
+                            message: "duplicate step number".to_string(),
+                        });
+                    }
 
                     steps.push(Step {
                         number: step_num,
@@ -381,6 +389,35 @@ mod tests {
                 .iter()
                 .any(|f| f.step == 1 && f.message.to_lowercase().contains("shape")),
             "expected a shape-related finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn parse_flags_duplicate_step_number() {
+        let text = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+
+### Step 1: add widget again
+- **Wave**: 1
+- **Files**: /tmp/b.rs
+- **Change**: add widget again.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let findings = parse(text).expect_err("should fail to parse");
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.step == 1 && f.message.to_lowercase().contains("duplicate")),
+            "expected a duplicate-step-number finding, got: {:?}",
             findings
         );
     }
