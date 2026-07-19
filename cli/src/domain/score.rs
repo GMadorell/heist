@@ -183,7 +183,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                                 &lines,
                                 &mut field_idx,
                             );
-                            depends_on = parse_depends_on(&depends_str);
+                            depends_on = parse_depends_on(&depends_str, step_num, &mut findings);
                         } else {
                             field_idx += 1;
                         }
@@ -355,16 +355,47 @@ fn collect_field_value(line: &str, prefix: &str, lines: &[&str], idx: &mut usize
     value
 }
 
-fn parse_depends_on(value: &str) -> Vec<u32> {
+fn parse_depends_on(value: &str, step_num: u32, findings: &mut Vec<Finding>) -> Vec<u32> {
     let trimmed = value.trim();
     if trimmed == "none" {
         return Vec::new();
     }
 
-    trimmed
-        .split(", ")
-        .filter_map(|s| s.trim().parse::<u32>().ok())
-        .collect()
+    if trimmed.is_empty() {
+        findings.push(Finding {
+            step: step_num,
+            message: "malformed Depends on syntax".to_string(),
+        });
+        return Vec::new();
+    }
+
+    let mut depends_on = Vec::new();
+    let mut has_error = false;
+
+    for token in trimmed.split(',') {
+        let token = token.trim();
+        if let Some(num_str) = token.strip_prefix("step ") {
+            if let Ok(num) = num_str.parse::<u32>() {
+                depends_on.push(num);
+            } else {
+                has_error = true;
+                break;
+            }
+        } else {
+            has_error = true;
+            break;
+        }
+    }
+
+    if has_error {
+        findings.push(Finding {
+            step: step_num,
+            message: "malformed Depends on syntax".to_string(),
+        });
+        return Vec::new();
+    }
+
+    depends_on
 }
 
 pub fn check(_score: &Score) -> Vec<Finding> {
@@ -588,6 +619,62 @@ mod tests {
                 && f.message.contains("Verify")
                 && f.message.to_lowercase().contains("change")),
             "expected a missing-Verify-field finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn parse_depends_on_none_and_multi_dep() {
+        let text = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+
+### Step 2: add gadget
+- **Wave**: 1
+- **Files**: /tmp/b.rs
+- **Change**: add gadget.
+- **Verify**: cargo build
+- Depends on: step 1
+
+## Wave 2
+
+### Step 3: combine
+- **Wave**: 2
+- **Files**: /tmp/c.rs
+- **Change**: combine widget and gadget.
+- **Verify**: cargo build
+- Depends on: step 1, step 2
+";
+        let score = parse(text).expect("should parse");
+        assert_eq!(score.steps[0].depends_on, Vec::<u32>::new());
+        assert_eq!(score.steps[1].depends_on, vec![1]);
+        assert_eq!(score.steps[2].depends_on, vec![1, 2]);
+    }
+
+    #[test]
+    fn parse_flags_malformed_depends_on_syntax() {
+        let text = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: whatever
+";
+        let findings = parse(text).expect_err("should fail to parse");
+        assert!(
+            findings.iter().any(|f| f.step == 1
+                && f.message.to_lowercase().contains("depends on")
+                && f.message.to_lowercase().contains("malformed")),
+            "expected a malformed-Depends-on finding, got: {:?}",
             findings
         );
     }
