@@ -503,8 +503,27 @@ fn parse_depends_on(value: &str, step_num: u32, findings: &mut Vec<Finding>) -> 
     depends_on
 }
 
-pub fn check(_score: &Score) -> Vec<Finding> {
-    todo!("implemented incrementally by later steps")
+pub fn check(score: &Score) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    let mut last_wave: Option<u32> = None;
+
+    for step in &score.steps {
+        if let Some(previous) = last_wave {
+            if step.enclosing_wave < previous {
+                findings.push(Finding {
+                    step: step.number,
+                    message: format!(
+                        "'## Wave {}' header is out of order (must be strictly ascending; previous wave header was {})",
+                        step.enclosing_wave, previous
+                    ),
+                });
+            }
+        }
+
+        last_wave = Some(step.enclosing_wave);
+    }
+
+    findings
 }
 
 pub fn wave_blocks(_score: &Score, _wave: u32) -> Result<Vec<(u32, String)>, NoSuchWave> {
@@ -869,5 +888,39 @@ end of example.
             score.steps[0].raw
         );
         assert!(score.steps[1].raw.starts_with("### Step 2: add gadget"));
+    }
+
+    fn valid_change_step(number: u32, wave: u32, enclosing_wave: u32, file: &str) -> Step {
+        Step {
+            number,
+            title: format!("step {}", number),
+            wave,
+            enclosing_wave,
+            files: vec![file.to_string()],
+            shape: Shape::Change {
+                change: "do the thing.".to_string(),
+                verify: "cargo build".to_string(),
+            },
+            depends_on: Vec::new(),
+            raw: format!("### Step {}: step {}\n", number, number),
+        }
+    }
+
+    #[test]
+    fn check_flags_non_ascending_wave_headers() {
+        let score = Score {
+            steps: vec![
+                valid_change_step(1, 2, 2, "/tmp/a.rs"),
+                valid_change_step(2, 1, 1, "/tmp/b.rs"),
+            ],
+        };
+        let findings = check(&score);
+        assert!(
+            findings.iter().any(|f| f.step == 2
+                && f.message.to_lowercase().contains("wave")
+                && f.message.to_lowercase().contains("ascending")),
+            "expected a non-ascending-wave-header finding anchored to step 2, got: {:?}",
+            findings
+        );
     }
 }
