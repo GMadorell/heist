@@ -224,7 +224,6 @@ pub fn score_check_ok(steps: usize, waves: usize) {
     println!("waves: {}", waves);
 }
 
-#[allow(dead_code)]
 pub fn score_record_ok(steps: usize, waves: usize) {
     println!("recorded");
     println!("steps: {}", steps);
@@ -249,7 +248,6 @@ pub fn score_io_failed(slug: &str, e: impl Display) {
     eprintln!("failed to read score.md for slug {}: {}", slug, e);
 }
 
-#[allow(dead_code)]
 pub fn score_save_failed(slug: &str, e: impl Display) {
     eprintln!("failed to save state for slug {}: {}", slug, e);
 }

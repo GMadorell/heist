@@ -631,7 +631,7 @@ fn run_sync(
 fn run_score(
     command: ScoreCommands,
     state_repo: &dyn StateRepository,
-    _clock: &dyn crate::ports::clock::Clock,
+    clock: &dyn crate::ports::clock::Clock,
 ) -> ExitCode {
     match command {
         ScoreCommands::Check { slug } => match app::score::check(state_repo, &slug) {
@@ -656,7 +656,32 @@ fn run_score(
                 ExitCode::Precondition
             }
         },
-        ScoreCommands::Record { slug: _ } => todo!("wired in a later step"),
+        ScoreCommands::Record { slug } => match app::score::record(state_repo, clock, &slug) {
+            Ok(outcome) => {
+                present::score_record_ok(outcome.steps, outcome.waves);
+                ExitCode::Success
+            }
+            Err(app::score::RecordError::NoState) => {
+                present::no_state_for_score(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::RecordError::NoScore) => {
+                present::no_score_for_slug(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::RecordError::Io(e)) => {
+                present::score_io_failed(&slug, &e);
+                ExitCode::Internal
+            }
+            Err(app::score::RecordError::Findings(findings)) => {
+                present::score_findings(&findings);
+                ExitCode::Precondition
+            }
+            Err(app::score::RecordError::Save(e)) => {
+                present::score_save_failed(&slug, &e);
+                ExitCode::from(&e)
+            }
+        },
         ScoreCommands::Wave { slug: _, n: _ } => todo!("wired in a later step"),
     }
 }
@@ -1039,5 +1064,33 @@ mod tests {
         );
 
         assert_eq!(code, ExitCode::Precondition);
+    }
+
+    #[test]
+    fn score_record_persists_totals_and_returns_success() {
+        let valid_score = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_score("foo", valid_score);
+
+        let code = run_score(
+            ScoreCommands::Record { slug: "foo".into() },
+            &repo,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Success);
+        let saved = repo.get("foo").expect("state should exist");
+        assert_eq!(saved.score_steps_total.to_string(), "1");
+        assert_eq!(saved.score_waves_total.to_string(), "1");
     }
 }
