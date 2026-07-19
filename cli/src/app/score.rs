@@ -2,6 +2,7 @@ use crate::domain::error::StateError;
 use crate::domain::score::{self, Finding};
 use crate::ports::state_repository::StateRepository;
 
+#[derive(Debug)]
 pub struct CheckOutcome {
     pub steps: usize,
     pub waves: usize,
@@ -12,7 +13,6 @@ pub struct RecordOutcome {
     pub waves: usize,
 }
 
-#[allow(dead_code)]
 enum LoadError {
     NoState,
     NoScore,
@@ -20,7 +20,6 @@ enum LoadError {
     Findings(Vec<Finding>),
 }
 
-#[allow(dead_code)]
 fn load_and_check(
     repo: &dyn StateRepository,
     slug: &str,
@@ -41,6 +40,7 @@ fn load_and_check(
     Ok((parsed, waves_count))
 }
 
+#[derive(Debug)]
 pub enum CheckError {
     NoState,
     NoScore,
@@ -86,8 +86,12 @@ pub enum WaveError {
     NoSuchWave(u32),
 }
 
-pub fn check(_repo: &dyn StateRepository, _slug: &str) -> Result<CheckOutcome, CheckError> {
-    todo!("implemented in a later step")
+pub fn check(repo: &dyn StateRepository, slug: &str) -> Result<CheckOutcome, CheckError> {
+    let (parsed, waves) = load_and_check(repo, slug)?;
+    Ok(CheckOutcome {
+        steps: parsed.steps.len(),
+        waves,
+    })
 }
 
 pub fn record(
@@ -104,4 +108,61 @@ pub fn wave(
     _n: u32,
 ) -> Result<Vec<(u32, String)>, WaveError> {
     todo!("implemented in a later step")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::adapters::testing::InMemoryStateRepository;
+    use crate::domain::state::State;
+    use crate::domain::value::DateValue;
+
+    const VALID_SCORE: &str = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+
+    const MALFORMED_SCORE: &str = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+
+    fn fixed_date() -> DateValue {
+        DateValue::parse("today", "2026-01-01").expect("valid date")
+    }
+
+    #[test]
+    fn check_returns_steps_and_waves_for_a_valid_score() {
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_score("foo", VALID_SCORE);
+
+        let outcome = check(&repo, "foo").expect("should check ok");
+        assert_eq!(outcome.steps, 1);
+        assert_eq!(outcome.waves, 1);
+    }
+
+    #[test]
+    fn check_returns_findings_for_a_malformed_score() {
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_score("foo", MALFORMED_SCORE);
+
+        let err = check(&repo, "foo").expect_err("should fail");
+        match err {
+            CheckError::Findings(findings) => assert!(!findings.is_empty()),
+            _ => panic!("expected CheckError::Findings"),
+        }
+    }
 }
