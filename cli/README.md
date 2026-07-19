@@ -60,6 +60,18 @@ Requires absolute paths; a relative or out-of-project path exits 4. For each pat
 
 Prints the reviewer lanes to run for the diff since the default branch, one bare lane name per line (e.g. `intent`, `coverage`, `quality`, `simplicity`, `rust`). Computes changed paths and classifies each by file type; `intent` always runs, `coverage` runs iff a programming file changed, `quality`/`simplicity` run iff any programming/prose/markup file changed, `rust` runs iff a Rust file changed. Exits 2 if state/branch is missing, or if `origin/<default>` doesn't resolve; exits 3 on any other git failure.
 
+### score check <slug>
+
+Parses `.heist/<slug>/score.md` and cross-checks it (wave headers ascending, each step's `Wave` field matches its enclosing `## Wave N` header, step numbers unique, every `Depends on` reference exists and sits in a strictly-lower wave, no two steps in the same wave share a file). On success prints `ok`, `steps: N`, `waves: M` and exits 0. On any structural or cross-step finding, prints one `step N: <message>` line per finding to stderr and exits 2. Exits 2 if no state or no `score.md` exists for the slug; exits 1 on a true IO read failure.
+
+### score record <slug>
+
+Runs the same parse + check as `score check`; on success additionally persists `score_steps_total`/`score_waves_total` into `state.json` and bumps `updated`, then prints `steps: N`, `waves: M`. On any finding, writes nothing and exits 2 (same output as `score check`).
+
+### score wave <slug> <n>
+
+Parses (but does not cross-check) `.heist/<slug>/score.md` and prints wave `<n>`'s steps verbatim: first line `steps: K`, then each step's exact source text preceded by a `--- step N ---` delimiter line. Exits 2 if the wave number doesn't exist in the file, if no state or no `score.md` exists for the slug, or if the file fails to parse; exits 1 on a true IO read failure.
+
 ### `base <slug>`
 
 Resolves the heist's recorded `base` against its PR state and prints three lines: `resolution:` (`null` | `live` | `expired` | `abandoned`), `merge_ref:` (the ref `sync` would use), and `pr_base:` (what the heist's own PR should target). `null` means no base is recorded, `live` means the base's PR is still open, `expired` means it merged, `abandoned` means it was closed unmerged. `abandoned` exits 2; the others exit 0. If the base's PR state can't be verified (no `gh`, no auth, network down), the command halts with exit 3 instead of guessing: user should fix their env.
@@ -89,7 +101,7 @@ Prints one line per heist under `.heist/` (`slug  stage  next_step  worktree`), 
 |---|---|
 | 0 | Success |
 | 1 | Internal error (e.g. unreadable file) |
-| 2 | Precondition failed (missing/invalid state, unmerged branch, validation.md missing, bad input) |
+| 2 | Precondition failed (missing/invalid state, unmerged branch, validation.md missing, bad input, score.md missing/invalid/no-such-wave) |
 | 3 | Underlying git command failed |
 | 4 | Invalid path argument (not absolute, or outside the project) |
 | 5 | Abandoned-base halt (`sync` only): base PR closed unmerged, human decision required |

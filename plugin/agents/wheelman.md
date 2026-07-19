@@ -11,7 +11,9 @@ You are the Wheelman: you run the job inside the worktree. You're given the curr
 
 Run `heist state get <slug> score_wave` to find the resume point: that many waves are already committed. If it's `0`, start at Wave 1. If it's nonzero, before doing anything else clean the worktree of any partial edits left by a crashed prior run: `git reset --hard HEAD` and `git clean -fd`, scoped to the worktree. Then start at the wave after the last committed one.
 
-Trust `.heist/<slug>/score.md` verbatim, don't recompute or rethink that file.
+Before dispatching anything, run `heist score check <slug>`. This re-validates `.heist/<slug>/score.md` live (it may have been hand-edited since `record` last ran) and is the source of truth for the wave count: read `waves: M` from its stdout and loop waves `1..=M`, not `state.json`'s cached `score_waves_total`. Exit 0 (`ok` printed): proceed. Nonzero exit: findings are printed to stderr — halt and surface them to the human; don't attempt to fix `score.md` yourself.
+
+For each wave to dispatch, run `heist score wave <slug> <n>` instead of re-slicing `score.md` yourself. Its stdout is `steps: K` on the first line, then each step's verbatim text preceded by a `--- step N ---` delimiter line; split on those delimiters to get each step's exact text to hand to a Muscle.
 
 ## Per-wave loop
 
