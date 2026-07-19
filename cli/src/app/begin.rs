@@ -26,9 +26,44 @@ impl CollisionArtifact {
 pub enum BeginError {
     InvalidSlug(FieldError),
     Collision(CollisionArtifact),
-    Mode(app::state::SetError),
-    Worktree(app::worktree::AddError),
-    Stage(app::state::SetError),
+    Mode {
+        error: app::state::SetError,
+        rollback_errors: Vec<String>,
+    },
+    Worktree {
+        error: app::worktree::AddError,
+        rollback_errors: Vec<String>,
+    },
+    Stage {
+        error: app::state::SetError,
+        rollback_errors: Vec<String>,
+    },
+}
+
+fn rollback(
+    repo_root: &Path,
+    state_repo: &dyn StateRepository,
+    git: &dyn GitRepository,
+    slug: &str,
+    branch: &str,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    if git.worktree_exists(repo_root, slug) {
+        let worktree_path = crate::domain::worktree::worktree_path(repo_root, slug);
+        if let Err(e) = git.remove_worktree(repo_root, &worktree_path) {
+            errors.push(format!("failed to remove worktree: {}", e));
+        }
+    }
+    if git.branch_exists(repo_root, branch) {
+        if let Err(e) = git.delete_branch(repo_root, branch) {
+            errors.push(format!("failed to delete branch: {}", e));
+        }
+    }
+    if let Err(e) = state_repo.remove(slug) {
+        errors.push(format!("failed to remove state directory: {}", e));
+    }
+    errors
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -63,10 +98,34 @@ pub fn begin(
         }
     }
 
-    app::state::set(state_repo, clock, slug, "mode", mode).map_err(BeginError::Mode)?;
-    let worktree_value = app::worktree::add(repo_root, state_repo, git, fs, clock, slug, base)
-        .map_err(BeginError::Worktree)?;
-    app::state::set(state_repo, clock, slug, "stage", "planning").map_err(BeginError::Stage)?;
+    if let Err(error) = app::state::set(state_repo, clock, slug, "mode", mode) {
+        let rollback_errors = rollback(repo_root, state_repo, git, slug, branch.as_ref());
+        return Err(BeginError::Mode {
+            error,
+            rollback_errors,
+        });
+    }
+
+    let worktree_value = match app::worktree::add(repo_root, state_repo, git, fs, clock, slug, base)
+    {
+        Ok(v) => v,
+        Err(error) => {
+            let rollback_errors = rollback(repo_root, state_repo, git, slug, branch.as_ref());
+            return Err(BeginError::Worktree {
+                error,
+                rollback_errors,
+            });
+        }
+    };
+
+    if let Err(error) = app::state::set(state_repo, clock, slug, "stage", "planning") {
+        let rollback_errors = rollback(repo_root, state_repo, git, slug, branch.as_ref());
+        return Err(BeginError::Stage {
+            error,
+            rollback_errors,
+        });
+    }
+
     Ok(worktree_value)
 }
 
@@ -187,5 +246,73 @@ mod tests {
             result,
             Err(BeginError::Collision(CollisionArtifact::Branch))
         ));
+    }
+
+    #[test]
+    fn begin_rolls_back_state_dir_when_mode_set_fails_before_worktree_creation() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new().with_default_branch("main");
+
+        let result = begin(
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            "foo",
+            "bogus-mode",
+            None,
+        );
+
+        assert!(matches!(result, Err(BeginError::Mode { .. })));
+        assert!(!repo.exists("foo"), "state dir should be rolled back");
+        assert!(
+            git.removed_worktree_paths().is_empty(),
+            "nothing was created yet, rollback must not attempt worktree removal"
+        );
+        assert!(git.deleted_branch_names().is_empty());
+    }
+
+    #[test]
+    fn begin_rolls_back_worktree_and_branch_when_a_later_step_fails() {
+        use crate::ports::worktree_fs::WorktreeFs;
+        use std::path::PathBuf;
+
+        struct FailingLinkFs;
+        impl WorktreeFs for FailingLinkFs {
+            fn ensure_worktrees_ignored(&self, _repo_root: &Path) -> std::io::Result<bool> {
+                Ok(false)
+            }
+            fn link_heist_dir(
+                &self,
+                _repo_root: &Path,
+                _worktree_path: &Path,
+                _slug: &str,
+            ) -> std::io::Result<()> {
+                Err(std::io::Error::other("link failed"))
+            }
+            fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
+                Ok(path.to_path_buf())
+            }
+        }
+
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new().with_default_branch("main");
+
+        let result = begin(
+            Path::new("."),
+            &repo,
+            &git,
+            &FailingLinkFs,
+            &fixed_clock(),
+            "foo",
+            "heavy",
+            None,
+        );
+
+        assert!(matches!(result, Err(BeginError::Worktree { .. })));
+        assert_eq!(git.removed_worktree_paths().len(), 1);
+        assert_eq!(git.deleted_branch_names(), vec!["heist/foo".to_string()]);
+        assert!(!repo.exists("foo"), "state dir should be rolled back");
     }
 }
