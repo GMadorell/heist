@@ -103,6 +103,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
             if let Some(colon_pos) = rest.find(": ") {
                 if let Ok(step_num) = rest[..colon_pos].parse::<u32>() {
                     let title = rest[colon_pos + 2..].to_string();
+                    let step_header_line = i;
                     i += 1;
 
                     // Scan forward to find step boundary (next Wave or Step header, or EOF)
@@ -362,7 +363,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                         files,
                         shape,
                         depends_on,
-                        raw: String::new(),
+                        raw: lines[step_header_line..step_end].join("\n"),
                     });
 
                     i = step_end;
@@ -835,5 +836,38 @@ end of example.
             }
             other => panic!("expected Change shape, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn parse_captures_raw_verbatim_step_slice() {
+        let text = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+
+### Step 2: add gadget
+- **Wave**: 1
+- **Files**: /tmp/b.rs
+- **Change**: add gadget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let score = parse(text).expect("should parse");
+        assert!(
+            score.steps[0].raw.starts_with("### Step 1: add widget"),
+            "raw should start at the step's own header line, got: {:?}",
+            score.steps[0].raw
+        );
+        assert!(
+            !score.steps[0].raw.contains("### Step 2"),
+            "raw must stop before the next step's header, got: {:?}",
+            score.steps[0].raw
+        );
+        assert!(score.steps[1].raw.starts_with("### Step 2: add gadget"));
     }
 }
