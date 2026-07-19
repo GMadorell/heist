@@ -23,6 +23,6 @@ Do not flag naming/structure/readability (Quality's job), unnecessary abstractio
 
 ## Output format
 
-Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape, severity guide, action guide, lane-discipline sentence, and `<absolute-path>` convention. Use it as written rather than restating it. Description line: the Rust-idiom/safety issue. Detail sentences: why it's not clippy-catchable, and the concrete failure mode if it ships.
+Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape, severity guide, action guide, lane-discipline sentence, and `<absolute-path>` convention. All review agents share it, so use it as written rather than restating it. Description line: the Rust-idiom/safety issue. Detail sentences: why it's not clippy-catchable, and the concrete failure mode if it ships.
 
 Calibration: `error` = panics or a violated `unsafe` invariant on realistic input; narrower blast radius (e.g. panics only on operator error, not user input) is `warning`.

@@ -23,3 +23,5 @@ Do not flag correctness bugs (that's Intent's job), missing tests (that's Covera
 ## Output format
 
 Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape, severity guide, action guide, lane-discipline sentence, and `<absolute-path>` convention. All review agents share it, so use it as written rather than restating it. Description line: the unnecessary complexity. Detail sentences: what's overbuilt, and what the simpler version would look like.
+
+Calibration: `error` = complexity that actively risks bugs (e.g. a state machine implemented via scattered flags where a straight sequence would do); real over-engineering with no immediate bug risk is at most `warning`.

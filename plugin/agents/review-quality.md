@@ -23,3 +23,5 @@ Do not flag correctness bugs (Intent's job), unnecessary complexity/over-abstrac
 ## Output format
 
 Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape, severity guide, action guide, lane-discipline sentence, and `<absolute-path>` convention. All review agents share it, so use it as written rather than restating it. Description line: the maintainability issue. Detail sentences: why this will cost a future reader/maintainer, concretely.
+
+Calibration: `error` = actively misleading (name lies about behavior, comment contradicts code), will cause a future bug; a real maintainability cost with no immediate risk of misuse is at most `warning`.

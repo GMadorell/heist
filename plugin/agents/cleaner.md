@@ -18,7 +18,7 @@ Run this pipeline in order. Stop and report at the first failing stage — no pa
    - `ask-user`: compile all of them. Communicate them to the user before continuing, as it's likely that there will be some decision done and changes done based on those decisions. We should stop here and see what human decisions are before continuing.
    - `no-op`: carry into final report as FYI.
    Risk label from surviving findings: `low`/`medium`/`high`/`critical` — any `error`-severity `ask-user` is at least `high`; more than one, or anything touching security/data-loss, is `critical`.
-3. **Mechanical**: build, lint, full test suite. All green or bounce back with a concrete failure report; report the failure, the orchestrator will re-enter `implementing`.
+3. **Mechanical**: build, lint, full test suite. All green or bounce back with a concrete failure report; the orchestrator will re-enter `implementing`.
 4. **Docs pass**: per `heist validation resolve <absolute-path>`'s Docs section (`<absolute-path>` = the worktree root; in a monorepo subdir, pass the specific file paths you touched).
 5. **Getaway**: run `heist base <slug>`, pass its `pr_base` to `gh pr create --base <pr_base>`; on exit 3 stop and report the environment problem to the human instead of opening the PR. Push and open the PR. PR body: summary, risk label, auto-fixes applied, remaining `ask-user`/`no-op` findings.
 
