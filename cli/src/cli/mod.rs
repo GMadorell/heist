@@ -48,7 +48,7 @@ enum Commands {
         #[command(subcommand)]
         command: ReviewCommands,
     },
-    /// Print a short summary (stage, next_step, worktree) for picking a heist back up
+    /// Print a short summary (stage, next, worktree) for picking a heist back up
     Resume {
         /// Heist slug (directory name under .heist/)
         slug: String,
@@ -65,6 +65,8 @@ enum Commands {
         /// Heist slug (directory name under .heist/)
         slug: String,
     },
+    /// Check required tools (git, gh, crit) are on PATH; exit 2 if any is missing
+    Doctor,
 }
 
 #[derive(Subcommand)]
@@ -153,6 +155,7 @@ pub fn run(cli: Cli) -> ExitCode {
     let fs = FilesystemWorktree;
     let clock = SystemClock;
     let validation_src = ValidationFs;
+    let tool_probe = crate::adapters::real_tool_probe::RealToolProbe;
     let repo_root = Path::new(".");
 
     match cli.command {
@@ -166,6 +169,7 @@ pub fn run(cli: Cli) -> ExitCode {
         Commands::List => run_list(&state_repo),
         Commands::Base { slug } => run_base(&slug, repo_root, &state_repo, &git),
         Commands::Sync { slug } => run_sync(&slug, &state_repo, &git),
+        Commands::Doctor => run_doctor(&tool_probe),
     }
 }
 
@@ -472,6 +476,16 @@ fn run_list(repo: &dyn StateRepository) -> ExitCode {
             present::state_load_failed(slug.as_ref(), &error);
             ExitCode::from(&error)
         }
+    }
+}
+
+fn run_doctor(probe: &dyn crate::ports::tool_probe::ToolProbe) -> ExitCode {
+    let results = app::doctor::run_doctor(probe);
+    present::doctor(&results);
+    if results.iter().all(|(_, ok)| *ok) {
+        ExitCode::Success
+    } else {
+        ExitCode::Precondition
     }
 }
 
