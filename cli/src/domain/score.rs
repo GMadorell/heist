@@ -109,6 +109,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                     let mut wave = 0u32;
                     let mut wave_seen = false;
                     let mut files = Vec::new();
+                    let mut files_seen = false;
                     let mut red = String::new();
                     let mut green = String::new();
                     let mut verify = String::new();
@@ -128,13 +129,25 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                                 &mut field_idx,
                             );
                         } else if field_line.starts_with("- **Files**: ") {
+                            files_seen = true;
                             let files_str = collect_field_value(
                                 field_line,
                                 "- **Files**: ",
                                 &lines,
                                 &mut field_idx,
                             );
-                            files = files_str.split(',').map(|s| s.trim().to_string()).collect();
+                            let trimmed_files: Vec<String> =
+                                files_str.split(',').map(|s| s.trim().to_string()).collect();
+                            if trimmed_files.iter().any(|f| f.is_empty()) {
+                                findings.push(Finding {
+                                    step: step_num,
+                                    message: "Files line contains a blank entry".to_string(),
+                                });
+                            }
+                            files = trimmed_files
+                                .into_iter()
+                                .filter(|f| !f.is_empty())
+                                .collect();
                         } else if field_line.starts_with("- **Red**: ") {
                             red = collect_field_value(
                                 field_line,
@@ -180,6 +193,13 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                         findings.push(Finding {
                             step: step_num,
                             message: "missing mandatory field 'Wave'".to_string(),
+                        });
+                    }
+
+                    if !files_seen {
+                        findings.push(Finding {
+                            step: step_num,
+                            message: "missing mandatory field 'Files'".to_string(),
                         });
                     }
 
@@ -448,6 +468,49 @@ mod tests {
                 && f.message.to_lowercase().contains("wave")
                 && f.message.to_lowercase().contains("missing")),
             "expected a missing-Wave-field finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn parse_flags_missing_files_field() {
+        let text = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let findings = parse(text).expect_err("should fail to parse");
+        assert!(
+            findings.iter().any(|f| f.step == 1
+                && f.message.to_lowercase().contains("files")
+                && f.message.to_lowercase().contains("missing")),
+            "expected a missing-Files-field finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn parse_flags_blank_entry_in_files_line() {
+        let text = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs, , /tmp/b.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let findings = parse(text).expect_err("should fail to parse");
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.step == 1 && f.message.to_lowercase().contains("blank")),
+            "expected a blank-Files-entry finding, got: {:?}",
             findings
         );
     }
