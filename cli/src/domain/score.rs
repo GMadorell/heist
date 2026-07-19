@@ -88,8 +88,11 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
             continue;
         }
 
-        // Check for Step header: "### Step " followed by digits, ": ", then title
-        if let Some(rest) = line.strip_prefix("### Step ") {
+        // Check for Step header: "### Step " or "## Step " followed by digits, ": ", then title
+        if let Some(rest) = line
+            .strip_prefix("### Step ")
+            .or_else(|| line.strip_prefix("## Step "))
+        {
             if let Some(colon_pos) = rest.find(": ") {
                 if let Ok(step_num) = rest[..colon_pos].parse::<u32>() {
                     let title = rest[colon_pos + 2..].to_string();
@@ -99,7 +102,10 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                     let mut step_end = i;
                     while step_end < lines.len() {
                         let next_line = lines[step_end];
-                        if next_line.starts_with("## Wave ") || next_line.starts_with("### Step ") {
+                        if next_line.starts_with("## Wave ")
+                            || next_line.starts_with("### Step ")
+                            || next_line.starts_with("## Step ")
+                        {
                             break;
                         }
                         step_end += 1;
@@ -677,5 +683,23 @@ mod tests {
             "expected a malformed-Depends-on finding, got: {:?}",
             findings
         );
+    }
+
+    #[test]
+    fn parse_accepts_flat_step_header_level() {
+        let text = "\
+## Wave 1
+
+## Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let score = parse(text).expect("should parse");
+        assert_eq!(score.steps.len(), 1);
+        assert_eq!(score.steps[0].number, 1);
+        assert_eq!(score.steps[0].title, "add widget");
     }
 }
