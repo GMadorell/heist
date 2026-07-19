@@ -608,8 +608,18 @@ pub fn check(score: &Score) -> Vec<Finding> {
     findings
 }
 
-pub fn wave_blocks(_score: &Score, _wave: u32) -> Result<Vec<(u32, String)>, NoSuchWave> {
-    todo!("implemented incrementally by later steps")
+pub fn wave_blocks(score: &Score, wave: u32) -> Result<Vec<(u32, String)>, NoSuchWave> {
+    let blocks: Vec<(u32, String)> = score
+        .steps
+        .iter()
+        .filter(|s| s.enclosing_wave == wave)
+        .map(|s| (s.number, s.raw.clone()))
+        .collect();
+    if blocks.is_empty() {
+        Err(NoSuchWave(wave))
+    } else {
+        Ok(blocks)
+    }
 }
 
 #[cfg(test)]
@@ -1110,5 +1120,23 @@ end of example.
             "a file shared across different waves must not be flagged, got: {:?}",
             findings
         );
+    }
+
+    #[test]
+    fn wave_blocks_returns_numbered_raw_slices_for_the_requested_wave() {
+        let mut first = valid_change_step(1, 1, 1, "/tmp/a.rs");
+        let mut second = valid_change_step(2, 1, 1, "/tmp/b.rs");
+        let third = valid_change_step(3, 2, 2, "/tmp/c.rs");
+        first.raw = "AAA".to_string();
+        second.raw = "BBB".to_string();
+        let score = Score {
+            steps: vec![first, second, third],
+        };
+
+        let blocks = wave_blocks(&score, 1).expect("wave 1 should exist");
+        assert_eq!(blocks, vec![(1, "AAA".to_string()), (2, "BBB".to_string())]);
+
+        let err = wave_blocks(&score, 3).expect_err("wave 3 should not exist");
+        assert_eq!(err, NoSuchWave(3));
     }
 }
