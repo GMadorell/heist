@@ -218,8 +218,6 @@ pub fn abandoned_base_sync_refused(base_ref: &str) {
     );
 }
 
-// TODO: remove this allow once wave 6 (step 17) wires these into `heist begin`'s CLI handler.
-#[allow(dead_code)]
 pub fn slug_collision(slug: &str, artifact: &str) {
     eprintln!(
         "cannot begin {}: {} already exists. Pick a different slug, or clean up manually: git worktree remove --force .worktrees/{}, git branch -D heist/{}, rm -rf .heist/{}",
@@ -227,7 +225,6 @@ pub fn slug_collision(slug: &str, artifact: &str) {
     );
 }
 
-#[allow(dead_code)]
 pub fn rollback_diagnostics(errors: &[String]) {
     if errors.is_empty() {
         return;

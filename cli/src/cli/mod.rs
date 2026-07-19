@@ -65,6 +65,17 @@ enum Commands {
         /// Heist slug (directory name under .heist/)
         slug: String,
     },
+    /// Atomically init state, set mode, create the worktree, and advance to planning; rolls back on failure
+    Begin {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+        /// Pipeline mode: heavy, medium, or light
+        #[arg(long)]
+        mode: String,
+        /// Git ref to use as start point instead of origin/<default>
+        #[arg(long)]
+        base: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -166,6 +177,16 @@ pub fn run(cli: Cli) -> ExitCode {
         Commands::List => run_list(&state_repo),
         Commands::Base { slug } => run_base(&slug, repo_root, &state_repo, &git),
         Commands::Sync { slug } => run_sync(&slug, &state_repo, &git),
+        Commands::Begin { slug, mode, base } => run_begin(
+            &slug,
+            &mode,
+            base.as_deref(),
+            repo_root,
+            &state_repo,
+            &git,
+            &fs,
+            &clock,
+        ),
     }
 }
 
@@ -601,6 +622,112 @@ fn run_sync(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn run_begin(
+    slug: &str,
+    mode: &str,
+    base: Option<&str>,
+    repo_root: &Path,
+    state_repo: &dyn StateRepository,
+    git: &dyn crate::ports::git::GitRepository,
+    fs: &dyn crate::ports::worktree_fs::WorktreeFs,
+    clock: &dyn crate::ports::clock::Clock,
+) -> ExitCode {
+    match app::begin::begin(repo_root, state_repo, git, fs, clock, slug, mode, base) {
+        Ok(worktree_value) => {
+            present::line(worktree_value);
+            ExitCode::Success
+        }
+        Err(app::begin::BeginError::InvalidSlug(e)) => {
+            present::error(e);
+            ExitCode::Precondition
+        }
+        Err(app::begin::BeginError::Collision(artifact)) => {
+            present::slug_collision(slug, &artifact.describe(slug));
+            ExitCode::Precondition
+        }
+        Err(app::begin::BeginError::Mode {
+            error,
+            rollback_errors,
+        }) => {
+            present::rollback_diagnostics(&rollback_errors);
+            match error {
+                app::state::SetError::Field(e) => {
+                    present::error(e);
+                    ExitCode::Precondition
+                }
+                app::state::SetError::Load(e) => {
+                    present::state_load_failed(slug, &e);
+                    ExitCode::from(&e)
+                }
+                app::state::SetError::Save(e) => {
+                    present::state_save_failed(slug, &e);
+                    ExitCode::from(&e)
+                }
+            }
+        }
+        Err(app::begin::BeginError::Worktree {
+            error,
+            rollback_errors,
+        }) => {
+            present::rollback_diagnostics(&rollback_errors);
+            match error {
+                app::worktree::AddError::NoState => {
+                    present::no_state_for_add(slug);
+                    ExitCode::Precondition
+                }
+                app::worktree::AddError::Naming(e) => {
+                    present::error(e);
+                    ExitCode::Precondition
+                }
+                app::worktree::AddError::Fs(e) => {
+                    present::error(e);
+                    ExitCode::Internal
+                }
+                app::worktree::AddError::Git(e) => {
+                    present::error(&e);
+                    ExitCode::from(&e)
+                }
+                app::worktree::AddError::Load(e) => {
+                    present::state_load_failed(slug, &e);
+                    ExitCode::from(&e)
+                }
+                app::worktree::AddError::Save(e) => {
+                    present::state_save_failed(slug, &e);
+                    ExitCode::from(&e)
+                }
+                app::worktree::AddError::BaseImmutable {
+                    existing,
+                    requested,
+                } => {
+                    present::base_immutable(slug, existing.as_deref(), &requested);
+                    ExitCode::Precondition
+                }
+            }
+        }
+        Err(app::begin::BeginError::Stage {
+            error,
+            rollback_errors,
+        }) => {
+            present::rollback_diagnostics(&rollback_errors);
+            match error {
+                app::state::SetError::Field(e) => {
+                    present::error(e);
+                    ExitCode::Precondition
+                }
+                app::state::SetError::Load(e) => {
+                    present::state_load_failed(slug, &e);
+                    ExitCode::from(&e)
+                }
+                app::state::SetError::Save(e) => {
+                    present::state_save_failed(slug, &e);
+                    ExitCode::from(&e)
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -955,5 +1082,48 @@ mod tests {
         let code = run_sync("foo", &repo, &git);
 
         assert_eq!(code, ExitCode::AbandonedBase);
+    }
+
+    #[test]
+    fn begin_happy_path_returns_success_and_advances_to_planning() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new().with_default_branch("main");
+
+        let code = run_begin(
+            "foo",
+            "heavy",
+            None,
+            temp_dir.path(),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Success);
+        let state = repo.get("foo").expect("state should exist");
+        assert_eq!(state.stage, Stage::Planning);
+    }
+
+    #[test]
+    fn begin_collision_returns_precondition_exit_code() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
+        let git = FakeGit::new().with_default_branch("main");
+
+        let code = run_begin(
+            "foo",
+            "heavy",
+            None,
+            temp_dir.path(),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Precondition);
     }
 }
