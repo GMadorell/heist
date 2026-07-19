@@ -518,6 +518,15 @@ pub fn check(score: &Score) -> Vec<Finding> {
         .map(|step| (step.number, step.wave))
         .collect();
 
+    let mut steps_by_wave: std::collections::HashMap<u32, Vec<usize>> =
+        std::collections::HashMap::new();
+    for (idx, step) in score.steps.iter().enumerate() {
+        steps_by_wave
+            .entry(step.enclosing_wave)
+            .or_default()
+            .push(idx);
+    }
+
     for step in &score.steps {
         if let Some(previous) = last_wave {
             if step.enclosing_wave < previous {
@@ -568,6 +577,32 @@ pub fn check(score: &Score) -> Vec<Finding> {
         }
 
         last_wave = Some(step.enclosing_wave);
+    }
+
+    for (wave, indices) in steps_by_wave.iter() {
+        let mut sorted_indices = indices.clone();
+        sorted_indices.sort_by_key(|&idx| score.steps[idx].number);
+
+        for i in 0..sorted_indices.len() {
+            for j in (i + 1)..sorted_indices.len() {
+                let idx_a = sorted_indices[i];
+                let idx_b = sorted_indices[j];
+                let step_a = &score.steps[idx_a];
+                let step_b = &score.steps[idx_b];
+
+                for file_a in &step_a.files {
+                    if step_b.files.contains(file_a) {
+                        findings.push(Finding {
+                            step: step_b.number,
+                            message: format!(
+                                "shares file {} with step {} in wave {}",
+                                file_a, step_a.number, wave
+                            ),
+                        });
+                    }
+                }
+            }
+        }
     }
 
     findings
@@ -1035,6 +1070,44 @@ end of example.
                 && f.message.contains('1')
                 && f.message.to_lowercase().contains("lower")),
             "expected a not-strictly-lower-wave dependency finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn check_flags_shared_file_within_same_wave() {
+        let mut first = valid_change_step(1, 1, 1, "/tmp/shared.rs");
+        let mut second = valid_change_step(2, 1, 1, "/tmp/shared.rs");
+        first.files = vec!["/tmp/shared.rs".to_string()];
+        second.files = vec!["/tmp/shared.rs".to_string()];
+        let score = Score {
+            steps: vec![first, second],
+        };
+        let findings = check(&score);
+        assert!(
+            findings.iter().any(|f| f.step == 2
+                && f.message.contains("/tmp/shared.rs")
+                && f.message.contains('1')),
+            "expected a file-disjointness finding naming the shared path and the other step, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn check_allows_shared_file_across_different_waves() {
+        let mut first = valid_change_step(1, 1, 1, "/tmp/shared.rs");
+        let mut second = valid_change_step(2, 2, 2, "/tmp/shared.rs");
+        first.files = vec!["/tmp/shared.rs".to_string()];
+        second.files = vec!["/tmp/shared.rs".to_string()];
+        let score = Score {
+            steps: vec![first, second],
+        };
+        let findings = check(&score);
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.message.contains("/tmp/shared.rs")),
+            "a file shared across different waves must not be flagged, got: {:?}",
             findings
         );
     }
