@@ -512,6 +512,12 @@ pub fn check(score: &Score) -> Vec<Finding> {
         *step_counts.entry(step.number).or_insert(0) += 1;
     }
 
+    let wave_map: std::collections::HashMap<u32, u32> = score
+        .steps
+        .iter()
+        .map(|step| (step.number, step.wave))
+        .collect();
+
     for step in &score.steps {
         if let Some(previous) = last_wave {
             if step.enclosing_wave < previous {
@@ -540,6 +546,23 @@ pub fn check(score: &Score) -> Vec<Finding> {
                 findings.push(Finding {
                     step: step.number,
                     message: "duplicate step number appears more than once".to_string(),
+                });
+            }
+        }
+
+        for dep in &step.depends_on {
+            if !wave_map.contains_key(dep) {
+                findings.push(Finding {
+                    step: step.number,
+                    message: format!("depends on step {}, which does not exist", dep),
+                });
+            } else if wave_map[dep] >= step.wave {
+                findings.push(Finding {
+                    step: step.number,
+                    message: format!(
+                        "depends on step {}, which is not in a strictly-lower wave",
+                        dep
+                    ),
                 });
             }
         }
@@ -978,6 +1001,40 @@ end of example.
                 .iter()
                 .any(|f| f.step == 3 && f.message.to_lowercase().contains("duplicate")),
             "expected a duplicate-step-number finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn check_flags_dependency_on_nonexistent_step() {
+        let mut step = valid_change_step(1, 1, 1, "/tmp/a.rs");
+        step.depends_on = vec![99];
+        let score = Score { steps: vec![step] };
+        let findings = check(&score);
+        assert!(
+            findings.iter().any(|f| f.step == 1
+                && f.message.contains("99")
+                && f.message.to_lowercase().contains("not exist")),
+            "expected a nonexistent-dependency finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn check_flags_dependency_not_in_strictly_lower_wave() {
+        let mut first = valid_change_step(1, 2, 2, "/tmp/a.rs");
+        let mut second = valid_change_step(2, 2, 2, "/tmp/b.rs");
+        second.depends_on = vec![1];
+        first.depends_on = Vec::new();
+        let score = Score {
+            steps: vec![first, second],
+        };
+        let findings = check(&score);
+        assert!(
+            findings.iter().any(|f| f.step == 2
+                && f.message.contains('1')
+                && f.message.to_lowercase().contains("lower")),
+            "expected a not-strictly-lower-wave dependency finding, got: {:?}",
             findings
         );
     }
