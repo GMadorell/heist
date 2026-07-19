@@ -79,6 +79,7 @@ impl From<LoadError> for RecordError {
     }
 }
 
+#[derive(Debug)]
 pub enum WaveError {
     NoState,
     NoScore,
@@ -113,11 +114,17 @@ pub fn record(
 }
 
 pub fn wave(
-    _repo: &dyn StateRepository,
-    _slug: &str,
-    _n: u32,
+    repo: &dyn StateRepository,
+    slug: &str,
+    n: u32,
 ) -> Result<Vec<(u32, String)>, WaveError> {
-    todo!("implemented in a later step")
+    if !repo.exists(slug) {
+        return Err(WaveError::NoState);
+    }
+    let text = repo.load_score(slug).map_err(WaveError::Io)?;
+    let text = text.ok_or(WaveError::NoScore)?;
+    let parsed = score::parse(&text).map_err(WaveError::Findings)?;
+    score::wave_blocks(&parsed, n).map_err(|score::NoSuchWave(n)| WaveError::NoSuchWave(n))
 }
 
 #[cfg(test)]
@@ -195,5 +202,43 @@ mod tests {
         assert_eq!(saved.score_steps_total.to_string(), "1");
         assert_eq!(saved.score_waves_total.to_string(), "1");
         assert_eq!(saved.updated, today);
+    }
+
+    const TWO_WAVE_SCORE: &str = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+
+## Wave 2
+
+### Step 2: wire widget
+- **Wave**: 2
+- **Files**: /tmp/b.rs
+- **Change**: wire widget.
+- **Verify**: cargo build
+- Depends on: step 1
+";
+
+    #[test]
+    fn wave_returns_numbered_blocks_and_no_such_wave_error() {
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_score("foo", TWO_WAVE_SCORE);
+
+        let blocks = wave(&repo, "foo", 1).expect("wave 1 should exist");
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].0, 1);
+        assert!(blocks[0].1.starts_with("### Step 1: add widget"));
+
+        let err = wave(&repo, "foo", 3).expect_err("wave 3 should not exist");
+        match err {
+            WaveError::NoSuchWave(3) => {}
+            _ => panic!("expected WaveError::NoSuchWave(3)"),
+        }
     }
 }
