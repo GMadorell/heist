@@ -1,5 +1,6 @@
 use crate::app;
-use crate::domain::value::NonBlankValue;
+use crate::domain::error::FieldError;
+use crate::domain::value::{NonBlankValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::GitRepository;
 use crate::ports::state_repository::StateRepository;
@@ -7,7 +8,7 @@ use crate::ports::worktree_fs::WorktreeFs;
 use std::path::Path;
 
 pub enum BeginError {
-    Init(app::state::InitError),
+    InvalidSlug(FieldError),
     Mode(app::state::SetError),
     Worktree(app::worktree::AddError),
     Stage(app::state::SetError),
@@ -24,7 +25,16 @@ pub fn begin(
     mode: &str,
     base: Option<&str>,
 ) -> Result<NonBlankValue, BeginError> {
-    app::state::init(state_repo, clock, slug).map_err(BeginError::Init)?;
+    SlugValue::parse(slug).map_err(BeginError::InvalidSlug)?;
+
+    match app::state::init(state_repo, clock, slug) {
+        Ok(()) => {}
+        Err(app::state::InitError::InvalidSlug(e)) => return Err(BeginError::InvalidSlug(e)),
+        Err(app::state::InitError::Init(e)) => {
+            return Err(BeginError::Mode(app::state::SetError::Load(e)))
+        }
+    }
+
     app::state::set(state_repo, clock, slug, "mode", mode).map_err(BeginError::Mode)?;
     let worktree_value = app::worktree::add(repo_root, state_repo, git, fs, clock, slug, base)
         .map_err(BeginError::Worktree)?;
@@ -65,5 +75,25 @@ mod tests {
         assert_eq!(state.stage, crate::domain::state::Stage::Planning);
         assert!(state.worktree.is_some());
         assert!(state.branch.is_some());
+    }
+
+    #[test]
+    fn begin_rejects_malformed_slug_before_any_mutation() {
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new().with_default_branch("main");
+
+        let result = begin(
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            "Not A Slug",
+            "heavy",
+            None,
+        );
+
+        assert!(matches!(result, Err(BeginError::InvalidSlug(_))));
+        assert!(!repo.exists("Not A Slug"));
     }
 }
