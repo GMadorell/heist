@@ -41,7 +41,8 @@ If `heist begin` exits 2 with its collision message, auto-derive a variant by ap
 
 ### Note on base branches and `heat.md`
 
-When `heat.md` (written during step 2a's split path) generates per-piece `/heist:heist` prompts, a stacked piece includes `--base heist/<earlier-piece-slug>` verbatim, never a bare branch name like `main`; the first/unstacked piece has no `--base`. Each piece also carries `--slug <its-own-piece-slug>` so its branch name is fixed rather than left to the Slugger, and the next piece's `--base heist/<earlier-piece-slug>` is guaranteed to name a branch that actually exists. Both together avoid staleness and mismatched branch names when a human runs the pieces hours or days after `heat.md` was generated.
+When `heat.md` (written during step 2a's split path) generates per-piece `/heist:heist` prompts, a stacked piece includes `--base heist/<earlier-piece-slug>` verbatim, never a bare branch name like `main`; the first/unstacked piece has no `--base`. Each piece also carries `--slug <its-own-piece-slug>` so its branch name is fixed rather than left to inline proposal, and the next piece's `--base heist/<earlier-piece-slug>` is guaranteed to name a branch that actually exists. Both together avoid staleness and mismatched branch names when a human runs the pieces hours or days after `heat.md` was generated.
+
 ### Plan detection
 
 After stripping the mode, `--base <branch>`, and `--slug <slug>` tokens (any that are present), check other parts of the input for file paths.
