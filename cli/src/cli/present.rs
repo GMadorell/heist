@@ -252,12 +252,10 @@ pub fn score_save_failed(slug: &str, e: impl Display) {
     eprintln!("failed to save state for slug {}: {}", slug, e);
 }
 
-#[allow(dead_code)]
 pub fn score_no_such_wave(slug: &str, n: u32) {
     eprintln!("no wave {} found in score.md for slug {}", n, slug);
 }
 
-#[allow(dead_code)]
 pub fn score_wave_blocks(blocks: &[(u32, String)]) {
     println!("steps: {}", blocks.len());
     for (number, raw) in blocks {

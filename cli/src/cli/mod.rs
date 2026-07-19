@@ -682,7 +682,32 @@ fn run_score(
                 ExitCode::from(&e)
             }
         },
-        ScoreCommands::Wave { slug: _, n: _ } => todo!("wired in a later step"),
+        ScoreCommands::Wave { slug, n } => match app::score::wave(state_repo, &slug, n) {
+            Ok(blocks) => {
+                present::score_wave_blocks(&blocks);
+                ExitCode::Success
+            }
+            Err(app::score::WaveError::NoState) => {
+                present::no_state_for_score(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::WaveError::NoScore) => {
+                present::no_score_for_slug(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::WaveError::Io(e)) => {
+                present::score_io_failed(&slug, &e);
+                ExitCode::Internal
+            }
+            Err(app::score::WaveError::Findings(findings)) => {
+                present::score_findings(&findings);
+                ExitCode::Precondition
+            }
+            Err(app::score::WaveError::NoSuchWave(n)) => {
+                present::score_no_such_wave(&slug, n);
+                ExitCode::Precondition
+            }
+        },
     }
 }
 
@@ -1092,5 +1117,42 @@ mod tests {
         let saved = repo.get("foo").expect("state should exist");
         assert_eq!(saved.score_steps_total.to_string(), "1");
         assert_eq!(saved.score_waves_total.to_string(), "1");
+    }
+
+    #[test]
+    fn score_wave_prints_blocks_and_reports_no_such_wave() {
+        let valid_score = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_score("foo", valid_score);
+
+        let ok_code = run_score(
+            ScoreCommands::Wave {
+                slug: "foo".into(),
+                n: 1,
+            },
+            &repo,
+            &fixed_clock(),
+        );
+        assert_eq!(ok_code, ExitCode::Success);
+
+        let missing_wave_code = run_score(
+            ScoreCommands::Wave {
+                slug: "foo".into(),
+                n: 2,
+            },
+            &repo,
+            &fixed_clock(),
+        );
+        assert_eq!(missing_wave_code, ExitCode::Precondition);
     }
 }
