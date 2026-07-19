@@ -237,6 +237,40 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                             green: String::new(),
                             verify: String::new(),
                         }
+                    } else if (!red.is_empty() || !green.is_empty()) && change.is_empty() {
+                        // RedGreen-leaning: detect missing mandatory fields
+                        if red.is_empty() {
+                            findings.push(Finding {
+                                step: step_num,
+                                message: "missing mandatory field 'Red' for Red-Green shape"
+                                    .to_string(),
+                            });
+                        }
+                        if green.is_empty() {
+                            findings.push(Finding {
+                                step: step_num,
+                                message: "missing mandatory field 'Green' for Red-Green shape"
+                                    .to_string(),
+                            });
+                        }
+                        if verify.is_empty() {
+                            findings.push(Finding {
+                                step: step_num,
+                                message: "missing mandatory field 'Verify' for Red-Green shape"
+                                    .to_string(),
+                            });
+                        }
+                        Shape::RedGreen { red, green, verify }
+                    } else if !change.is_empty() && red.is_empty() && green.is_empty() {
+                        // Change-leaning: detect missing mandatory fields
+                        if verify.is_empty() {
+                            findings.push(Finding {
+                                step: step_num,
+                                message: "missing mandatory field 'Verify' for Change shape"
+                                    .to_string(),
+                            });
+                        }
+                        Shape::Change { change, verify }
                     } else {
                         findings.push(Finding {
                             step: step_num,
@@ -511,6 +545,49 @@ mod tests {
                 .iter()
                 .any(|f| f.step == 1 && f.message.to_lowercase().contains("blank")),
             "expected a blank-Files-entry finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn parse_flags_missing_green_for_red_green_shape() {
+        let text = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Red**: write test for widget.
+- **Verify**: cargo test -- --exact widget_test
+- Depends on: none
+";
+        let findings = parse(text).expect_err("should fail to parse");
+        assert!(
+            findings.iter().any(|f| f.step == 1
+                && f.message.contains("Green")
+                && f.message.to_lowercase().contains("red-green")),
+            "expected a missing-Green-field finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn parse_flags_missing_verify_for_change_shape() {
+        let text = "\
+## Wave 1
+
+### Step 1: wire config
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: wire the config loader.
+- Depends on: none
+";
+        let findings = parse(text).expect_err("should fail to parse");
+        assert!(
+            findings.iter().any(|f| f.step == 1
+                && f.message.contains("Verify")
+                && f.message.to_lowercase().contains("change")),
+            "expected a missing-Verify-field finding, got: {:?}",
             findings
         );
     }
