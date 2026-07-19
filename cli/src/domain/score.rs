@@ -520,6 +520,16 @@ pub fn check(score: &Score) -> Vec<Finding> {
             }
         }
 
+        if step.wave != step.enclosing_wave {
+            findings.push(Finding {
+                step: step.number,
+                message: format!(
+                    "Wave field ({}) does not match its enclosing '## Wave {}' header",
+                    step.wave, step.enclosing_wave
+                ),
+            });
+        }
+
         last_wave = Some(step.enclosing_wave);
     }
 
@@ -920,6 +930,22 @@ end of example.
                 && f.message.to_lowercase().contains("wave")
                 && f.message.to_lowercase().contains("ascending")),
             "expected a non-ascending-wave-header finding anchored to step 2, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn check_flags_wave_field_mismatch_with_enclosing_header() {
+        let score = Score {
+            steps: vec![valid_change_step(1, 1, 2, "/tmp/a.rs")],
+        };
+        let findings = check(&score);
+        assert!(
+            findings.iter().any(|f| f.step == 1
+                && f.message.contains('1')
+                && f.message.contains('2')
+                && f.message.to_lowercase().contains("wave")),
+            "expected a Wave-field-mismatch finding for step 1 (wave=1, enclosing_wave=2), got: {:?}",
             findings
         );
     }
