@@ -81,7 +81,7 @@ fn single_active_heist_is_listed() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "my-slug  forging  forging  /abs/path/to/worktree  heavy\n"
+        "my-slug  forging  pipeline-standard.md step 5  /abs/path/to/worktree  heavy\n"
     );
 }
 
@@ -101,7 +101,7 @@ fn multiple_active_heists_are_listed_sorted_by_slug() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "alpha  casing  casing  none  heavy\nzeta  planning  planning  none  heavy\n"
+        "alpha  casing  pipeline.md step 1  none  heavy\nzeta  planning  pipeline.md step 2  none  heavy\n"
     );
 }
 

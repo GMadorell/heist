@@ -64,9 +64,9 @@ pub fn validation_check_failed(e: impl Display) {
 
 pub fn list_summary(rows: &[ListRow]) {
     for row in rows {
-        let next_step = row
-            .next_step
-            .map(|stage| stage.as_str().to_string())
+        let next = row
+            .next
+            .map(|r| r.to_string())
             .unwrap_or_else(|| "none".to_string());
         let worktree = row.worktree.as_ref().map(AsRef::as_ref).unwrap_or("none");
 
@@ -74,7 +74,7 @@ pub fn list_summary(rows: &[ListRow]) {
             "{}  {}  {}  {}  {}",
             row.slug,
             row.stage.as_str(),
-            next_step,
+            next,
             worktree,
             row.mode.as_str()
         );
@@ -82,10 +82,9 @@ pub fn list_summary(rows: &[ListRow]) {
 }
 
 pub fn resume_summary(state: &State) {
-    let next_step = match state.stage.next_step() {
-        Some(stage) => stage.as_str().to_string(),
-        None => "none".to_string(),
-    };
+    let next = crate::domain::state::route(state.stage, state.mode)
+        .map(|r| r.to_string())
+        .unwrap_or_else(|| "none".to_string());
     let worktree = state
         .worktree
         .as_ref()
@@ -95,7 +94,7 @@ pub fn resume_summary(state: &State) {
     println!("slug: {}", state.slug);
     println!("stage: {}", state.stage.as_str());
     println!("mode: {}", state.mode.as_str());
-    println!("next_step: {}", next_step);
+    println!("next: {}", next);
     println!("worktree: {}", worktree);
 }
 

@@ -6,7 +6,7 @@ use crate::ports::state_repository::StateRepository;
 pub struct ListRow {
     pub slug: SlugValue,
     pub stage: Stage,
-    pub next_step: Option<Stage>,
+    pub next: Option<crate::domain::state::Routing>,
     pub worktree: Option<NonBlankValue>,
     pub mode: Mode,
 }
@@ -16,7 +16,7 @@ impl From<&State> for ListRow {
         ListRow {
             slug: state.slug.clone(),
             stage: state.stage,
-            next_step: state.stage.next_step(),
+            next: crate::domain::state::route(state.stage, state.mode),
             worktree: state.worktree.clone(),
             mode: state.mode,
         }
