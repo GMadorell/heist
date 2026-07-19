@@ -22,7 +22,7 @@ fn prints_field_list_and_example() {
     // so the schema output is fully deterministic.
     let expected = r#"schema_version: u32
 slug: string
-stage: string (casing|planning|fence_review|human_review|forging|safehouse|implementing|cleaning|done)
+stage: string (casing|planning|fence_review|human_review|forging|implementing|cleaning|done)
 mode: string (heavy|medium|light)
 worktree: string|null
 branch: string|null

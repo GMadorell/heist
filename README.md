@@ -45,7 +45,7 @@ flowchart TD
     L --> M[Done: PR open, report delivered]
 ```
 
-Diagram shows `heavy`. `medium` skips Fence. `light` skips Fence, Forger, Wheelman/Muscle, and Cleaner: you implement the blueprint directly and do a manual crit review of the diff instead. See [Modes](#modes).
+Diagram shows `heavy`. `medium` skips Fence. See [Modes](#modes).
 
 Worktree teardown is deliberately manual, not part of the pipeline above. Once a heist's PR merges, reclaim its worktree with `heist worktree remove <slug>`, or reclaim all merged worktrees at once with `heist worktree cleanup [--dry-run]`. Cleaner stops at PR-open.
 
@@ -64,13 +64,13 @@ Every heist runs in one of three modes, chosen up front (or you're asked if none
 | Heist term | Real concept |
 |---|---|
 | Slugger | Names the job: picks the short slug it's tracked under |
-| Mastermind | Plans the job: make sure the blueprint is established, either interviewing you or using the information you give him |
+| Mastermind | Plans the job: make sure the blueprint is established, either interviewing you or using the information you give it |
 | Fence | Fences the plan before you fence the goods: reads the blueprint and tries to poke holes in it |
 | Forger | Forges the paperwork: turns the approved blueprint into the score, step by step |
 | Wheelman | Drives the job: runs the crew through the worktree from start to finish |
 | Muscle | Does the lifting: one step, no improvising, no thinking beyond what the score says |
 | Cleaner | Cleans up after: checks the work, scrubs for risk, drives the getaway car (the PR) |
-| Review crew | Cleaner's lookouts, git diff is checked, reviewers are choosen based on that |
+| Review crew | Cleaner's lookouts: reviewers chosen from what the git diff touches |
 | Casing | Casing the joint before the job: one-time repo scouting, writes `validation.md` |
 | Blueprint | The plan for the job: `blueprint.md`, the design doc |
 | Score | The job's step-by-step rundown: `score.md`, the ordered TDD work doc |
@@ -80,14 +80,14 @@ Every heist runs in one of three modes, chosen up front (or you're asked if none
 
 ```bash
 # install the heist binary
-cargo install --path `path_to_this_project`/cli 
+cargo install --path <path-to-this-repo>/cli 
 
 # add this repo as a local marketplace, then install the plugin
-claude plugin marketplace add `path_to_this_project`
+claude plugin marketplace add <path-to-this-repo>
 claude plugin install heist@heist-marketplace
 
 # or, for dev iteration without installing:
-claude --plugin-dir `path_to_this_project`
+claude --plugin-dir <path-to-this-repo>
 ```
 
 Then, inside any project:
@@ -126,7 +126,7 @@ A heist can carry a `base` branch, set via `heist worktree add --base <branch> <
 | Fence | Sonnet | Adversarial review is bounded and structured; doesn't need Opus-level reasoning |
 | Forger | Sonnet | Mechanical transformation of an already-approved design |
 | Wheelman | Sonnet | Needs to dispatch, verify honestly, and make judgment calls on fallback steps |
- Muscle | Haiku | Zero thinking by design, the plan is already fully specified in `score.md` |
+| Muscle | Haiku | Zero thinking by design, the plan is already fully specified in `score.md` |
 | Cleaner | Sonnet | Adversarial review + validation pipeline, bounded scope |
 | review-intent | Sonnet | Checks the diff against expected business rules and edge cases |
 | review-simplicity | Sonnet | Flags over-abstraction and unnecessary complexity |
