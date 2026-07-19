@@ -507,6 +507,11 @@ pub fn check(score: &Score) -> Vec<Finding> {
     let mut findings = Vec::new();
     let mut last_wave: Option<u32> = None;
 
+    let mut step_counts: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
+    for step in &score.steps {
+        *step_counts.entry(step.number).or_insert(0) += 1;
+    }
+
     for step in &score.steps {
         if let Some(previous) = last_wave {
             if step.enclosing_wave < previous {
@@ -528,6 +533,15 @@ pub fn check(score: &Score) -> Vec<Finding> {
                     step.wave, step.enclosing_wave
                 ),
             });
+        }
+
+        if let Some(&count) = step_counts.get(&step.number) {
+            if count > 1 {
+                findings.push(Finding {
+                    step: step.number,
+                    message: "duplicate step number appears more than once".to_string(),
+                });
+            }
         }
 
         last_wave = Some(step.enclosing_wave);
@@ -946,6 +960,24 @@ end of example.
                 && f.message.contains('2')
                 && f.message.to_lowercase().contains("wave")),
             "expected a Wave-field-mismatch finding for step 1 (wave=1, enclosing_wave=2), got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn check_flags_duplicate_step_numbers() {
+        let score = Score {
+            steps: vec![
+                valid_change_step(3, 1, 1, "/tmp/a.rs"),
+                valid_change_step(3, 1, 1, "/tmp/b.rs"),
+            ],
+        };
+        let findings = check(&score);
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.step == 3 && f.message.to_lowercase().contains("duplicate")),
+            "expected a duplicate-step-number finding, got: {:?}",
             findings
         );
     }
