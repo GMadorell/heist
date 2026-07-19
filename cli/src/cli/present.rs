@@ -217,8 +217,12 @@ pub fn abandoned_base_sync_refused(base_ref: &str) {
     );
 }
 
-pub fn doctor(results: &[(&str, bool)]) {
-    for (tool, available) in results {
-        println!("{}: {}", tool, if *available { "ok" } else { "missing" });
+pub fn doctor(results: &[crate::app::doctor::ToolStatus]) {
+    for status in results {
+        println!(
+            "{}: {}",
+            status.tool,
+            if status.available { "ok" } else { "missing" }
+        );
     }
 }

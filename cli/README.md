@@ -77,11 +77,15 @@ Prints one `synced: ...` line naming what it did. Operates on the worktree recor
 
 ### `resume <slug>`
 
-Prints a short summary (`slug`, `stage`, `next_step`, `worktree`) for picking a heist back up.
+Prints a short summary (`slug`, `stage`, `mode`, `next`, `worktree`) for picking a heist back up. `next` is the doc file and step to resume from, resolved from `stage`/`mode` (`none` at `done`).
 
 ### `list`
 
-Prints one line per heist under `.heist/` (`slug  stage  next_step  worktree`), sorted by slug, including `done` heists. Empty or missing `.heist/` prints nothing and exits 0.
+Prints one line per heist under `.heist/` (`slug  stage  next  worktree  mode`), sorted by slug, including `done` heists. Empty or missing `.heist/` prints nothing and exits 0.
+
+### `doctor`
+
+Checks whether `git`, `gh`, and `crit` are on `PATH` and prints one `<tool>: ok` or `<tool>: missing` line per tool. Exits 0 if all are present, 2 if any is missing.
 
 ## Exit codes
 

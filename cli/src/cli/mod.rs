@@ -480,9 +480,9 @@ fn run_list(repo: &dyn StateRepository) -> ExitCode {
 }
 
 fn run_doctor(probe: &dyn crate::ports::tool_probe::ToolProbe) -> ExitCode {
-    let results = app::doctor::run_doctor(probe);
+    let results = app::doctor::doctor(probe);
     present::doctor(&results);
-    if results.iter().all(|(_, ok)| *ok) {
+    if results.iter().all(|status| status.available) {
         ExitCode::Success
     } else {
         ExitCode::Precondition

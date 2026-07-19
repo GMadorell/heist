@@ -190,35 +190,6 @@ impl std::fmt::Display for Routing {
 
 pub fn route(stage: Stage, mode: Mode) -> Option<Routing> {
     match stage {
-        Stage::Done => None,
-        Stage::Implementing => match mode {
-            Mode::Light => Some(Routing {
-                file: "pipeline-light.md",
-                step: 2,
-            }),
-            Mode::Medium => Some(Routing {
-                file: "pipeline-standard.md",
-                step: 6,
-            }),
-            Mode::Heavy => Some(Routing {
-                file: "pipeline-standard.md",
-                step: 6,
-            }),
-        },
-        Stage::Cleaning => match mode {
-            Mode::Light => Some(Routing {
-                file: "pipeline-light.md",
-                step: 3,
-            }),
-            Mode::Heavy => Some(Routing {
-                file: "pipeline-standard.md",
-                step: 7,
-            }),
-            Mode::Medium => Some(Routing {
-                file: "pipeline-standard.md",
-                step: 7,
-            }),
-        },
         Stage::Casing => Some(Routing {
             file: "pipeline.md",
             step: 1,
@@ -239,6 +210,27 @@ pub fn route(stage: Stage, mode: Mode) -> Option<Routing> {
             file: "pipeline-standard.md",
             step: 5,
         }),
+        Stage::Implementing => match mode {
+            Mode::Light => Some(Routing {
+                file: "pipeline-light.md",
+                step: 2,
+            }),
+            Mode::Medium | Mode::Heavy => Some(Routing {
+                file: "pipeline-standard.md",
+                step: 6,
+            }),
+        },
+        Stage::Cleaning => match mode {
+            Mode::Light => Some(Routing {
+                file: "pipeline-light.md",
+                step: 3,
+            }),
+            Mode::Medium | Mode::Heavy => Some(Routing {
+                file: "pipeline-standard.md",
+                step: 7,
+            }),
+        },
+        Stage::Done => None,
     }
 }
 
@@ -364,6 +356,13 @@ mod tests {
             })
         );
         assert_eq!(
+            route(Stage::Implementing, Mode::Heavy),
+            Some(Routing {
+                file: "pipeline-standard.md",
+                step: 6
+            })
+        );
+        assert_eq!(
             route(Stage::Implementing, Mode::Light),
             Some(Routing {
                 file: "pipeline-light.md",
@@ -372,6 +371,13 @@ mod tests {
         );
         assert_eq!(
             route(Stage::Cleaning, Mode::Heavy),
+            Some(Routing {
+                file: "pipeline-standard.md",
+                step: 7
+            })
+        );
+        assert_eq!(
+            route(Stage::Cleaning, Mode::Medium),
             Some(Routing {
                 file: "pipeline-standard.md",
                 step: 7
