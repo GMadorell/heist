@@ -65,6 +65,11 @@ enum Commands {
         /// Heist slug (directory name under .heist/)
         slug: String,
     },
+    /// Parse/check/dispatch a heist's score.md (the Forger's work order)
+    Score {
+        #[command(subcommand)]
+        command: ScoreCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -147,6 +152,27 @@ enum ReviewCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum ScoreCommands {
+    /// Parse + cross-check score.md; prints ok/steps:/waves: on success, findings to stderr and exit 2 otherwise
+    Check {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
+    /// Like Check, then persists score_steps_total/score_waves_total into state.json and bumps updated
+    Record {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
+    /// Print one wave's steps verbatim: steps: K header then --- step N --- delimited raw blocks
+    Wave {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+        /// Wave number to print
+        n: u32,
+    },
+}
+
 pub fn run(cli: Cli) -> ExitCode {
     let state_repo = FileStateRepository;
     let git = RealGit;
@@ -166,6 +192,7 @@ pub fn run(cli: Cli) -> ExitCode {
         Commands::List => run_list(&state_repo),
         Commands::Base { slug } => run_base(&slug, repo_root, &state_repo, &git),
         Commands::Sync { slug } => run_sync(&slug, &state_repo, &git),
+        Commands::Score { command } => run_score(command, &state_repo, &clock),
     }
 }
 
@@ -601,6 +628,39 @@ fn run_sync(
     }
 }
 
+fn run_score(
+    command: ScoreCommands,
+    state_repo: &dyn StateRepository,
+    _clock: &dyn crate::ports::clock::Clock,
+) -> ExitCode {
+    match command {
+        ScoreCommands::Check { slug } => match app::score::check(state_repo, &slug) {
+            Ok(outcome) => {
+                present::score_check_ok(outcome.steps, outcome.waves);
+                ExitCode::Success
+            }
+            Err(app::score::CheckError::NoState) => {
+                present::no_state_for_score(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::CheckError::NoScore) => {
+                present::no_score_for_slug(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::CheckError::Io(e)) => {
+                present::score_io_failed(&slug, &e);
+                ExitCode::Internal
+            }
+            Err(app::score::CheckError::Findings(findings)) => {
+                present::score_findings(&findings);
+                ExitCode::Precondition
+            }
+        },
+        ScoreCommands::Record { slug: _ } => todo!("wired in a later step"),
+        ScoreCommands::Wave { slug: _, n: _ } => todo!("wired in a later step"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -955,5 +1015,29 @@ mod tests {
         let code = run_sync("foo", &repo, &git);
 
         assert_eq!(code, ExitCode::AbandonedBase);
+    }
+
+    #[test]
+    fn score_check_reports_findings_as_precondition_exit_code() {
+        let malformed_score = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_score("foo", malformed_score);
+
+        let code = run_score(
+            ScoreCommands::Check { slug: "foo".into() },
+            &repo,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Precondition);
     }
 }
