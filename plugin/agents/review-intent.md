@@ -17,18 +17,8 @@ Check for:
 - **Missed edge cases**: empty collections, zero/negative values, concurrent access, partial failure, boundary conditions the diff doesn't handle.
 - **Design issues**: the diff technically satisfies the blueprint but does it in a way that will misbehave under real usage (wrong abstraction boundary, silent failure instead of surfacing an error, etc).
 
-Do not flag style, formatting, naming, or anything a linter would catch. Do not flag missing tests — that's a different reviewer's job. Stay in your lane.
+Do not flag style, formatting, naming, or anything a linter would catch. Do not flag missing tests — that's a different reviewer's job.
 
 ## Output format
 
-Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape and sign-off line — all review agents share it, so use it as written rather than restating it. Description line: the defect. Detail sentences: concrete failure scenario — what input/state triggers it, what breaks.
-
-Severity guide:
-- `error`: will produce wrong behavior or a crash in a realistic scenario.
-- `warning`: incorrect under a plausible but less common scenario, or a real design smell.
-- `info`: worth knowing, not clearly wrong.
-
-Action guide:
-- `no-op`: informational only, no code change needed (used with `info`, sometimes `warning`).
-- `auto-fix`: the fix is unambiguous enough that a subsequent pass can apply it without more input.
-- `ask-user`: the fix requires a judgment call (behavior tradeoff, ambiguous intent, risk of scope creep) — a human decides, not the pipeline. Asking the user is very expensive, as it involves stopping the agent flow, only do so if the decision is really hard. If you can take the decision yourself, use `auto-fix.`
+Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape, severity guide, action guide, lane-discipline sentence, and `<absolute-path>` convention. All review agents share it, so use it as written rather than restating it. Description line: the defect. Detail sentences: concrete failure scenario, what input/state triggers it, what breaks.

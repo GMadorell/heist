@@ -18,20 +18,11 @@ Check for issues clippy does not reliably catch:
 - **Ownership/`Clone`-spam**: unnecessary `.clone()`/`Rc`/`Arc` used to dodge the borrow checker where a lifetime or reference would do, especially in hot paths.
 - **Blocking-in-async**: blocking I/O or CPU-bound work on an async executor thread without `spawn_blocking` or equivalent.
 - **Lock-poisoning `unwrap`**: `.lock().unwrap()` / `.read().unwrap()` / `.write().unwrap()` where a poisoned lock would cascade-panic instead of being handled.
-- **File structure**: we want files to be ordered from higher level to lower level of abstraction, most important code at the top.
 
 Do not flag naming/structure/readability (Quality's job), unnecessary abstraction (Simplicity's job), missing tests (Coverage's job), or business-logic correctness unrelated to Rust idiom (Intent's job).
 
 ## Output format
 
-Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape and sign-off line — use it as written rather than restating it. Description line: the Rust-idiom/safety issue. Detail sentences: why it's not clippy-catchable, and the concrete failure mode if it ships.
+Read `review-output-format.md` (in this plugin's directory, under `templates/`) for the exact finding shape, severity guide, action guide, lane-discipline sentence, and `<absolute-path>` convention. All review agents share it, so use it as written rather than restating it. Description line: the Rust-idiom/safety issue. Detail sentences: why it's not clippy-catchable, and the concrete failure mode if it ships.
 
-Severity guide:
-- `error`: can panic or misbehave in production on realistic input, or an `unsafe` invariant is actually violated.
-- `warning`: real correctness/robustness risk, narrower blast radius (e.g. panics only on operator error, not user input).
-- `info`: idiom nit with no correctness impact (e.g. avoidable clone that isn't in a hot path).
-
-Action guide:
-- `no-op`: informational only.
-- `auto-fix`: mechanical fix with no design judgment (swap `unwrap` for a propagated `Result`, add a safety comment that's obviously correct).
-- `ask-user`: the fix changes a public signature, error type, or concurrency model — a human decides the tradeoff.
+Calibration: `error` = panics or a violated `unsafe` invariant on realistic input; narrower blast radius (e.g. panics only on operator error, not user input) is `warning`.
