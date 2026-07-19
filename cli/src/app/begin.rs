@@ -1,5 +1,5 @@
 use crate::app;
-use crate::domain::error::FieldError;
+use crate::domain::error::{FieldError, StateError};
 use crate::domain::value::{NonBlankValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::GitRepository;
@@ -26,16 +26,13 @@ impl CollisionArtifact {
 pub enum BeginError {
     InvalidSlug(FieldError),
     Collision(CollisionArtifact),
-    Mode {
+    Init(StateError),
+    State {
         error: app::state::SetError,
         rollback_errors: Vec<String>,
     },
     Worktree {
         error: app::worktree::AddError,
-        rollback_errors: Vec<String>,
-    },
-    Stage {
-        error: app::state::SetError,
         rollback_errors: Vec<String>,
     },
 }
@@ -93,14 +90,21 @@ pub fn begin(
     match app::state::init(state_repo, clock, slug) {
         Ok(()) => {}
         Err(app::state::InitError::InvalidSlug(e)) => return Err(BeginError::InvalidSlug(e)),
-        Err(app::state::InitError::Init(_)) => {
+        Err(app::state::InitError::Init(StateError::AlreadyExists)) => {
+            // Only a lost pre-check/init race maps to the dedicated collision
+            // signal; every other StateError (e.g. an I/O failure creating
+            // `.heist/<slug>/`) is a genuine init failure, not a collision,
+            // and must not drive the orchestrator's slug-autovary loop.
             return Err(BeginError::Collision(CollisionArtifact::State));
+        }
+        Err(app::state::InitError::Init(e)) => {
+            return Err(BeginError::Init(e));
         }
     }
 
     if let Err(error) = app::state::set(state_repo, clock, slug, "mode", mode) {
         let rollback_errors = rollback(repo_root, state_repo, git, slug, branch.as_ref());
-        return Err(BeginError::Mode {
+        return Err(BeginError::State {
             error,
             rollback_errors,
         });
@@ -120,7 +124,7 @@ pub fn begin(
 
     if let Err(error) = app::state::set(state_repo, clock, slug, "stage", "planning") {
         let rollback_errors = rollback(repo_root, state_repo, git, slug, branch.as_ref());
-        return Err(BeginError::Stage {
+        return Err(BeginError::State {
             error,
             rollback_errors,
         });
@@ -264,13 +268,93 @@ mod tests {
             None,
         );
 
-        assert!(matches!(result, Err(BeginError::Mode { .. })));
+        assert!(matches!(result, Err(BeginError::State { .. })));
         assert!(!repo.exists("foo"), "state dir should be rolled back");
         assert!(
             git.removed_worktree_paths().is_empty(),
             "nothing was created yet, rollback must not attempt worktree removal"
         );
         assert!(git.deleted_branch_names().is_empty());
+    }
+
+    #[test]
+    fn begin_rolls_back_state_dir_when_stage_set_fails_after_worktree_creation() {
+        struct FailAfterModeStateRepository {
+            inner: InMemoryStateRepository,
+            set_calls: std::cell::Cell<u32>,
+        }
+
+        impl StateRepository for FailAfterModeStateRepository {
+            fn exists(&self, slug: &str) -> bool {
+                self.inner.exists(slug)
+            }
+            fn init(
+                &self,
+                slug: &str,
+                state: &crate::domain::state::State,
+            ) -> Result<(), crate::domain::error::StateError> {
+                self.inner.init(slug, state)
+            }
+            fn load(
+                &self,
+                slug: &str,
+            ) -> Result<crate::domain::state::State, crate::domain::error::StateError> {
+                self.inner.load(slug)
+            }
+            fn save(
+                &self,
+                slug: &str,
+                state: &crate::domain::state::State,
+            ) -> Result<(), crate::domain::error::StateError> {
+                let call = self.set_calls.get();
+                self.set_calls.set(call + 1);
+                // Saves happen in order: 0 = the "mode" set, 1 = worktree
+                // add's own state save, 2 = the trailing "stage" set. Only
+                // fail the third so the S -- fails --> RB edge of the
+                // flowchart is actually exercised (not the earlier steps).
+                if call == 2 {
+                    return Err(crate::domain::error::StateError::Unreadable(
+                        std::io::Error::other("simulated stage-save failure"),
+                    ));
+                }
+                self.inner.save(slug, state)
+            }
+            fn remove(&self, slug: &str) -> Result<(), crate::domain::error::StateError> {
+                self.inner.remove(slug)
+            }
+            fn list_slugs(
+                &self,
+            ) -> Result<Vec<crate::domain::value::SlugValue>, crate::domain::error::StateError>
+            {
+                self.inner.list_slugs()
+            }
+        }
+
+        let repo = FailAfterModeStateRepository {
+            inner: InMemoryStateRepository::new(),
+            set_calls: std::cell::Cell::new(0),
+        };
+        let git = FakeGit::new().with_default_branch("main");
+
+        let result = begin(
+            Path::new("."),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+            "foo",
+            "heavy",
+            None,
+        );
+
+        assert!(matches!(result, Err(BeginError::State { .. })));
+        assert!(!repo.inner.exists("foo"), "state dir should be rolled back");
+        assert_eq!(
+            git.removed_worktree_paths().len(),
+            1,
+            "worktree created before the stage-set failure must be rolled back"
+        );
+        assert_eq!(git.deleted_branch_names(), vec!["heist/foo".to_string()]);
     }
 
     #[test]

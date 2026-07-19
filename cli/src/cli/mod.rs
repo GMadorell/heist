@@ -190,6 +190,63 @@ pub fn run(cli: Cli) -> ExitCode {
     }
 }
 
+/// Shared `SetError` -> presented message / exit code mapping, used by both
+/// the standalone `state set` command and `begin`'s mode/stage-set steps.
+fn set_error_exit(slug: &str, error: app::state::SetError) -> ExitCode {
+    match error {
+        app::state::SetError::Field(e) => {
+            present::error(e);
+            ExitCode::Precondition
+        }
+        app::state::SetError::Load(e) => {
+            present::state_load_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+        app::state::SetError::Save(e) => {
+            present::state_save_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+    }
+}
+
+/// Shared `AddError` -> presented message / exit code mapping, used by both
+/// the standalone `worktree add` command and `begin`'s worktree-add step.
+fn add_error_exit(slug: &str, error: app::worktree::AddError) -> ExitCode {
+    match error {
+        app::worktree::AddError::NoState => {
+            present::no_state_for_add(slug);
+            ExitCode::Precondition
+        }
+        app::worktree::AddError::Naming(e) => {
+            present::error(e);
+            ExitCode::Precondition
+        }
+        app::worktree::AddError::Fs(e) => {
+            present::error(e);
+            ExitCode::Internal
+        }
+        app::worktree::AddError::Git(e) => {
+            present::error(&e);
+            ExitCode::from(&e)
+        }
+        app::worktree::AddError::Load(e) => {
+            present::state_load_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+        app::worktree::AddError::Save(e) => {
+            present::state_save_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+        app::worktree::AddError::BaseImmutable {
+            existing,
+            requested,
+        } => {
+            present::base_immutable(slug, existing.as_deref(), &requested);
+            ExitCode::Precondition
+        }
+    }
+}
+
 fn run_state(
     command: StateCommands,
     repo: &dyn StateRepository,
@@ -224,18 +281,7 @@ fn run_state(
         StateCommands::Set { slug, field, value } => {
             match app::state::set(repo, clock, &slug, &field, &value) {
                 Ok(()) => ExitCode::Success,
-                Err(app::state::SetError::Field(e)) => {
-                    present::error(e);
-                    ExitCode::Precondition
-                }
-                Err(app::state::SetError::Load(e)) => {
-                    present::state_load_failed(&slug, &e);
-                    ExitCode::from(&e)
-                }
-                Err(app::state::SetError::Save(e)) => {
-                    present::state_save_failed(&slug, &e);
-                    ExitCode::from(&e)
-                }
+                Err(e) => set_error_exit(&slug, e),
             }
         }
         StateCommands::Incr { slug, field } => match app::state::incr(repo, clock, &slug, &field) {
@@ -294,37 +340,7 @@ fn run_worktree(
                     present::line(worktree_value);
                     ExitCode::Success
                 }
-                Err(app::worktree::AddError::NoState) => {
-                    present::no_state_for_add(&slug);
-                    ExitCode::Precondition
-                }
-                Err(app::worktree::AddError::Naming(e)) => {
-                    present::error(e);
-                    ExitCode::Precondition
-                }
-                Err(app::worktree::AddError::Fs(e)) => {
-                    present::error(e);
-                    ExitCode::Internal
-                }
-                Err(app::worktree::AddError::Git(e)) => {
-                    present::error(&e);
-                    ExitCode::from(&e)
-                }
-                Err(app::worktree::AddError::Load(e)) => {
-                    present::state_load_failed(&slug, &e);
-                    ExitCode::from(&e)
-                }
-                Err(app::worktree::AddError::Save(e)) => {
-                    present::state_save_failed(&slug, &e);
-                    ExitCode::from(&e)
-                }
-                Err(app::worktree::AddError::BaseImmutable {
-                    existing,
-                    requested,
-                }) => {
-                    present::base_immutable(&slug, existing.as_deref(), &requested);
-                    ExitCode::Precondition
-                }
+                Err(e) => add_error_exit(&slug, e),
             }
         }
         WorktreeCommands::Remove { slug } => {
@@ -646,84 +662,23 @@ fn run_begin(
             present::slug_collision(slug, &artifact.describe(slug));
             ExitCode::Precondition
         }
-        Err(app::begin::BeginError::Mode {
+        Err(app::begin::BeginError::Init(e)) => {
+            present::state_init_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+        Err(app::begin::BeginError::State {
             error,
             rollback_errors,
         }) => {
             present::rollback_diagnostics(&rollback_errors);
-            match error {
-                app::state::SetError::Field(e) => {
-                    present::error(e);
-                    ExitCode::Precondition
-                }
-                app::state::SetError::Load(e) => {
-                    present::state_load_failed(slug, &e);
-                    ExitCode::from(&e)
-                }
-                app::state::SetError::Save(e) => {
-                    present::state_save_failed(slug, &e);
-                    ExitCode::from(&e)
-                }
-            }
+            set_error_exit(slug, error)
         }
         Err(app::begin::BeginError::Worktree {
             error,
             rollback_errors,
         }) => {
             present::rollback_diagnostics(&rollback_errors);
-            match error {
-                app::worktree::AddError::NoState => {
-                    present::no_state_for_add(slug);
-                    ExitCode::Precondition
-                }
-                app::worktree::AddError::Naming(e) => {
-                    present::error(e);
-                    ExitCode::Precondition
-                }
-                app::worktree::AddError::Fs(e) => {
-                    present::error(e);
-                    ExitCode::Internal
-                }
-                app::worktree::AddError::Git(e) => {
-                    present::error(&e);
-                    ExitCode::from(&e)
-                }
-                app::worktree::AddError::Load(e) => {
-                    present::state_load_failed(slug, &e);
-                    ExitCode::from(&e)
-                }
-                app::worktree::AddError::Save(e) => {
-                    present::state_save_failed(slug, &e);
-                    ExitCode::from(&e)
-                }
-                app::worktree::AddError::BaseImmutable {
-                    existing,
-                    requested,
-                } => {
-                    present::base_immutable(slug, existing.as_deref(), &requested);
-                    ExitCode::Precondition
-                }
-            }
-        }
-        Err(app::begin::BeginError::Stage {
-            error,
-            rollback_errors,
-        }) => {
-            present::rollback_diagnostics(&rollback_errors);
-            match error {
-                app::state::SetError::Field(e) => {
-                    present::error(e);
-                    ExitCode::Precondition
-                }
-                app::state::SetError::Load(e) => {
-                    present::state_load_failed(slug, &e);
-                    ExitCode::from(&e)
-                }
-                app::state::SetError::Save(e) => {
-                    present::state_save_failed(slug, &e);
-                    ExitCode::from(&e)
-                }
-            }
+            add_error_exit(slug, error)
         }
     }
 }

@@ -219,9 +219,10 @@ pub fn abandoned_base_sync_refused(base_ref: &str) {
 }
 
 pub fn slug_collision(slug: &str, artifact: &str) {
+    eprintln!("cannot begin {}: {} already exists.", slug, artifact);
     eprintln!(
-        "cannot begin {}: {} already exists. Pick a different slug, or clean up manually: git worktree remove --force .worktrees/{}, git branch -D heist/{}, rm -rf .heist/{}",
-        slug, artifact, slug, slug, slug
+        "note: pick a different slug, or clean up manually: git worktree remove --force .worktrees/{}, git branch -D heist/{}, rm -rf .heist/{}",
+        slug, slug, slug
     );
 }
 

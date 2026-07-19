@@ -59,7 +59,10 @@ impl StateRepository for FileStateRepository {
     }
 
     fn remove(&self, slug: &str) -> Result<(), StateError> {
-        let dir = Path::new(".heist").join(slug);
+        let dir = state_file_path(slug)
+            .parent()
+            .expect("state path has a parent")
+            .to_path_buf();
         if !dir.exists() {
             return Ok(());
         }

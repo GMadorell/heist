@@ -156,6 +156,12 @@ fn rejects_pre_existing_worktree_without_state_instead_of_adopting_it() {
 
     assert_eq!(output.status.code(), Some(2));
     assert!(!main_repo.join(".heist/my-slug").exists());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(".worktrees/my-slug"),
+        "stderr should name the stray worktree, got: {}",
+        stderr
+    );
 }
 
 #[test]
@@ -175,6 +181,12 @@ fn rejects_pre_existing_branch_without_state() {
         .expect("failed to run heist begin");
 
     assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("heist/my-slug"),
+        "stderr should name the stray branch, got: {}",
+        stderr
+    );
 }
 
 #[test]

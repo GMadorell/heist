@@ -119,6 +119,10 @@ impl GitRepository for RealGit {
     }
 
     fn branch_exists(&self, repo_root: &Path, branch: &str) -> bool {
+        // `.output()` (not `.status()`) so a fatal git diagnostic (e.g. "not
+        // a git repository") lands in a captured buffer instead of leaking
+        // onto heist's own stderr, matching every other subprocess call in
+        // this file.
         std::process::Command::new("git")
             .current_dir(repo_root)
             .args([
@@ -127,8 +131,8 @@ impl GitRepository for RealGit {
                 "--quiet",
                 &format!("refs/heads/{}", branch),
             ])
-            .status()
-            .map(|status| status.success())
+            .output()
+            .map(|output| output.status.success())
             .unwrap_or(false)
     }
 
