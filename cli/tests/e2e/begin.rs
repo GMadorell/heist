@@ -176,3 +176,47 @@ fn rejects_pre_existing_branch_without_state() {
 
     assert_eq!(output.status.code(), Some(2));
 }
+
+#[test]
+fn rolls_back_state_dir_on_worktree_add_failure_and_allows_clean_retry() {
+    let (main_temp, _bare_temp) = setup_repo();
+    let main_repo = main_temp.path();
+
+    let mut cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let output = cmd
+        .current_dir(main_repo)
+        .arg("begin")
+        .arg("my-slug")
+        .arg("--mode")
+        .arg("heavy")
+        .arg("--base")
+        .arg("does-not-exist")
+        .output()
+        .expect("failed to run heist begin");
+
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "bad --base ref should surface as a git error"
+    );
+    assert!(
+        !main_repo.join(".heist/my-slug").exists(),
+        "failed begin should roll back the state directory it created"
+    );
+
+    let mut retry_cmd = Command::cargo_bin("heist").expect("failed to get cargo bin");
+    let retry_output = retry_cmd
+        .current_dir(main_repo)
+        .arg("begin")
+        .arg("my-slug")
+        .arg("--mode")
+        .arg("heavy")
+        .output()
+        .expect("failed to run heist begin retry");
+
+    assert!(
+        retry_output.status.success(),
+        "retry with the same slug should succeed cleanly after rollback, stderr: {}",
+        String::from_utf8_lossy(&retry_output.stderr)
+    );
+}
