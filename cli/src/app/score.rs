@@ -59,6 +59,7 @@ impl From<LoadError> for CheckError {
     }
 }
 
+#[derive(Debug)]
 pub enum RecordError {
     NoState,
     NoScore,
@@ -95,11 +96,20 @@ pub fn check(repo: &dyn StateRepository, slug: &str) -> Result<CheckOutcome, Che
 }
 
 pub fn record(
-    _repo: &dyn StateRepository,
-    _clock: &dyn crate::ports::clock::Clock,
-    _slug: &str,
+    repo: &dyn StateRepository,
+    clock: &dyn crate::ports::clock::Clock,
+    slug: &str,
 ) -> Result<RecordOutcome, RecordError> {
-    todo!("implemented in a later step")
+    let (parsed, waves) = load_and_check(repo, slug)?;
+    let mut state = repo.load(slug).map_err(RecordError::Save)?;
+    state.score_steps_total = crate::domain::value::ScoreStepsTotal::new(parsed.steps.len() as u32);
+    state.score_waves_total = crate::domain::value::ScoreWavesTotal::new(waves as u32);
+    state.updated = clock.today();
+    repo.save(slug, &state).map_err(RecordError::Save)?;
+    Ok(RecordOutcome {
+        steps: parsed.steps.len(),
+        waves,
+    })
 }
 
 pub fn wave(
@@ -164,5 +174,26 @@ mod tests {
             CheckError::Findings(findings) => assert!(!findings.is_empty()),
             _ => panic!("expected CheckError::Findings"),
         }
+    }
+
+    #[test]
+    fn record_persists_totals_and_bumps_updated() {
+        use crate::adapters::testing::FixedClock;
+
+        let created = fixed_date();
+        let today = DateValue::parse("today", "2026-01-02").expect("valid date");
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", created).expect("valid slug"))
+            .with_score("foo", VALID_SCORE);
+        let clock = FixedClock(today.clone());
+
+        let outcome = record(&repo, &clock, "foo").expect("should record ok");
+        assert_eq!(outcome.steps, 1);
+        assert_eq!(outcome.waves, 1);
+
+        let saved = repo.get("foo").expect("state should exist");
+        assert_eq!(saved.score_steps_total.to_string(), "1");
+        assert_eq!(saved.score_waves_total.to_string(), "1");
+        assert_eq!(saved.updated, today);
     }
 }
