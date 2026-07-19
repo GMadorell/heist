@@ -57,10 +57,22 @@ impl StateRepository for FileStateRepository {
         slugs.sort_by(|a, b| a.as_ref().cmp(b.as_ref()));
         Ok(slugs)
     }
+
+    fn load_score(&self, slug: &str) -> Result<Option<String>, std::io::Error> {
+        let path = score_file_path(slug);
+        if !path.exists() {
+            return Ok(None);
+        }
+        std::fs::read_to_string(path).map(Some)
+    }
 }
 
 fn state_file_path(slug: &str) -> PathBuf {
     Path::new(".heist").join(slug).join("state.json")
+}
+
+fn score_file_path(slug: &str) -> PathBuf {
+    Path::new(".heist").join(slug).join("score.md")
 }
 
 fn load_state_file(path: &Path) -> Result<State, StateError> {
