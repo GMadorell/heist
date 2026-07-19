@@ -62,10 +62,11 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
 
     while i < lines.len() {
         let line = lines[i];
+        let trimmed = line.trim();
 
-        // Track fence state (placeholder for now)
-        if line.starts_with("```") || line.starts_with("~~~") {
-            let fence_marker = if line.starts_with("```") {
+        // Track fence state using trimmed line for fence detection
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            let fence_marker = if trimmed.starts_with("```") {
                 "```"
             } else {
                 "~~~"
@@ -75,6 +76,12 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
             } else if in_fence.is_none() {
                 in_fence = Some(fence_marker);
             }
+            i += 1;
+            continue;
+        }
+
+        // Skip Wave/Step evaluation if inside a fence
+        if in_fence.is_some() {
             i += 1;
             continue;
         }
@@ -100,11 +107,32 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
 
                     // Scan forward to find step boundary (next Wave or Step header, or EOF)
                     let mut step_end = i;
+                    let mut scan_fence: Option<&'static str> = None;
                     while step_end < lines.len() {
                         let next_line = lines[step_end];
-                        if next_line.starts_with("## Wave ")
-                            || next_line.starts_with("### Step ")
-                            || next_line.starts_with("## Step ")
+                        let next_trimmed = next_line.trim();
+
+                        // Track fence state during step boundary scan
+                        if next_trimmed.starts_with("```") || next_trimmed.starts_with("~~~") {
+                            let fence_marker = if next_trimmed.starts_with("```") {
+                                "```"
+                            } else {
+                                "~~~"
+                            };
+                            if scan_fence == Some(fence_marker) {
+                                scan_fence = None;
+                            } else if scan_fence.is_none() {
+                                scan_fence = Some(fence_marker);
+                            }
+                            step_end += 1;
+                            continue;
+                        }
+
+                        // Only check for headers if not inside a fence
+                        if scan_fence.is_none()
+                            && (next_line.starts_with("## Wave ")
+                                || next_line.starts_with("### Step ")
+                                || next_line.starts_with("## Step "))
                         {
                             break;
                         }
@@ -123,8 +151,32 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                     let mut depends_on = Vec::new();
 
                     let mut field_idx = i;
+                    let mut field_fence: Option<&'static str> = None;
                     while field_idx < step_end {
                         let field_line = lines[field_idx];
+                        let field_trimmed = field_line.trim();
+
+                        // Track fence state in field collection
+                        if field_trimmed.starts_with("```") || field_trimmed.starts_with("~~~") {
+                            let fence_marker = if field_trimmed.starts_with("```") {
+                                "```"
+                            } else {
+                                "~~~"
+                            };
+                            if field_fence == Some(fence_marker) {
+                                field_fence = None;
+                            } else if field_fence.is_none() {
+                                field_fence = Some(fence_marker);
+                            }
+                            field_idx += 1;
+                            continue;
+                        }
+
+                        // Skip field marker detection if inside a fence
+                        if field_fence.is_some() {
+                            field_idx += 1;
+                            continue;
+                        }
 
                         if field_line.starts_with("- **Wave**: ") {
                             wave_seen = true;
@@ -141,6 +193,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                                 "- **Files**: ",
                                 &lines,
                                 &mut field_idx,
+                                step_end,
                             );
                             let trimmed_files: Vec<String> =
                                 files_str.split(',').map(|s| s.trim().to_string()).collect();
@@ -160,6 +213,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                                 "- **Red**: ",
                                 &lines,
                                 &mut field_idx,
+                                step_end,
                             );
                         } else if field_line.starts_with("- **Green**: ") {
                             green = collect_field_value(
@@ -167,6 +221,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                                 "- **Green**: ",
                                 &lines,
                                 &mut field_idx,
+                                step_end,
                             );
                         } else if field_line.starts_with("- **Verify**: ") {
                             verify = collect_field_value(
@@ -174,6 +229,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                                 "- **Verify**: ",
                                 &lines,
                                 &mut field_idx,
+                                step_end,
                             );
                         } else if field_line.starts_with("- **Change**: ") {
                             change = collect_field_value(
@@ -181,6 +237,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                                 "- **Change**: ",
                                 &lines,
                                 &mut field_idx,
+                                step_end,
                             );
                         } else if field_line.starts_with("- Depends on: ") {
                             let depends_str = collect_field_value(
@@ -188,6 +245,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                                 "- Depends on: ",
                                 &lines,
                                 &mut field_idx,
+                                step_end,
                             );
                             depends_on = parse_depends_on(&depends_str, step_num, &mut findings);
                         } else {
@@ -330,13 +388,53 @@ fn parse_field_value(line: &str, prefix: &str, _lines: &[&str], idx: &mut usize)
     value
 }
 
-fn collect_field_value(line: &str, prefix: &str, lines: &[&str], idx: &mut usize) -> String {
+fn collect_field_value(
+    line: &str,
+    prefix: &str,
+    lines: &[&str],
+    idx: &mut usize,
+    step_end: usize,
+) -> String {
     let mut value = line[prefix.len()..].to_string();
     *idx += 1;
+    let mut in_fence: Option<&'static str> = None;
 
     // Collect continuation lines (lines that don't start with "- **" or "- ")
-    while *idx < lines.len() {
+    while *idx < step_end {
         let next_line = lines[*idx];
+        let next_trimmed = next_line.trim();
+
+        // Track fence state during continuation scanning
+        if next_trimmed.starts_with("```") || next_trimmed.starts_with("~~~") {
+            let fence_marker = if next_trimmed.starts_with("```") {
+                "```"
+            } else {
+                "~~~"
+            };
+            if in_fence == Some(fence_marker) {
+                in_fence = None;
+            } else if in_fence.is_none() {
+                in_fence = Some(fence_marker);
+            }
+            if !value.is_empty() {
+                value.push('\n');
+            }
+            value.push_str(next_line);
+            *idx += 1;
+            continue;
+        }
+
+        // If inside a fence, treat as continuation regardless of format
+        if in_fence.is_some() {
+            if !value.is_empty() {
+                value.push('\n');
+            }
+            value.push_str(next_line);
+            *idx += 1;
+            continue;
+        }
+
+        // Outside fence: apply normal continuation line rules
         if next_line.starts_with("- **") || next_line.starts_with("- Depends on: ") {
             break;
         }
@@ -701,5 +799,41 @@ mod tests {
         assert_eq!(score.steps.len(), 1);
         assert_eq!(score.steps[0].number, 1);
         assert_eq!(score.steps[0].title, "add widget");
+    }
+
+    #[test]
+    fn parse_ignores_headers_and_field_bullets_inside_a_fenced_example() {
+        let text = "\
+## Wave 1
+
+### Step 1: document the grammar
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add an example block:
+~~~markdown
+## Wave 99
+### Step 99: fake step
+- **Files**: should not be parsed
+~~~
+end of example.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let score = parse(text).expect("should parse");
+        assert_eq!(
+            score.steps.len(),
+            1,
+            "the fenced ## Wave 99 / ### Step 99 lines must not be treated as real tokens"
+        );
+        match &score.steps[0].shape {
+            Shape::Change { change, .. } => {
+                assert!(
+                    change.contains("## Wave 99"),
+                    "the fenced example text must survive verbatim inside the Change field, got: {:?}",
+                    change
+                );
+            }
+            other => panic!("expected Change shape, got {:?}", other),
+        }
     }
 }
