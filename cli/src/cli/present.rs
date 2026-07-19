@@ -216,3 +216,10 @@ pub fn abandoned_base_sync_refused(base_ref: &str) {
         base_ref
     );
 }
+
+#[allow(dead_code)] // wired to `heist doctor` in a later wave
+pub fn doctor(results: &[(&str, bool)]) {
+    for (tool, available) in results {
+        println!("{}: {}", tool, if *available { "ok" } else { "missing" });
+    }
+}

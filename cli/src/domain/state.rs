@@ -106,7 +106,6 @@ pub enum Stage {
     FenceReview,
     HumanReview,
     Forging,
-    Safehouse,
     Implementing,
     Cleaning,
     Done,
@@ -120,7 +119,6 @@ impl Stage {
             Stage::FenceReview => "fence_review",
             Stage::HumanReview => "human_review",
             Stage::Forging => "forging",
-            Stage::Safehouse => "safehouse",
             Stage::Implementing => "implementing",
             Stage::Cleaning => "cleaning",
             Stage::Done => "done",
@@ -134,21 +132,12 @@ impl Stage {
             "fence_review" => Stage::FenceReview,
             "human_review" => Stage::HumanReview,
             "forging" => Stage::Forging,
-            "safehouse" => Stage::Safehouse,
             "implementing" => Stage::Implementing,
             "cleaning" => Stage::Cleaning,
             "done" => Stage::Done,
             _ => return Err(FieldError::InvalidStage(value.to_string())),
         };
         Ok(stage)
-    }
-
-    pub fn next_step(&self) -> Option<Stage> {
-        match self {
-            Stage::Safehouse => Some(Stage::Implementing),
-            Stage::Done => None,
-            other => Some(*other),
-        }
     }
 }
 
@@ -250,7 +239,6 @@ pub fn route(stage: Stage, mode: Mode) -> Option<Routing> {
             file: "pipeline-standard.md",
             step: 5,
         }),
-        Stage::Safehouse => None,
     }
 }
 
@@ -293,7 +281,6 @@ mod tests {
             (Stage::FenceReview, "fence_review"),
             (Stage::HumanReview, "human_review"),
             (Stage::Forging, "forging"),
-            (Stage::Safehouse, "safehouse"),
             (Stage::Implementing, "implementing"),
             (Stage::Cleaning, "cleaning"),
             (Stage::Done, "done"),
@@ -301,14 +288,6 @@ mod tests {
         for (stage, expected) in cases {
             assert_eq!(serde_json::to_value(stage).unwrap(), json!(expected));
         }
-    }
-
-    #[test]
-    fn next_step_is_none_only_for_done() {
-        assert_eq!(Stage::Forging.next_step(), Some(Stage::Forging));
-        assert_eq!(Stage::Safehouse.next_step(), Some(Stage::Implementing));
-        assert_eq!(Stage::Implementing.next_step(), Some(Stage::Implementing));
-        assert_eq!(Stage::Done.next_step(), None);
     }
 
     #[test]
