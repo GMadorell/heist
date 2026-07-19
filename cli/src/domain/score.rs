@@ -107,6 +107,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
 
                     // Extract fields from body lines (everything after header)
                     let mut wave = 0u32;
+                    let mut wave_seen = false;
                     let mut files = Vec::new();
                     let mut red = String::new();
                     let mut green = String::new();
@@ -119,6 +120,7 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                         let field_line = lines[field_idx];
 
                         if field_line.starts_with("- **Wave**: ") {
+                            wave_seen = true;
                             wave = parse_field_value(
                                 field_line,
                                 "- **Wave**: ",
@@ -172,6 +174,13 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                         } else {
                             field_idx += 1;
                         }
+                    }
+
+                    if !wave_seen {
+                        findings.push(Finding {
+                            step: step_num,
+                            message: "missing mandatory field 'Wave'".to_string(),
+                        });
                     }
 
                     let shape = if (!red.is_empty() || !green.is_empty()) && !change.is_empty() {
@@ -418,6 +427,27 @@ mod tests {
                 .iter()
                 .any(|f| f.step == 1 && f.message.to_lowercase().contains("duplicate")),
             "expected a duplicate-step-number finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn parse_flags_missing_wave_field() {
+        let text = "\
+## Wave 1
+
+### Step 1: add widget
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let findings = parse(text).expect_err("should fail to parse");
+        assert!(
+            findings.iter().any(|f| f.step == 1
+                && f.message.to_lowercase().contains("wave")
+                && f.message.to_lowercase().contains("missing")),
+            "expected a missing-Wave-field finding, got: {:?}",
             findings
         );
     }
