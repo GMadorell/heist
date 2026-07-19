@@ -173,20 +173,45 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
                         }
                     }
 
-                    let shape = if !red.is_empty()
+                    let shape = if (!red.is_empty() || !green.is_empty()) && !change.is_empty() {
+                        findings.push(Finding {
+                            step: step_num,
+                            message: "ambiguous shape: both Red-Green and Change fields present"
+                                .to_string(),
+                        });
+                        Shape::RedGreen {
+                            red: String::new(),
+                            green: String::new(),
+                            verify: String::new(),
+                        }
+                    } else if !red.is_empty()
                         && !green.is_empty()
                         && !verify.is_empty()
                         && change.is_empty()
                     {
                         Shape::RedGreen { red, green, verify }
-                    } else if !change.is_empty() && red.is_empty() && green.is_empty() {
+                    } else if !change.is_empty()
+                        && red.is_empty()
+                        && green.is_empty()
+                        && !verify.is_empty()
+                    {
                         Shape::Change { change, verify }
+                    } else if red.is_empty() && green.is_empty() && change.is_empty() {
+                        findings.push(Finding {
+                            step: step_num,
+                            message: "unknown shape: neither Red-Green nor Change fields present"
+                                .to_string(),
+                        });
+                        Shape::RedGreen {
+                            red: String::new(),
+                            green: String::new(),
+                            verify: String::new(),
+                        }
                     } else {
                         findings.push(Finding {
                             step: step_num,
                             message: "unrecognized step shape".to_string(),
                         });
-                        // Use placeholder shape
                         Shape::RedGreen {
                             red: String::new(),
                             green: String::new(),
@@ -315,5 +340,48 @@ mod tests {
             }
             other => panic!("expected RedGreen shape, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn parse_change_shape_step() {
+        let text = "\
+## Wave 1
+
+### Step 1: wire config
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: wire the config loader.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let score = parse(text).expect("should parse");
+        match &score.steps[0].shape {
+            Shape::Change { change, verify } => {
+                assert_eq!(change.trim(), "wire the config loader.");
+                assert_eq!(verify.trim(), "cargo build");
+            }
+            other => panic!("expected Change shape, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_flags_unknown_shape_when_neither_red_green_nor_change_present() {
+        let text = "\
+## Wave 1
+
+### Step 1: mystery step
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Verify**: cargo build
+- Depends on: none
+";
+        let findings = parse(text).expect_err("should fail to parse");
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.step == 1 && f.message.to_lowercase().contains("shape")),
+            "expected a shape-related finding, got: {:?}",
+            findings
+        );
     }
 }
