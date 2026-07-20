@@ -248,10 +248,6 @@ pub fn score_io_failed(slug: &str, e: impl Display) {
     eprintln!("failed to read score.md for slug {}: {}", slug, e);
 }
 
-pub fn score_save_failed(slug: &str, e: impl Display) {
-    eprintln!("failed to save state for slug {}: {}", slug, e);
-}
-
 pub fn score_no_such_wave(slug: &str, n: u32) {
     eprintln!("no wave {} found in score.md for slug {}", n, slug);
 }

@@ -678,7 +678,7 @@ fn run_score(
                 ExitCode::Precondition
             }
             Err(app::score::RecordError::Save(e)) => {
-                present::score_save_failed(&slug, &e);
+                present::state_save_failed(&slug, &e);
                 ExitCode::from(&e)
             }
         },

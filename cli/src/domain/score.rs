@@ -9,7 +9,15 @@ pub struct Score {
 pub struct Step {
     pub number: u32,
     pub title: String,
+    /// The wave this step declares via its own `- **Wave**: N` field line.
+    /// Kept separate from `enclosing_wave` (the two are independent
+    /// readings of the same fact from two places in the file) so `check`
+    /// can cross-verify them: a step physically under `## Wave 2` that
+    /// still declares `- **Wave**: 1` is a silent concurrency hazard
+    /// `check` must catch as a structural finding.
     pub wave: u32,
+    /// The wave derived from the `## Wave N` header this step is nested
+    /// under. See `wave`'s doc comment for why these are kept distinct.
     pub enclosing_wave: u32,
     pub files: Vec<String>,
     pub shape: Shape,
@@ -51,6 +59,54 @@ impl fmt::Display for NoSuchWave {
     }
 }
 
+/// Toggles fence state given a trimmed line. Returns the new state.
+/// Shared by every scan pass so fence-detection logic lives in one place.
+fn toggle_fence(trimmed: &str, current: Option<&'static str>) -> Option<&'static str> {
+    let marker = if trimmed.starts_with("```") {
+        Some("```")
+    } else if trimmed.starts_with("~~~") {
+        Some("~~~")
+    } else {
+        None
+    };
+    match marker {
+        Some(m) if current == Some(m) => None,
+        Some(m) if current.is_none() => Some(m),
+        _ => current,
+    }
+}
+
+/// Returns the wave number if `line` is a well-formed `## Wave N` header
+/// token (literal prefix, then only ASCII digits, nothing else).
+fn wave_header_number(line: &str) -> Option<u32> {
+    let rest = line.strip_prefix("## Wave ")?;
+    let rest = rest.trim();
+    if rest.is_empty() || !rest.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    rest.parse::<u32>().ok()
+}
+
+/// Returns `(step_number, title)` if `line` is a well-formed Step header
+/// token (canonical `### Step N: <title>` or the tolerated flat `## Step
+/// N: <title>`).
+fn step_header_parts(line: &str) -> Option<(u32, &str)> {
+    let rest = line
+        .strip_prefix("### Step ")
+        .or_else(|| line.strip_prefix("## Step "))?;
+    let colon_pos = rest.find(": ")?;
+    let num_str = &rest[..colon_pos];
+    if num_str.is_empty() || !num_str.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let step_num = num_str.parse::<u32>().ok()?;
+    Some((step_num, &rest[colon_pos + 2..]))
+}
+
+fn is_header_token(line: &str) -> bool {
+    wave_header_number(line).is_some() || step_header_parts(line).is_some()
+}
+
 pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
     let lines: Vec<&str> = text.lines().collect();
     let mut steps = Vec::new();
@@ -65,17 +121,9 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
         let trimmed = line.trim();
 
         // Track fence state using trimmed line for fence detection
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            let fence_marker = if trimmed.starts_with("```") {
-                "```"
-            } else {
-                "~~~"
-            };
-            if in_fence == Some(fence_marker) {
-                in_fence = None;
-            } else if in_fence.is_none() {
-                in_fence = Some(fence_marker);
-            }
+        let next_fence = toggle_fence(trimmed, in_fence);
+        if next_fence != in_fence || trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = next_fence;
             i += 1;
             continue;
         }
@@ -86,289 +134,246 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
             continue;
         }
 
-        // Check for Wave header: "## Wave " followed by digits
-        if let Some(rest) = line.strip_prefix("## Wave ") {
-            if let Ok(wave_num) = rest.trim().parse::<u32>() {
-                current_enclosing_wave = wave_num;
-            }
+        // Check for a well-formed Wave header token
+        if let Some(wave_num) = wave_header_number(line) {
+            current_enclosing_wave = wave_num;
             i += 1;
             continue;
         }
 
-        // Check for Step header: "### Step " or "## Step " followed by digits, ": ", then title
-        if let Some(rest) = line
-            .strip_prefix("### Step ")
-            .or_else(|| line.strip_prefix("## Step "))
-        {
-            if let Some(colon_pos) = rest.find(": ") {
-                if let Ok(step_num) = rest[..colon_pos].parse::<u32>() {
-                    let title = rest[colon_pos + 2..].to_string();
-                    let step_header_line = i;
-                    i += 1;
+        // Check for a well-formed Step header token
+        if let Some((step_num, title)) = step_header_parts(line) {
+            let title = title.to_string();
+            let step_header_line = i;
+            i += 1;
 
-                    // Scan forward to find step boundary (next Wave or Step header, or EOF)
-                    let mut step_end = i;
-                    let mut scan_fence: Option<&'static str> = None;
-                    while step_end < lines.len() {
-                        let next_line = lines[step_end];
-                        let next_trimmed = next_line.trim();
+            {
+                // Scan forward to find step boundary (next Wave or Step header, or EOF)
+                let mut step_end = i;
+                let mut scan_fence: Option<&'static str> = None;
+                while step_end < lines.len() {
+                    let next_line = lines[step_end];
+                    let next_trimmed = next_line.trim();
 
-                        // Track fence state during step boundary scan
-                        if next_trimmed.starts_with("```") || next_trimmed.starts_with("~~~") {
-                            let fence_marker = if next_trimmed.starts_with("```") {
-                                "```"
-                            } else {
-                                "~~~"
-                            };
-                            if scan_fence == Some(fence_marker) {
-                                scan_fence = None;
-                            } else if scan_fence.is_none() {
-                                scan_fence = Some(fence_marker);
-                            }
-                            step_end += 1;
-                            continue;
-                        }
-
-                        // Only check for headers if not inside a fence
-                        if scan_fence.is_none()
-                            && (next_line.starts_with("## Wave ")
-                                || next_line.starts_with("### Step ")
-                                || next_line.starts_with("## Step "))
-                        {
-                            break;
-                        }
+                    // Track fence state during step boundary scan
+                    let toggled = toggle_fence(next_trimmed, scan_fence);
+                    if toggled != scan_fence
+                        || next_trimmed.starts_with("```")
+                        || next_trimmed.starts_with("~~~")
+                    {
+                        scan_fence = toggled;
                         step_end += 1;
+                        continue;
                     }
 
-                    // Extract fields from body lines (everything after header)
-                    let mut wave = 0u32;
-                    let mut wave_seen = false;
-                    let mut files = Vec::new();
-                    let mut files_seen = false;
-                    let mut red = String::new();
-                    let mut green = String::new();
-                    let mut verify = String::new();
-                    let mut change = String::new();
-                    let mut depends_on = Vec::new();
-
-                    let mut field_idx = i;
-                    let mut field_fence: Option<&'static str> = None;
-                    while field_idx < step_end {
-                        let field_line = lines[field_idx];
-                        let field_trimmed = field_line.trim();
-
-                        // Track fence state in field collection
-                        if field_trimmed.starts_with("```") || field_trimmed.starts_with("~~~") {
-                            let fence_marker = if field_trimmed.starts_with("```") {
-                                "```"
-                            } else {
-                                "~~~"
-                            };
-                            if field_fence == Some(fence_marker) {
-                                field_fence = None;
-                            } else if field_fence.is_none() {
-                                field_fence = Some(fence_marker);
-                            }
-                            field_idx += 1;
-                            continue;
-                        }
-
-                        // Skip field marker detection if inside a fence
-                        if field_fence.is_some() {
-                            field_idx += 1;
-                            continue;
-                        }
-
-                        if field_line.starts_with("- **Wave**: ") {
-                            wave_seen = true;
-                            wave = parse_field_value(
-                                field_line,
-                                "- **Wave**: ",
-                                &lines,
-                                &mut field_idx,
-                            );
-                        } else if field_line.starts_with("- **Files**: ") {
-                            files_seen = true;
-                            let files_str = collect_field_value(
-                                field_line,
-                                "- **Files**: ",
-                                &lines,
-                                &mut field_idx,
-                                step_end,
-                            );
-                            let trimmed_files: Vec<String> =
-                                files_str.split(',').map(|s| s.trim().to_string()).collect();
-                            if trimmed_files.iter().any(|f| f.is_empty()) {
-                                findings.push(Finding {
-                                    step: step_num,
-                                    message: "Files line contains a blank entry".to_string(),
-                                });
-                            }
-                            files = trimmed_files
-                                .into_iter()
-                                .filter(|f| !f.is_empty())
-                                .collect();
-                        } else if field_line.starts_with("- **Red**: ") {
-                            red = collect_field_value(
-                                field_line,
-                                "- **Red**: ",
-                                &lines,
-                                &mut field_idx,
-                                step_end,
-                            );
-                        } else if field_line.starts_with("- **Green**: ") {
-                            green = collect_field_value(
-                                field_line,
-                                "- **Green**: ",
-                                &lines,
-                                &mut field_idx,
-                                step_end,
-                            );
-                        } else if field_line.starts_with("- **Verify**: ") {
-                            verify = collect_field_value(
-                                field_line,
-                                "- **Verify**: ",
-                                &lines,
-                                &mut field_idx,
-                                step_end,
-                            );
-                        } else if field_line.starts_with("- **Change**: ") {
-                            change = collect_field_value(
-                                field_line,
-                                "- **Change**: ",
-                                &lines,
-                                &mut field_idx,
-                                step_end,
-                            );
-                        } else if field_line.starts_with("- Depends on: ") {
-                            let depends_str = collect_field_value(
-                                field_line,
-                                "- Depends on: ",
-                                &lines,
-                                &mut field_idx,
-                                step_end,
-                            );
-                            depends_on = parse_depends_on(&depends_str, step_num, &mut findings);
-                        } else {
-                            field_idx += 1;
-                        }
+                    // Only check for headers if not inside a fence
+                    if scan_fence.is_none() && is_header_token(next_line) {
+                        break;
                     }
-
-                    if !wave_seen {
-                        findings.push(Finding {
-                            step: step_num,
-                            message: "missing mandatory field 'Wave'".to_string(),
-                        });
-                    }
-
-                    if !files_seen {
-                        findings.push(Finding {
-                            step: step_num,
-                            message: "missing mandatory field 'Files'".to_string(),
-                        });
-                    }
-
-                    let shape = if (!red.is_empty() || !green.is_empty()) && !change.is_empty() {
-                        findings.push(Finding {
-                            step: step_num,
-                            message: "ambiguous shape: both Red-Green and Change fields present"
-                                .to_string(),
-                        });
-                        Shape::RedGreen {
-                            red: String::new(),
-                            green: String::new(),
-                            verify: String::new(),
-                        }
-                    } else if !red.is_empty()
-                        && !green.is_empty()
-                        && !verify.is_empty()
-                        && change.is_empty()
-                    {
-                        Shape::RedGreen { red, green, verify }
-                    } else if !change.is_empty()
-                        && red.is_empty()
-                        && green.is_empty()
-                        && !verify.is_empty()
-                    {
-                        Shape::Change { change, verify }
-                    } else if red.is_empty() && green.is_empty() && change.is_empty() {
-                        findings.push(Finding {
-                            step: step_num,
-                            message: "unknown shape: neither Red-Green nor Change fields present"
-                                .to_string(),
-                        });
-                        Shape::RedGreen {
-                            red: String::new(),
-                            green: String::new(),
-                            verify: String::new(),
-                        }
-                    } else if (!red.is_empty() || !green.is_empty()) && change.is_empty() {
-                        // RedGreen-leaning: detect missing mandatory fields
-                        if red.is_empty() {
-                            findings.push(Finding {
-                                step: step_num,
-                                message: "missing mandatory field 'Red' for Red-Green shape"
-                                    .to_string(),
-                            });
-                        }
-                        if green.is_empty() {
-                            findings.push(Finding {
-                                step: step_num,
-                                message: "missing mandatory field 'Green' for Red-Green shape"
-                                    .to_string(),
-                            });
-                        }
-                        if verify.is_empty() {
-                            findings.push(Finding {
-                                step: step_num,
-                                message: "missing mandatory field 'Verify' for Red-Green shape"
-                                    .to_string(),
-                            });
-                        }
-                        Shape::RedGreen { red, green, verify }
-                    } else if !change.is_empty() && red.is_empty() && green.is_empty() {
-                        // Change-leaning: detect missing mandatory fields
-                        if verify.is_empty() {
-                            findings.push(Finding {
-                                step: step_num,
-                                message: "missing mandatory field 'Verify' for Change shape"
-                                    .to_string(),
-                            });
-                        }
-                        Shape::Change { change, verify }
-                    } else {
-                        findings.push(Finding {
-                            step: step_num,
-                            message: "unrecognized step shape".to_string(),
-                        });
-                        Shape::RedGreen {
-                            red: String::new(),
-                            green: String::new(),
-                            verify: String::new(),
-                        }
-                    };
-
-                    if !seen_numbers.insert(step_num) {
-                        findings.push(Finding {
-                            step: step_num,
-                            message: "duplicate step number".to_string(),
-                        });
-                    }
-
-                    steps.push(Step {
-                        number: step_num,
-                        title,
-                        wave,
-                        enclosing_wave: current_enclosing_wave,
-                        files,
-                        shape,
-                        depends_on,
-                        raw: lines[step_header_line..step_end].join("\n"),
-                    });
-
-                    i = step_end;
-                    continue;
+                    step_end += 1;
                 }
+
+                // Extract fields from body lines (everything after header)
+                let mut wave = 0u32;
+                let mut wave_seen = false;
+                let mut files = Vec::new();
+                let mut files_seen = false;
+                let mut red = String::new();
+                let mut green = String::new();
+                let mut verify = String::new();
+                let mut change = String::new();
+                let mut depends_on = Vec::new();
+
+                let mut field_idx = i;
+                let mut field_fence: Option<&'static str> = None;
+                while field_idx < step_end {
+                    let field_line = lines[field_idx];
+                    let field_trimmed = field_line.trim();
+
+                    // Track fence state in field collection
+                    if field_trimmed.starts_with("```") || field_trimmed.starts_with("~~~") {
+                        field_fence = toggle_fence(field_trimmed, field_fence);
+                        field_idx += 1;
+                        continue;
+                    }
+
+                    // Skip field marker detection if inside a fence
+                    if field_fence.is_some() {
+                        field_idx += 1;
+                        continue;
+                    }
+
+                    if field_line.starts_with("- **Wave**: ") {
+                        wave_seen = true;
+                        wave = parse_field_value(
+                            field_line,
+                            "- **Wave**: ",
+                            &mut field_idx,
+                            step_num,
+                            &mut findings,
+                        );
+                    } else if field_line.starts_with("- **Files**: ") {
+                        files_seen = true;
+                        let files_str = collect_field_value(
+                            field_line,
+                            "- **Files**: ",
+                            &lines,
+                            &mut field_idx,
+                            step_end,
+                        );
+                        let trimmed_files: Vec<String> =
+                            files_str.split(',').map(|s| s.trim().to_string()).collect();
+                        if trimmed_files.iter().any(|f| f.is_empty()) {
+                            findings.push(Finding {
+                                step: step_num,
+                                message: "Files line contains a blank entry".to_string(),
+                            });
+                        }
+                        files = trimmed_files
+                            .into_iter()
+                            .filter(|f| !f.is_empty())
+                            .collect();
+                    } else if field_line.starts_with("- **Red**: ") {
+                        red = collect_field_value(
+                            field_line,
+                            "- **Red**: ",
+                            &lines,
+                            &mut field_idx,
+                            step_end,
+                        );
+                    } else if field_line.starts_with("- **Green**: ") {
+                        green = collect_field_value(
+                            field_line,
+                            "- **Green**: ",
+                            &lines,
+                            &mut field_idx,
+                            step_end,
+                        );
+                    } else if field_line.starts_with("- **Verify**: ") {
+                        verify = collect_field_value(
+                            field_line,
+                            "- **Verify**: ",
+                            &lines,
+                            &mut field_idx,
+                            step_end,
+                        );
+                    } else if field_line.starts_with("- **Change**: ") {
+                        change = collect_field_value(
+                            field_line,
+                            "- **Change**: ",
+                            &lines,
+                            &mut field_idx,
+                            step_end,
+                        );
+                    } else if field_line.starts_with("- Depends on: ") {
+                        let depends_str = collect_field_value(
+                            field_line,
+                            "- Depends on: ",
+                            &lines,
+                            &mut field_idx,
+                            step_end,
+                        );
+                        depends_on = parse_depends_on(&depends_str, step_num, &mut findings);
+                    } else {
+                        field_idx += 1;
+                    }
+                }
+
+                if !wave_seen {
+                    findings.push(Finding {
+                        step: step_num,
+                        message: "missing mandatory field 'Wave'".to_string(),
+                    });
+                }
+
+                if !files_seen {
+                    findings.push(Finding {
+                        step: step_num,
+                        message: "missing mandatory field 'Files'".to_string(),
+                    });
+                }
+
+                let has_red_green = !red.is_empty() || !green.is_empty();
+                let has_change = !change.is_empty();
+
+                let shape = if has_red_green && has_change {
+                    findings.push(Finding {
+                        step: step_num,
+                        message: "ambiguous shape: both Red-Green and Change fields present"
+                            .to_string(),
+                    });
+                    Shape::RedGreen {
+                        red: String::new(),
+                        green: String::new(),
+                        verify: String::new(),
+                    }
+                } else if has_red_green {
+                    // RedGreen-leaning: detect missing mandatory fields
+                    if red.is_empty() {
+                        findings.push(Finding {
+                            step: step_num,
+                            message: "missing mandatory field 'Red' for Red-Green shape"
+                                .to_string(),
+                        });
+                    }
+                    if green.is_empty() {
+                        findings.push(Finding {
+                            step: step_num,
+                            message: "missing mandatory field 'Green' for Red-Green shape"
+                                .to_string(),
+                        });
+                    }
+                    if verify.is_empty() {
+                        findings.push(Finding {
+                            step: step_num,
+                            message: "missing mandatory field 'Verify' for Red-Green shape"
+                                .to_string(),
+                        });
+                    }
+                    Shape::RedGreen { red, green, verify }
+                } else if has_change {
+                    // Change-leaning: detect missing mandatory fields
+                    if verify.is_empty() {
+                        findings.push(Finding {
+                            step: step_num,
+                            message: "missing mandatory field 'Verify' for Change shape"
+                                .to_string(),
+                        });
+                    }
+                    Shape::Change { change, verify }
+                } else {
+                    findings.push(Finding {
+                        step: step_num,
+                        message: "unknown shape: neither Red-Green nor Change fields present"
+                            .to_string(),
+                    });
+                    Shape::RedGreen {
+                        red: String::new(),
+                        green: String::new(),
+                        verify: String::new(),
+                    }
+                };
+
+                if !seen_numbers.insert(step_num) {
+                    findings.push(Finding {
+                        step: step_num,
+                        message: "duplicate step number".to_string(),
+                    });
+                }
+
+                steps.push(Step {
+                    number: step_num,
+                    title,
+                    wave,
+                    enclosing_wave: current_enclosing_wave,
+                    files,
+                    shape,
+                    depends_on,
+                    raw: lines[step_header_line..step_end].join("\n"),
+                });
+
+                i = step_end;
+                continue;
             }
         }
 
@@ -382,9 +387,24 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
     }
 }
 
-fn parse_field_value(line: &str, prefix: &str, _lines: &[&str], idx: &mut usize) -> u32 {
+fn parse_field_value(
+    line: &str,
+    prefix: &str,
+    idx: &mut usize,
+    step_num: u32,
+    findings: &mut Vec<Finding>,
+) -> u32 {
     let rest = &line[prefix.len()..];
-    let value = rest.trim().parse::<u32>().unwrap_or(0);
+    let value = rest.trim().parse::<u32>().unwrap_or_else(|_| {
+        findings.push(Finding {
+            step: step_num,
+            message: format!(
+                "invalid Wave value '{}': must be a non-negative integer",
+                rest.trim()
+            ),
+        });
+        0
+    });
     *idx += 1;
     value
 }
@@ -407,16 +427,7 @@ fn collect_field_value(
 
         // Track fence state during continuation scanning
         if next_trimmed.starts_with("```") || next_trimmed.starts_with("~~~") {
-            let fence_marker = if next_trimmed.starts_with("```") {
-                "```"
-            } else {
-                "~~~"
-            };
-            if in_fence == Some(fence_marker) {
-                in_fence = None;
-            } else if in_fence.is_none() {
-                in_fence = Some(fence_marker);
-            }
+            in_fence = toggle_fence(next_trimmed, in_fence);
             if !value.is_empty() {
                 value.push('\n');
             }
@@ -579,7 +590,10 @@ pub fn check(score: &Score) -> Vec<Finding> {
         last_wave = Some(step.enclosing_wave);
     }
 
-    for (wave, indices) in steps_by_wave.iter() {
+    let mut waves_sorted: Vec<&u32> = steps_by_wave.keys().collect();
+    waves_sorted.sort();
+    for wave in waves_sorted {
+        let indices = &steps_by_wave[wave];
         let mut sorted_indices = indices.clone();
         sorted_indices.sort_by_key(|&idx| score.steps[idx].number);
 
@@ -625,6 +639,44 @@ pub fn wave_blocks(score: &Score, wave: u32) -> Result<Vec<(u32, String)>, NoSuc
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_ignores_unfenced_near_miss_header_lines_inside_field_text() {
+        // Regression test: a line that merely *starts with* "## Wave " or
+        // "### Step "/"## Step " but doesn't satisfy the full anchored
+        // grammar (digits-only wave number; digits+": " step header) must
+        // not be treated as a boundary token, even outside a fence.
+        let text = "\
+## Wave 1
+
+### Step 1: document the grammar
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: see the note below.
+  ## Wave 99 is not a real header here, just prose.
+  ### Step abc: not a real step header either.
+  more change text.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let score = parse(text).expect("should parse");
+        assert_eq!(
+            score.steps.len(),
+            1,
+            "near-miss header-like lines must not split the step"
+        );
+        match &score.steps[0].shape {
+            Shape::Change { change, verify } => {
+                assert!(
+                    change.contains("## Wave 99 is not a real header here"),
+                    "near-miss line must survive verbatim inside the Change field, got: {:?}",
+                    change
+                );
+                assert_eq!(verify.trim(), "cargo build");
+            }
+            other => panic!("expected Change shape, got {:?}", other),
+        }
+    }
 
     #[test]
     fn parse_single_red_green_step_under_one_wave() {
