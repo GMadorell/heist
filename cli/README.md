@@ -62,7 +62,7 @@ Prints the reviewer lanes to run for the diff since the default branch, one bare
 
 ### score check <slug>
 
-Parses `.heist/<slug>/score.md` and cross-checks it (wave headers ascending, each step's `Wave` field matches its enclosing `## Wave N` header, step numbers unique, every `Depends on` reference exists and sits in a strictly-lower wave, no two steps in the same wave share a file). On success prints `ok`, `steps: N`, `waves: M` and exits 0. On any structural or cross-step finding, prints one `step N: <message>` line per finding to stderr and exits 2. Exits 2 if no state or no `score.md` exists for the slug; exits 1 on a true IO read failure.
+Parses `.heist/<slug>/score.md` and checks it for validity. On success prints `ok`, `steps: N`, `waves: M` and exits 0. On any structural or cross-step finding, prints one `step N: <message>` line per finding to stderr and exits 2. Exits 2 if no state or no `score.md` exists for the slug; exits 1 on a true IO read failure.
 
 ### score record <slug>
 
@@ -70,7 +70,7 @@ Runs the same parse + check as `score check`; on success additionally persists `
 
 ### score wave <slug> <n>
 
-Parses (but does not cross-check) `.heist/<slug>/score.md` and prints wave `<n>`'s steps verbatim: first line `steps: K`, then each step's exact source text preceded by a `--- step N ---` delimiter line. Exits 2 if the wave number doesn't exist in the file, if no state or no `score.md` exists for the slug, or if the file fails to parse; exits 1 on a true IO read failure.
+Parses `.heist/<slug>/score.md` and prints wave `<n>`'s steps verbatim: first line `steps: K`, then each step's exact source text preceded by a `--- step N ---` delimiter line. Exits 2 if the wave number doesn't exist in the file, if no state or no `score.md` exists for the slug, or if the file fails to parse; exits 1 on a true IO read failure.
 
 ### `base <slug>`
 

@@ -23,7 +23,7 @@ You are the Forger: you turn a design into a work order. Input is `blueprint.md`
 
 ## score.md step formats
 
-Two step templates. Pick per step — don't force a fake test onto a step that isn't a behavior change. Canonical shape: a `# Score: <slug>` title, optional freeform preamble, then `## Wave N` headers in ascending order, each containing its steps as nested `### Step N` headers (not `## Step N`).
+Two step templates. Pick per step — don't force a fake test onto a step that isn't a behavior change. Canonical shape: a `# Score: <slug>` title, optional freeform preamble, then `## Wave N` headers in ascending order, each containing its steps as nested `### Step N` headers.
 
 **Red-Green** — the step introduces new, independently-testable behavior:
 
@@ -48,7 +48,7 @@ Two step templates. Pick per step — don't force a fake test onto a step that i
 - Depends on: none / step M / step M, step K
 ```
 
-Pull the single-test, build, and lint commands from `heist validation resolve <absolute-path>`. `Files` is comma-separated (one path is the common case). `Depends on` is `none` or a comma-separated list of `step N` tokens; step numbers are globally unique across the whole file but need not be contiguous (a human may later shorten a hand-edited score.md by removing completed steps).
+Pull the single-test, build, and lint commands from `heist validation resolve <absolute-path>`. `Files` is comma-separated (one path is the common case). `Depends on` is `none` or a comma-separated list of `step N` tokens; step numbers are globally unique across the whole file but need not be contiguous.
 
 ## Waves
 

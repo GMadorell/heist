@@ -7,8 +7,8 @@ Runs after core `pipeline.md` steps 1-4, for `heavy` and `medium` mode.
 The Mastermind's job ends at approval — forging is a fresh, one-shot transformation.
 
 1. Spawn `heist:forger` (foreground, one-shot) with the worktree absolute path and a `cd` instruction, so it reads `blueprint.md`, resolves validation via `heist validation resolve <absolute-path>`, and writes `score.md`.
-2. Run `heist score check <slug>`. Exit 0: continue to step 3. Any nonzero exit prints findings to stderr: spawn one fresh `heist:forger` with the findings and the instruction to fix `score.md` in place (one corrective bounce only). Re-run `heist score check <slug>`. Exit 0: continue to step 3. Still nonzero: halt to the human — a second failure signals a gap in `forger.md`'s grammar prescription worth human eyes, not another auto-retry.
-3. Run `heist score record <slug>` (persists `score_steps_total`/`score_waves_total` into state and bumps `updated`), then `heist state set <slug> stage safehouse`.
+2. Run `heist score check <slug>`. Exit 0: continue to step 3. Any nonzero exit prints findings to stderr: spawn one fresh `heist:forger` with the findings and the instruction to fix `score.md` in place. Re-run `heist score check <slug>`. Exit 0: continue to step 3. Still nonzero: halt to the human.
+3. Run `heist score record <slug>`, then `heist state set <slug> stage safehouse`.
 4. Report to the human: `score.md` path, step count, wave count, implicit calls flagged.
 5. Continue to implementing.
 
