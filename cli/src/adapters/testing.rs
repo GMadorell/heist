@@ -85,15 +85,6 @@ impl StateRepository for InMemoryStateRepository {
         self.states.borrow().contains_key(slug) || self.load_errors.borrow().contains_key(slug)
     }
 
-    fn init(&self, slug: &str, state: &State) -> Result<(), StateError> {
-        let mut states = self.states.borrow_mut();
-        if states.contains_key(slug) {
-            return Err(StateError::AlreadyExists);
-        }
-        states.insert(slug.to_string(), state.clone());
-        Ok(())
-    }
-
     fn load(&self, slug: &str) -> Result<State, StateError> {
         if let Some(error) = self.load_errors.borrow_mut().remove(slug) {
             return Err(error);

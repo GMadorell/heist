@@ -12,10 +12,6 @@ impl StateRepository for FileStateRepository {
         state_file_path(slug).exists()
     }
 
-    fn init(&self, slug: &str, state: &State) -> Result<(), StateError> {
-        save_state_file(state, &state_file_path(slug))
-    }
-
     fn load(&self, slug: &str) -> Result<State, StateError> {
         load_state_file(&state_file_path(slug))
     }

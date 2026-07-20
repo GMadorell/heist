@@ -18,7 +18,7 @@ pub fn init(
 ) -> Result<(), InitError> {
     let state = State::new(slug, clock.today()).map_err(InitError::InvalidSlug)?;
     heist_dir_repo.create(slug).map_err(InitError::Init)?;
-    repo.init(slug, &state).map_err(InitError::Init)
+    repo.save(slug, &state).map_err(InitError::Init)
 }
 
 pub enum GetError {

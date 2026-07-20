@@ -24,7 +24,7 @@ fn exists_false_before_init() {
 }
 
 #[test]
-fn init_writes_state_file_visible_to_exists_and_load() {
+fn save_writes_state_file_visible_to_exists_and_load() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
     let state = State::new("foo", fixed_date()).expect("valid slug");
@@ -32,7 +32,7 @@ fn init_writes_state_file_visible_to_exists_and_load() {
         .create("foo")
         .expect("create slug dir");
 
-    repo.init("foo", &state).expect("init should succeed");
+    repo.save("foo", &state).expect("save should succeed");
 
     assert!(repo.exists("foo"));
     assert!(state_file_path("foo").exists());
@@ -94,19 +94,19 @@ fn list_slugs_returns_initialised_slugs_sorted() {
     FileHeistDirRepository
         .create("zeta")
         .expect("create slug dir");
-    repo.init(
+    repo.save(
         "zeta",
         &State::new("zeta", fixed_date()).expect("valid slug"),
     )
-    .expect("init should succeed");
+    .expect("save should succeed");
     FileHeistDirRepository
         .create("alpha")
         .expect("create slug dir");
-    repo.init(
+    repo.save(
         "alpha",
         &State::new("alpha", fixed_date()).expect("valid slug"),
     )
-    .expect("init should succeed");
+    .expect("save should succeed");
 
     let slugs: Vec<String> = repo
         .list_slugs()
@@ -125,8 +125,8 @@ fn list_slugs_ignores_directories_without_a_state_file() {
     FileHeistDirRepository
         .create("foo")
         .expect("create slug dir");
-    repo.init("foo", &State::new("foo", fixed_date()).expect("valid slug"))
-        .expect("init should succeed");
+    repo.save("foo", &State::new("foo", fixed_date()).expect("valid slug"))
+        .expect("save should succeed");
     FileHeistDirRepository
         .create("empty-dir")
         .expect("create dir without state.json");

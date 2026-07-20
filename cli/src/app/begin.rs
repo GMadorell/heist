@@ -313,13 +313,6 @@ mod tests {
             fn exists(&self, slug: &str) -> bool {
                 self.inner.exists(slug)
             }
-            fn init(
-                &self,
-                slug: &str,
-                state: &crate::domain::state::State,
-            ) -> Result<(), crate::domain::error::StateError> {
-                self.inner.init(slug, state)
-            }
             fn load(
                 &self,
                 slug: &str,
@@ -333,11 +326,12 @@ mod tests {
             ) -> Result<(), crate::domain::error::StateError> {
                 let call = self.set_calls.get();
                 self.set_calls.set(call + 1);
-                // Saves happen in order: 0 = the "mode" set, 1 = worktree
-                // add's own state save, 2 = the trailing "stage" set. Only
-                // fail the third so the S -- fails --> RB edge of the
-                // flowchart is actually exercised (not the earlier steps).
-                if call == 2 {
+                // Saves happen in order: 0 = init's own save, 1 = the "mode"
+                // set, 2 = worktree add's own state save, 3 = the trailing
+                // "stage" set. Only fail the fourth so the S -- fails --> RB
+                // edge of the flowchart is actually exercised (not the
+                // earlier steps).
+                if call == 3 {
                     return Err(crate::domain::error::StateError::Unreadable(
                         std::io::Error::other("simulated stage-save failure"),
                     ));

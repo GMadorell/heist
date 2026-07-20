@@ -739,7 +739,7 @@ mod tests {
 
     #[test]
     fn state_init_rejects_existing_slug() {
-        let heist_dir_repo = InMemoryHeistDirRepository::new();
+        let heist_dir_repo = InMemoryHeistDirRepository::new().with_dir("foo");
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let code = run_state(
