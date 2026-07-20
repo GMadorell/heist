@@ -1,54 +1,17 @@
+use crate::common::TempCwd;
 use heist_cli::adapters::file_state_repository::FileStateRepository;
 use heist_cli::domain::error::StateError;
 use heist_cli::domain::state::State;
 use heist_cli::domain::value::{DateValue, ScoreWave};
 use heist_cli::ports::state_repository::StateRepository;
 use std::path::PathBuf;
-use std::sync::Mutex;
-use tempfile::TempDir;
 
 fn fixed_date() -> DateValue {
     DateValue::parse("today", "2026-01-01").expect("valid date")
 }
 
-// `FileStateRepository` resolves paths relative to the process cwd
-// (joining onto `.heist/<slug>/state.json`), so every test here must chdir.
-// The cwd is process-global, so tests that chdir must not run concurrently
-// with each other; this lock serializes just those tests.
-static CWD_LOCK: Mutex<()> = Mutex::new(());
-
 fn state_file_path(slug: &str) -> PathBuf {
     PathBuf::from(".heist").join(slug).join("state.json")
-}
-
-/// Chdirs into a fresh temp dir for the guard's lifetime, restoring the
-/// original cwd and releasing the lock on drop.
-struct TempCwd {
-    _lock: std::sync::MutexGuard<'static, ()>,
-    _dir: TempDir,
-    original: std::path::PathBuf,
-}
-
-impl TempCwd {
-    fn new() -> Self {
-        let lock = CWD_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let original = std::env::current_dir().expect("read cwd");
-        let dir = TempDir::new().expect("create tempdir");
-        std::env::set_current_dir(dir.path()).expect("chdir into tempdir");
-        TempCwd {
-            _lock: lock,
-            _dir: dir,
-            original,
-        }
-    }
-}
-
-impl Drop for TempCwd {
-    fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.original);
-    }
 }
 
 #[test]
@@ -58,43 +21,22 @@ fn exists_false_before_init() {
     assert!(!repo.exists("foo"));
 }
 
+// `init` only writes `state.json`; creating `.heist/<slug>/` (and rejecting
+// a pre-existing one) is `FileHeistDirRepository`'s job, covered in
+// file_heist_dir_repository_tests.rs. These tests pre-create the slug dir
+// themselves, standing in for that repository's `create`.
 #[test]
-fn init_creates_state_file_visible_to_exists_and_load() {
+fn init_writes_state_file_visible_to_exists_and_load() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
     let state = State::new("foo", fixed_date()).expect("valid slug");
+    std::fs::create_dir_all(".heist/foo").expect("create slug dir");
 
     repo.init("foo", &state).expect("init should succeed");
 
     assert!(repo.exists("foo"));
     assert!(state_file_path("foo").exists());
     assert_eq!(repo.load("foo").expect("load should succeed"), state);
-}
-
-#[test]
-fn init_rejects_already_initialised_slug() {
-    let _cwd = TempCwd::new();
-    let repo = FileStateRepository;
-    let state = State::new("foo", fixed_date()).expect("valid slug");
-    repo.init("foo", &state).expect("first init should succeed");
-
-    assert!(matches!(
-        repo.init("foo", &state),
-        Err(StateError::AlreadyExists)
-    ));
-}
-
-#[test]
-fn init_rejects_pre_existing_empty_slug_dir() {
-    let _cwd = TempCwd::new();
-    let repo = FileStateRepository;
-    std::fs::create_dir_all(".heist/foo").expect("create empty slug dir");
-
-    let state = State::new("foo", fixed_date()).expect("valid slug");
-    assert!(matches!(
-        repo.init("foo", &state),
-        Err(StateError::AlreadyExists)
-    ));
 }
 
 #[test]
@@ -146,11 +88,13 @@ fn list_slugs_is_empty_when_dot_heist_is_missing() {
 fn list_slugs_returns_initialised_slugs_sorted() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
+    std::fs::create_dir_all(".heist/zeta").expect("create slug dir");
     repo.init(
         "zeta",
         &State::new("zeta", fixed_date()).expect("valid slug"),
     )
     .expect("init should succeed");
+    std::fs::create_dir_all(".heist/alpha").expect("create slug dir");
     repo.init(
         "alpha",
         &State::new("alpha", fixed_date()).expect("valid slug"),
@@ -171,6 +115,7 @@ fn list_slugs_returns_initialised_slugs_sorted() {
 fn list_slugs_ignores_directories_without_a_state_file() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
+    std::fs::create_dir_all(".heist/foo").expect("create slug dir");
     repo.init("foo", &State::new("foo", fixed_date()).expect("valid slug"))
         .expect("init should succeed");
     std::fs::create_dir_all(".heist/empty-dir").expect("create dir without state.json");
@@ -195,27 +140,4 @@ fn save_without_slug_dir_is_unreadable() {
         repo.save("foo", &state),
         Err(StateError::Unreadable(_))
     ));
-}
-
-#[test]
-fn remove_deletes_slug_directory() {
-    let _cwd = TempCwd::new();
-    let repo = FileStateRepository;
-    repo.init("foo", &State::new("foo", fixed_date()).expect("valid slug"))
-        .expect("init should succeed");
-
-    repo.remove("foo").expect("remove should succeed");
-
-    assert!(!repo.exists("foo"));
-    assert!(!state_file_path("foo")
-        .parent()
-        .expect("state path has a parent")
-        .exists());
-}
-
-#[test]
-fn remove_is_a_no_op_when_slug_dir_absent() {
-    let _cwd = TempCwd::new();
-    let repo = FileStateRepository;
-    assert!(repo.remove("nope").is_ok());
 }

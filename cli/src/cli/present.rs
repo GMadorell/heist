@@ -43,7 +43,7 @@ pub fn rollback_diagnostics(errors: &[crate::app::begin::RollbackFailure]) {
         match e {
             RollbackFailure::WorktreeRemove(e) => eprintln!("  - failed to remove worktree: {}", e),
             RollbackFailure::BranchDelete(e) => eprintln!("  - failed to delete branch: {}", e),
-            RollbackFailure::StateRemove(e) => {
+            RollbackFailure::HeistDirRemove(e) => {
                 eprintln!("  - failed to remove state directory: {}", e)
             }
         }

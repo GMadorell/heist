@@ -1,12 +1,14 @@
 pub mod exit_code;
 mod present;
 
+use crate::adapters::file_heist_dir_repository::FileHeistDirRepository;
 use crate::adapters::file_state_repository::FileStateRepository;
 use crate::adapters::filesystem_worktree::FilesystemWorktree;
 use crate::adapters::real_git::RealGit;
 use crate::adapters::system_clock::SystemClock;
 use crate::adapters::validation_fs::ValidationFs;
 use crate::app;
+use crate::ports::heist_dir_repository::HeistDirRepository;
 use crate::ports::state_repository::StateRepository;
 use clap::{Parser, Subcommand};
 use exit_code::ExitCode;
@@ -159,6 +161,7 @@ enum ReviewCommands {
 }
 
 pub fn run(cli: Cli) -> ExitCode {
+    let heist_dir_repo = FileHeistDirRepository;
     let state_repo = FileStateRepository;
     let git = RealGit;
     let fs = FilesystemWorktree;
@@ -167,7 +170,7 @@ pub fn run(cli: Cli) -> ExitCode {
     let repo_root = Path::new(".");
 
     match cli.command {
-        Commands::State { command } => run_state(command, &state_repo, &clock),
+        Commands::State { command } => run_state(command, &heist_dir_repo, &state_repo, &clock),
         Commands::Worktree { command } => {
             run_worktree(command, repo_root, &state_repo, &git, &fs, &clock)
         }
@@ -182,6 +185,7 @@ pub fn run(cli: Cli) -> ExitCode {
             &mode,
             base.as_deref(),
             repo_root,
+            &heist_dir_repo,
             &state_repo,
             &git,
             &fs,
@@ -249,21 +253,24 @@ fn add_error_exit(slug: &str, error: app::worktree::AddError) -> ExitCode {
 
 fn run_state(
     command: StateCommands,
+    heist_dir_repo: &dyn HeistDirRepository,
     repo: &dyn StateRepository,
     clock: &dyn crate::ports::clock::Clock,
 ) -> ExitCode {
     match command {
-        StateCommands::Init { slug } => match app::state::init(repo, clock, &slug) {
-            Ok(()) => ExitCode::Success,
-            Err(app::state::InitError::InvalidSlug(e)) => {
-                present::error(e);
-                ExitCode::Precondition
+        StateCommands::Init { slug } => {
+            match app::state::init(heist_dir_repo, repo, clock, &slug) {
+                Ok(()) => ExitCode::Success,
+                Err(app::state::InitError::InvalidSlug(e)) => {
+                    present::error(e);
+                    ExitCode::Precondition
+                }
+                Err(app::state::InitError::Init(e)) => {
+                    present::state_init_failed(&slug, &e);
+                    ExitCode::from(&e)
+                }
             }
-            Err(app::state::InitError::Init(e)) => {
-                present::state_init_failed(&slug, &e);
-                ExitCode::from(&e)
-            }
-        },
+        }
         StateCommands::Get { slug, field } => match app::state::get(repo, &slug, &field) {
             Ok(value) => {
                 present::line(value);
@@ -644,12 +651,23 @@ fn run_begin(
     mode: &str,
     base: Option<&str>,
     repo_root: &Path,
+    heist_dir_repo: &dyn HeistDirRepository,
     state_repo: &dyn StateRepository,
     git: &dyn crate::ports::git::GitRepository,
     fs: &dyn crate::ports::worktree_fs::WorktreeFs,
     clock: &dyn crate::ports::clock::Clock,
 ) -> ExitCode {
-    match app::begin::begin(repo_root, state_repo, git, fs, clock, slug, mode, base) {
+    match app::begin::begin(
+        repo_root,
+        heist_dir_repo,
+        state_repo,
+        git,
+        fs,
+        clock,
+        slug,
+        mode,
+        base,
+    ) {
         Ok(worktree_value) => {
             present::line(worktree_value);
             ExitCode::Success
@@ -686,7 +704,9 @@ fn run_begin(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::testing::{FakeGit, FakeWorktreeFs, FixedClock, InMemoryStateRepository};
+    use crate::adapters::testing::{
+        FakeGit, FakeWorktreeFs, FixedClock, InMemoryHeistDirRepository, InMemoryStateRepository,
+    };
     use crate::domain::state::{Stage, State};
     use crate::domain::value::{DateValue, NonBlankValue, ScoreWave};
     use crate::ports::git::{GitError, PrState};
@@ -702,9 +722,11 @@ mod tests {
 
     #[test]
     fn state_init_succeeds_for_new_slug() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let code = run_state(
             StateCommands::Init { slug: "foo".into() },
+            &heist_dir_repo,
             &repo,
             &fixed_clock(),
         );
@@ -717,10 +739,12 @@ mod tests {
 
     #[test]
     fn state_init_rejects_existing_slug() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let code = run_state(
             StateCommands::Init { slug: "foo".into() },
+            &heist_dir_repo,
             &repo,
             &fixed_clock(),
         );
@@ -729,6 +753,7 @@ mod tests {
 
     #[test]
     fn state_set_on_missing_slug_is_precondition() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let code = run_state(
             StateCommands::Set {
@@ -736,6 +761,7 @@ mod tests {
                 field: "stage".into(),
                 value: "done".into(),
             },
+            &heist_dir_repo,
             &repo,
             &fixed_clock(),
         );
@@ -744,6 +770,7 @@ mod tests {
 
     #[test]
     fn state_set_persists_valid_field() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let code = run_state(
@@ -752,6 +779,7 @@ mod tests {
                 field: "score_wave".into(),
                 value: "4".into(),
             },
+            &heist_dir_repo,
             &repo,
             &fixed_clock(),
         );
@@ -764,6 +792,7 @@ mod tests {
 
     #[test]
     fn state_set_invalid_numeric_is_precondition_and_leaves_state() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let code = run_state(
@@ -772,6 +801,7 @@ mod tests {
                 field: "score_wave".into(),
                 value: "not-a-number".into(),
             },
+            &heist_dir_repo,
             &repo,
             &fixed_clock(),
         );
@@ -1042,6 +1072,7 @@ mod tests {
     #[test]
     fn begin_happy_path_returns_success_and_advances_to_planning() {
         let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new().with_default_branch("main");
 
@@ -1050,6 +1081,7 @@ mod tests {
             "heavy",
             None,
             temp_dir.path(),
+            &heist_dir_repo,
             &repo,
             &git,
             &FakeWorktreeFs,
@@ -1064,6 +1096,7 @@ mod tests {
     #[test]
     fn begin_collision_returns_precondition_exit_code() {
         let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let git = FakeGit::new().with_default_branch("main");
@@ -1073,6 +1106,7 @@ mod tests {
             "heavy",
             None,
             temp_dir.path(),
+            &heist_dir_repo,
             &repo,
             &git,
             &FakeWorktreeFs,

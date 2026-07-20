@@ -12,7 +12,4 @@ pub trait StateRepository {
     fn save(&self, slug: &str, state: &State) -> Result<(), StateError>;
 
     fn list_slugs(&self) -> Result<Vec<SlugValue>, StateError>;
-
-    /// Removes `.heist/<slug>/` entirely. A no-op (Ok) if it doesn't exist.
-    fn remove(&self, slug: &str) -> Result<(), StateError>;
 }

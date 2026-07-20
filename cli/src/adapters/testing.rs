@@ -3,6 +3,7 @@ use crate::domain::state::State;
 use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
+use crate::ports::heist_dir_repository::HeistDirRepository;
 use crate::ports::state_repository::StateRepository;
 use crate::ports::validation_source::ValidationSource;
 use crate::ports::worktree_fs::WorktreeFs;
@@ -121,10 +122,49 @@ impl StateRepository for InMemoryStateRepository {
         slugs.sort_by(|a, b| a.as_ref().cmp(b.as_ref()));
         Ok(slugs)
     }
+}
+
+/// In-memory `.heist/<slug>/` directory tracker for unit tests: mirrors
+/// `FileHeistDirRepository`'s create/remove semantics without touching disk.
+pub struct InMemoryHeistDirRepository {
+    dirs: std::cell::RefCell<std::collections::HashSet<String>>,
+}
+
+impl Default for InMemoryHeistDirRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl InMemoryHeistDirRepository {
+    pub fn new() -> Self {
+        InMemoryHeistDirRepository {
+            dirs: std::cell::RefCell::new(std::collections::HashSet::new()),
+        }
+    }
+
+    pub fn with_dir(self, slug: &str) -> Self {
+        self.dirs.borrow_mut().insert(slug.to_string());
+        self
+    }
+
+    pub fn exists(&self, slug: &str) -> bool {
+        self.dirs.borrow().contains(slug)
+    }
+}
+
+impl HeistDirRepository for InMemoryHeistDirRepository {
+    fn create(&self, slug: &str) -> Result<(), StateError> {
+        let mut dirs = self.dirs.borrow_mut();
+        if dirs.contains(slug) {
+            return Err(StateError::AlreadyExists);
+        }
+        dirs.insert(slug.to_string());
+        Ok(())
+    }
 
     fn remove(&self, slug: &str) -> Result<(), StateError> {
-        self.states.borrow_mut().remove(slug);
-        self.load_errors.borrow_mut().remove(slug);
+        self.dirs.borrow_mut().remove(slug);
         Ok(())
     }
 }

@@ -1,3 +1,4 @@
+use crate::adapters::file_heist_dir_repository::heist_dir_path;
 use crate::domain::error::StateError;
 use crate::domain::state::State;
 use crate::domain::value::SlugValue;
@@ -12,16 +13,7 @@ impl StateRepository for FileStateRepository {
     }
 
     fn init(&self, slug: &str, state: &State) -> Result<(), StateError> {
-        let state_file = state_file_path(slug);
-        let state_dir = state_file.parent().expect("state path has a parent");
-
-        // Reject on directory existence (not file existence) so a pre-existing
-        // but empty `.heist/<slug>/` still counts as "already initialised".
-        if state_dir.exists() {
-            return Err(StateError::AlreadyExists);
-        }
-        std::fs::create_dir_all(state_dir).map_err(StateError::Unreadable)?;
-        save_state_file(state, &state_file)
+        save_state_file(state, &state_file_path(slug))
     }
 
     fn load(&self, slug: &str) -> Result<State, StateError> {
@@ -57,21 +49,10 @@ impl StateRepository for FileStateRepository {
         slugs.sort_by(|a, b| a.as_ref().cmp(b.as_ref()));
         Ok(slugs)
     }
-
-    fn remove(&self, slug: &str) -> Result<(), StateError> {
-        let dir = state_file_path(slug)
-            .parent()
-            .expect("state path has a parent")
-            .to_path_buf();
-        if !dir.exists() {
-            return Ok(());
-        }
-        std::fs::remove_dir_all(&dir).map_err(StateError::Unreadable)
-    }
 }
 
 fn state_file_path(slug: &str) -> PathBuf {
-    Path::new(".heist").join(slug).join("state.json")
+    heist_dir_path(slug).join("state.json")
 }
 
 fn load_state_file(path: &Path) -> Result<State, StateError> {

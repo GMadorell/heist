@@ -3,6 +3,7 @@ use crate::domain::error::{FieldError, StateError};
 use crate::domain::value::{NonBlankValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository};
+use crate::ports::heist_dir_repository::HeistDirRepository;
 use crate::ports::state_repository::StateRepository;
 use crate::ports::worktree_fs::WorktreeFs;
 use std::path::Path;
@@ -26,7 +27,7 @@ impl CollisionArtifact {
 pub enum RollbackFailure {
     WorktreeRemove(GitError),
     BranchDelete(GitError),
-    StateRemove(StateError),
+    HeistDirRemove(StateError),
 }
 
 pub enum BeginError {
@@ -43,9 +44,10 @@ pub enum BeginError {
     },
 }
 
+#[allow(clippy::too_many_arguments)]
 fn rollback(
     repo_root: &Path,
-    state_repo: &dyn StateRepository,
+    heist_dir_repo: &dyn HeistDirRepository,
     git: &dyn GitRepository,
     slug: &str,
     branch: &str,
@@ -63,8 +65,8 @@ fn rollback(
             errors.push(RollbackFailure::BranchDelete(e));
         }
     }
-    if let Err(e) = state_repo.remove(slug) {
-        errors.push(RollbackFailure::StateRemove(e));
+    if let Err(e) = heist_dir_repo.remove(slug) {
+        errors.push(RollbackFailure::HeistDirRemove(e));
     }
     errors
 }
@@ -72,6 +74,7 @@ fn rollback(
 #[allow(clippy::too_many_arguments)]
 pub fn begin(
     repo_root: &Path,
+    heist_dir_repo: &dyn HeistDirRepository,
     state_repo: &dyn StateRepository,
     git: &dyn GitRepository,
     fs: &dyn WorktreeFs,
@@ -93,7 +96,7 @@ pub fn begin(
         return Err(BeginError::Collision(CollisionArtifact::Branch));
     }
 
-    match app::state::init(state_repo, clock, slug) {
+    match app::state::init(heist_dir_repo, state_repo, clock, slug) {
         Ok(()) => {}
         Err(app::state::InitError::InvalidSlug(e)) => return Err(BeginError::InvalidSlug(e)),
         Err(app::state::InitError::Init(StateError::AlreadyExists)) => {
@@ -109,7 +112,7 @@ pub fn begin(
     }
 
     if let Err(error) = app::state::set(state_repo, clock, slug, "mode", mode) {
-        let rollback_errors = rollback(repo_root, state_repo, git, slug, branch.as_ref());
+        let rollback_errors = rollback(repo_root, heist_dir_repo, git, slug, branch.as_ref());
         return Err(BeginError::State {
             error,
             rollback_errors,
@@ -120,7 +123,7 @@ pub fn begin(
     {
         Ok(v) => v,
         Err(error) => {
-            let rollback_errors = rollback(repo_root, state_repo, git, slug, branch.as_ref());
+            let rollback_errors = rollback(repo_root, heist_dir_repo, git, slug, branch.as_ref());
             return Err(BeginError::Worktree {
                 error,
                 rollback_errors,
@@ -129,7 +132,7 @@ pub fn begin(
     };
 
     if let Err(error) = app::state::set(state_repo, clock, slug, "stage", "planning") {
-        let rollback_errors = rollback(repo_root, state_repo, git, slug, branch.as_ref());
+        let rollback_errors = rollback(repo_root, heist_dir_repo, git, slug, branch.as_ref());
         return Err(BeginError::State {
             error,
             rollback_errors,
@@ -142,7 +145,9 @@ pub fn begin(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::testing::{FakeGit, FakeWorktreeFs, FixedClock, InMemoryStateRepository};
+    use crate::adapters::testing::{
+        FakeGit, FakeWorktreeFs, FixedClock, InMemoryHeistDirRepository, InMemoryStateRepository,
+    };
     use crate::domain::value::DateValue;
     use std::path::Path;
 
@@ -152,11 +157,13 @@ mod tests {
 
     #[test]
     fn begin_happy_path_composes_init_mode_worktree_and_stage() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new().with_default_branch("main");
 
         let result = begin(
             Path::new("."),
+            &heist_dir_repo,
             &repo,
             &git,
             &FakeWorktreeFs,
@@ -176,11 +183,13 @@ mod tests {
 
     #[test]
     fn begin_rejects_malformed_slug_before_any_mutation() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new().with_default_branch("main");
 
         let result = begin(
             Path::new("."),
+            &heist_dir_repo,
             &repo,
             &git,
             &FakeWorktreeFs,
@@ -192,6 +201,7 @@ mod tests {
 
         assert!(matches!(result, Err(BeginError::InvalidSlug(_))));
         assert!(!repo.exists("Not A Slug"));
+        assert!(!heist_dir_repo.exists("Not A Slug"));
     }
 
     #[test]
@@ -204,9 +214,11 @@ mod tests {
             )
             .expect("valid slug"),
         );
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let git = FakeGit::new().with_default_branch("main");
         let result = begin(
             Path::new("."),
+            &heist_dir_repo,
             &repo_with_state,
             &git,
             &FakeWorktreeFs,
@@ -226,6 +238,7 @@ mod tests {
             .with_existing_worktree("bar");
         let result = begin(
             Path::new("."),
+            &heist_dir_repo,
             &repo_no_state,
             &git_worktree_collision,
             &FakeWorktreeFs,
@@ -244,6 +257,7 @@ mod tests {
             .with_branch("heist/baz");
         let result = begin(
             Path::new("."),
+            &heist_dir_repo,
             &repo_no_state,
             &git_branch_collision,
             &FakeWorktreeFs,
@@ -260,11 +274,13 @@ mod tests {
 
     #[test]
     fn begin_rolls_back_state_dir_when_mode_set_fails_before_worktree_creation() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new().with_default_branch("main");
 
         let result = begin(
             Path::new("."),
+            &heist_dir_repo,
             &repo,
             &git,
             &FakeWorktreeFs,
@@ -275,7 +291,10 @@ mod tests {
         );
 
         assert!(matches!(result, Err(BeginError::State { .. })));
-        assert!(!repo.exists("foo"), "state dir should be rolled back");
+        assert!(
+            !heist_dir_repo.exists("foo"),
+            "heist dir should be rolled back"
+        );
         assert!(
             git.removed_worktree_paths().is_empty(),
             "nothing was created yet, rollback must not attempt worktree removal"
@@ -325,9 +344,6 @@ mod tests {
                 }
                 self.inner.save(slug, state)
             }
-            fn remove(&self, slug: &str) -> Result<(), crate::domain::error::StateError> {
-                self.inner.remove(slug)
-            }
             fn list_slugs(
                 &self,
             ) -> Result<Vec<crate::domain::value::SlugValue>, crate::domain::error::StateError>
@@ -336,6 +352,7 @@ mod tests {
             }
         }
 
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = FailAfterModeStateRepository {
             inner: InMemoryStateRepository::new(),
             set_calls: std::cell::Cell::new(0),
@@ -344,6 +361,7 @@ mod tests {
 
         let result = begin(
             Path::new("."),
+            &heist_dir_repo,
             &repo,
             &git,
             &FakeWorktreeFs,
@@ -354,7 +372,10 @@ mod tests {
         );
 
         assert!(matches!(result, Err(BeginError::State { .. })));
-        assert!(!repo.inner.exists("foo"), "state dir should be rolled back");
+        assert!(
+            !heist_dir_repo.exists("foo"),
+            "heist dir should be rolled back"
+        );
         assert_eq!(
             git.removed_worktree_paths().len(),
             1,
@@ -386,11 +407,13 @@ mod tests {
             }
         }
 
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new().with_default_branch("main");
 
         let result = begin(
             Path::new("."),
+            &heist_dir_repo,
             &repo,
             &git,
             &FailingLinkFs,
@@ -403,6 +426,9 @@ mod tests {
         assert!(matches!(result, Err(BeginError::Worktree { .. })));
         assert_eq!(git.removed_worktree_paths().len(), 1);
         assert_eq!(git.deleted_branch_names(), vec!["heist/foo".to_string()]);
-        assert!(!repo.exists("foo"), "state dir should be rolled back");
+        assert!(
+            !heist_dir_repo.exists("foo"),
+            "heist dir should be rolled back"
+        );
     }
 }
