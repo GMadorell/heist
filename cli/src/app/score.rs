@@ -1,5 +1,6 @@
 use crate::domain::error::StateError;
 use crate::domain::score::{self, Finding};
+use crate::ports::score_repository::ScoreRepository;
 use crate::ports::state_repository::StateRepository;
 
 #[derive(Debug)]
@@ -22,12 +23,13 @@ enum LoadError {
 
 fn load_and_check(
     repo: &dyn StateRepository,
+    scores: &dyn ScoreRepository,
     slug: &str,
 ) -> Result<(score::Score, usize), LoadError> {
     if !repo.exists(slug) {
         return Err(LoadError::NoState);
     }
-    let text = repo.load_score(slug).map_err(LoadError::Io)?;
+    let text = scores.load_score(slug).map_err(LoadError::Io)?;
     let text = text.ok_or(LoadError::NoScore)?;
     let parsed = score::parse(&text).map_err(LoadError::Findings)?;
     let findings = score::check(&parsed);
@@ -88,8 +90,12 @@ pub enum WaveError {
     NoSuchWave(u32),
 }
 
-pub fn check(repo: &dyn StateRepository, slug: &str) -> Result<CheckOutcome, CheckError> {
-    let (parsed, waves) = load_and_check(repo, slug)?;
+pub fn check(
+    repo: &dyn StateRepository,
+    scores: &dyn ScoreRepository,
+    slug: &str,
+) -> Result<CheckOutcome, CheckError> {
+    let (parsed, waves) = load_and_check(repo, scores, slug)?;
     Ok(CheckOutcome {
         steps: parsed.steps.len(),
         waves,
@@ -98,10 +104,11 @@ pub fn check(repo: &dyn StateRepository, slug: &str) -> Result<CheckOutcome, Che
 
 pub fn record(
     repo: &dyn StateRepository,
+    scores: &dyn ScoreRepository,
     clock: &dyn crate::ports::clock::Clock,
     slug: &str,
 ) -> Result<RecordOutcome, RecordError> {
-    let (parsed, waves) = load_and_check(repo, slug)?;
+    let (parsed, waves) = load_and_check(repo, scores, slug)?;
     let mut state = repo.load(slug).map_err(RecordError::Save)?;
     state.score_steps_total = crate::domain::value::ScoreStepsTotal::new(parsed.steps.len() as u32);
     state.score_waves_total = crate::domain::value::ScoreWavesTotal::new(waves as u32);
@@ -115,13 +122,14 @@ pub fn record(
 
 pub fn wave(
     repo: &dyn StateRepository,
+    scores: &dyn ScoreRepository,
     slug: &str,
     n: u32,
 ) -> Result<Vec<(u32, String)>, WaveError> {
     if !repo.exists(slug) {
         return Err(WaveError::NoState);
     }
-    let text = repo.load_score(slug).map_err(WaveError::Io)?;
+    let text = scores.load_score(slug).map_err(WaveError::Io)?;
     let text = text.ok_or(WaveError::NoScore)?;
     let parsed = score::parse(&text).map_err(WaveError::Findings)?;
     score::wave_blocks(&parsed, n).map_err(|score::NoSuchWave(n)| WaveError::NoSuchWave(n))
@@ -165,7 +173,7 @@ mod tests {
             .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
             .with_score("foo", VALID_SCORE);
 
-        let outcome = check(&repo, "foo").expect("should check ok");
+        let outcome = check(&repo, &repo, "foo").expect("should check ok");
         assert_eq!(outcome.steps, 1);
         assert_eq!(outcome.waves, 1);
     }
@@ -176,7 +184,7 @@ mod tests {
             .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
             .with_score("foo", MALFORMED_SCORE);
 
-        let err = check(&repo, "foo").expect_err("should fail");
+        let err = check(&repo, &repo, "foo").expect_err("should fail");
         match err {
             CheckError::Findings(findings) => assert!(!findings.is_empty()),
             _ => panic!("expected CheckError::Findings"),
@@ -194,7 +202,7 @@ mod tests {
             .with_score("foo", VALID_SCORE);
         let clock = FixedClock(today.clone());
 
-        let outcome = record(&repo, &clock, "foo").expect("should record ok");
+        let outcome = record(&repo, &repo, &clock, "foo").expect("should record ok");
         assert_eq!(outcome.steps, 1);
         assert_eq!(outcome.waves, 1);
 
@@ -230,12 +238,12 @@ mod tests {
             .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
             .with_score("foo", TWO_WAVE_SCORE);
 
-        let blocks = wave(&repo, "foo", 1).expect("wave 1 should exist");
+        let blocks = wave(&repo, &repo, "foo", 1).expect("wave 1 should exist");
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].0, 1);
         assert!(blocks[0].1.starts_with("### Step 1: add widget"));
 
-        let err = wave(&repo, "foo", 3).expect_err("wave 3 should not exist");
+        let err = wave(&repo, &repo, "foo", 3).expect_err("wave 3 should not exist");
         match err {
             WaveError::NoSuchWave(3) => {}
             _ => panic!("expected WaveError::NoSuchWave(3)"),

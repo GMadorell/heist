@@ -3,6 +3,7 @@ use crate::domain::state::State;
 use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
+use crate::ports::score_repository::ScoreRepository;
 use crate::ports::state_repository::StateRepository;
 use crate::ports::validation_source::ValidationSource;
 use crate::ports::worktree_fs::WorktreeFs;
@@ -139,7 +140,9 @@ impl StateRepository for InMemoryStateRepository {
         slugs.sort_by(|a, b| a.as_ref().cmp(b.as_ref()));
         Ok(slugs)
     }
+}
 
+impl ScoreRepository for InMemoryStateRepository {
     fn load_score(&self, slug: &str) -> Result<Option<String>, std::io::Error> {
         if let Some(message) = self.score_errors.borrow().get(slug) {
             return Err(std::io::Error::other(message.clone()));

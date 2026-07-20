@@ -1,12 +1,14 @@
 pub mod exit_code;
 mod present;
 
+use crate::adapters::file_score_repository::FileScoreRepository;
 use crate::adapters::file_state_repository::FileStateRepository;
 use crate::adapters::filesystem_worktree::FilesystemWorktree;
 use crate::adapters::real_git::RealGit;
 use crate::adapters::system_clock::SystemClock;
 use crate::adapters::validation_fs::ValidationFs;
 use crate::app;
+use crate::ports::score_repository::ScoreRepository;
 use crate::ports::state_repository::StateRepository;
 use clap::{Parser, Subcommand};
 use exit_code::ExitCode;
@@ -175,6 +177,7 @@ enum ScoreCommands {
 
 pub fn run(cli: Cli) -> ExitCode {
     let state_repo = FileStateRepository;
+    let score_repo = FileScoreRepository;
     let git = RealGit;
     let fs = FilesystemWorktree;
     let clock = SystemClock;
@@ -192,7 +195,7 @@ pub fn run(cli: Cli) -> ExitCode {
         Commands::List => run_list(&state_repo),
         Commands::Base { slug } => run_base(&slug, repo_root, &state_repo, &git),
         Commands::Sync { slug } => run_sync(&slug, &state_repo, &git),
-        Commands::Score { command } => run_score(command, &state_repo, &clock),
+        Commands::Score { command } => run_score(command, &state_repo, &score_repo, &clock),
     }
 }
 
@@ -631,10 +634,11 @@ fn run_sync(
 fn run_score(
     command: ScoreCommands,
     state_repo: &dyn StateRepository,
+    score_repo: &dyn ScoreRepository,
     clock: &dyn crate::ports::clock::Clock,
 ) -> ExitCode {
     match command {
-        ScoreCommands::Check { slug } => match app::score::check(state_repo, &slug) {
+        ScoreCommands::Check { slug } => match app::score::check(state_repo, score_repo, &slug) {
             Ok(outcome) => {
                 present::score_check_ok(outcome.steps, outcome.waves);
                 ExitCode::Success
@@ -656,7 +660,7 @@ fn run_score(
                 ExitCode::Precondition
             }
         },
-        ScoreCommands::Record { slug } => match app::score::record(state_repo, clock, &slug) {
+        ScoreCommands::Record { slug } => match app::score::record(state_repo, score_repo, clock, &slug) {
             Ok(outcome) => {
                 present::score_record_ok(outcome.steps, outcome.waves);
                 ExitCode::Success
@@ -682,7 +686,7 @@ fn run_score(
                 ExitCode::from(&e)
             }
         },
-        ScoreCommands::Wave { slug, n } => match app::score::wave(state_repo, &slug, n) {
+        ScoreCommands::Wave { slug, n } => match app::score::wave(state_repo, score_repo, &slug, n) {
             Ok(blocks) => {
                 present::score_wave_blocks(&blocks);
                 ExitCode::Success
@@ -1085,6 +1089,7 @@ mod tests {
         let code = run_score(
             ScoreCommands::Check { slug: "foo".into() },
             &repo,
+            &repo,
             &fixed_clock(),
         );
 
@@ -1109,6 +1114,7 @@ mod tests {
 
         let code = run_score(
             ScoreCommands::Record { slug: "foo".into() },
+            &repo,
             &repo,
             &fixed_clock(),
         );
@@ -1141,6 +1147,7 @@ mod tests {
                 n: 1,
             },
             &repo,
+            &repo,
             &fixed_clock(),
         );
         assert_eq!(ok_code, ExitCode::Success);
@@ -1150,6 +1157,7 @@ mod tests {
                 slug: "foo".into(),
                 n: 2,
             },
+            &repo,
             &repo,
             &fixed_clock(),
         );
