@@ -24,9 +24,9 @@ Run `heist validation check <repo-root-absolute-path>`.
 
 ### 2. Planning
 
-1. Determine the slug. If a `<slug>` was carried in (a piece from a `heat.md` prompt passes `--slug`), use it verbatim. Otherwise propose a 2-5 word kebab-case slug from the description yourself (no confirmation prompt — see SKILL.md's slug-proposal rule).
+1. Determine the slug. If a `<slug>` was carried in (a piece from a `heat.md` prompt passes `--slug`), use it verbatim. Otherwise propose a 2-5 word kebab-case slug from the description yourself — no confirmation prompt, the human sees the final slug in the blueprint and `heist list` shortly after.
 2. Run `heist begin <slug> --mode <mode>` (append `--base <branch>` when a `<branch>` was carried in); it prints the worktree path.
-   - exit 2 with a collision message: auto-derive a variant slug (append `-2`, `-3`, ...) and retry, bounded (see SKILL.md); if every variant collides, ask the human for a slug via `AskUserQuestion`.
+   - exit 2 with a collision message: auto-derive a variant by appending `-2`, `-3`, ... to the proposed slug and retry, up to 5 attempts. If every variant still collides, ask the human for a slug via `AskUserQuestion` instead of looping forever.
    - any other nonzero exit: halt, surface the raw stderr to the human.
 
 #### 2a. No plan detected: relay loop with the Mastermind
