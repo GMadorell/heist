@@ -1,8 +1,10 @@
 use crate::common::TempCwd;
+use heist_cli::adapters::file_heist_dir_repository::FileHeistDirRepository;
 use heist_cli::adapters::file_state_repository::FileStateRepository;
 use heist_cli::domain::error::StateError;
 use heist_cli::domain::state::State;
 use heist_cli::domain::value::{DateValue, ScoreWave};
+use heist_cli::ports::heist_dir_repository::HeistDirRepository;
 use heist_cli::ports::state_repository::StateRepository;
 use std::path::PathBuf;
 
@@ -21,16 +23,14 @@ fn exists_false_before_init() {
     assert!(!repo.exists("foo"));
 }
 
-// `init` only writes `state.json`; creating `.heist/<slug>/` (and rejecting
-// a pre-existing one) is `FileHeistDirRepository`'s job, covered in
-// file_heist_dir_repository_tests.rs. These tests pre-create the slug dir
-// themselves, standing in for that repository's `create`.
 #[test]
 fn init_writes_state_file_visible_to_exists_and_load() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
     let state = State::new("foo", fixed_date()).expect("valid slug");
-    std::fs::create_dir_all(".heist/foo").expect("create slug dir");
+    FileHeistDirRepository
+        .create("foo")
+        .expect("create slug dir");
 
     repo.init("foo", &state).expect("init should succeed");
 
@@ -51,7 +51,8 @@ fn load_unparseable_file_is_unparseable() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
     let path = state_file_path("foo");
-    std::fs::create_dir_all(path.parent().expect("state path has a parent"))
+    FileHeistDirRepository
+        .create("foo")
         .expect("create slug dir");
     std::fs::write(&path, "not json").expect("write garbage state file");
 
@@ -64,7 +65,9 @@ fn save_then_load_roundtrips() {
     let repo = FileStateRepository;
     let mut state = State::new("foo", fixed_date()).expect("valid slug");
     state.score_wave = ScoreWave::new(3);
-    std::fs::create_dir_all(".heist/foo").expect("create slug dir");
+    FileHeistDirRepository
+        .create("foo")
+        .expect("create slug dir");
 
     repo.save("foo", &state).expect("save should succeed");
 
@@ -88,13 +91,17 @@ fn list_slugs_is_empty_when_dot_heist_is_missing() {
 fn list_slugs_returns_initialised_slugs_sorted() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
-    std::fs::create_dir_all(".heist/zeta").expect("create slug dir");
+    FileHeistDirRepository
+        .create("zeta")
+        .expect("create slug dir");
     repo.init(
         "zeta",
         &State::new("zeta", fixed_date()).expect("valid slug"),
     )
     .expect("init should succeed");
-    std::fs::create_dir_all(".heist/alpha").expect("create slug dir");
+    FileHeistDirRepository
+        .create("alpha")
+        .expect("create slug dir");
     repo.init(
         "alpha",
         &State::new("alpha", fixed_date()).expect("valid slug"),
@@ -115,10 +122,14 @@ fn list_slugs_returns_initialised_slugs_sorted() {
 fn list_slugs_ignores_directories_without_a_state_file() {
     let _cwd = TempCwd::new();
     let repo = FileStateRepository;
-    std::fs::create_dir_all(".heist/foo").expect("create slug dir");
+    FileHeistDirRepository
+        .create("foo")
+        .expect("create slug dir");
     repo.init("foo", &State::new("foo", fixed_date()).expect("valid slug"))
         .expect("init should succeed");
-    std::fs::create_dir_all(".heist/empty-dir").expect("create dir without state.json");
+    FileHeistDirRepository
+        .create("empty-dir")
+        .expect("create dir without state.json");
 
     let slugs: Vec<String> = repo
         .list_slugs()
