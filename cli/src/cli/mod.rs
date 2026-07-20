@@ -8,8 +8,11 @@ use crate::adapters::real_git::RealGit;
 use crate::adapters::system_clock::SystemClock;
 use crate::adapters::validation_fs::ValidationFs;
 use crate::app;
+use crate::ports::clock::Clock;
+use crate::ports::git::GitRepository;
 use crate::ports::heist_dir_repository::HeistDirRepository;
 use crate::ports::state_repository::StateRepository;
+use crate::ports::worktree_fs::WorktreeFs;
 use clap::{Parser, Subcommand};
 use exit_code::ExitCode;
 use std::path::Path;
@@ -255,7 +258,7 @@ fn run_state(
     command: StateCommands,
     heist_dir_repo: &dyn HeistDirRepository,
     repo: &dyn StateRepository,
-    clock: &dyn crate::ports::clock::Clock,
+    clock: &dyn Clock,
 ) -> ExitCode {
     match command {
         StateCommands::Init { slug } => {
@@ -328,9 +331,9 @@ fn run_worktree(
     command: WorktreeCommands,
     repo_root: &Path,
     state_repo: &dyn StateRepository,
-    git: &dyn crate::ports::git::GitRepository,
-    fs: &dyn crate::ports::worktree_fs::WorktreeFs,
-    clock: &dyn crate::ports::clock::Clock,
+    git: &dyn GitRepository,
+    fs: &dyn WorktreeFs,
+    clock: &dyn Clock,
 ) -> ExitCode {
     match command {
         WorktreeCommands::Add { slug, base } => {
@@ -455,7 +458,7 @@ fn run_review(
     command: ReviewCommands,
     repo_root: &Path,
     state_repo: &dyn StateRepository,
-    git: &dyn crate::ports::git::GitRepository,
+    git: &dyn GitRepository,
 ) -> ExitCode {
     match command {
         ReviewCommands::Select { slug } => {
@@ -523,7 +526,7 @@ fn run_base(
     slug: &str,
     repo_root: &Path,
     state_repo: &dyn StateRepository,
-    git: &dyn crate::ports::git::GitRepository,
+    git: &dyn GitRepository,
 ) -> ExitCode {
     let main_branch = git.default_branch(repo_root);
 
@@ -581,7 +584,7 @@ fn run_base(
 fn run_sync(
     slug: &str,
     state_repo: &dyn StateRepository,
-    git: &dyn crate::ports::git::GitRepository,
+    git: &dyn GitRepository,
 ) -> ExitCode {
     match app::sync::sync(state_repo, git, slug) {
         Ok(action) => {
@@ -653,9 +656,9 @@ fn run_begin(
     repo_root: &Path,
     heist_dir_repo: &dyn HeistDirRepository,
     state_repo: &dyn StateRepository,
-    git: &dyn crate::ports::git::GitRepository,
-    fs: &dyn crate::ports::worktree_fs::WorktreeFs,
-    clock: &dyn crate::ports::clock::Clock,
+    git: &dyn GitRepository,
+    fs: &dyn WorktreeFs,
+    clock: &dyn Clock,
 ) -> ExitCode {
     match app::begin::begin(
         repo_root,

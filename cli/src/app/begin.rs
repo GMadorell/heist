@@ -1,6 +1,7 @@
 use crate::app;
 use crate::domain::error::{FieldError, StateError};
 use crate::domain::value::{NonBlankValue, SlugValue};
+use crate::domain::worktree::{branch_name, worktree_path};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository};
 use crate::ports::heist_dir_repository::HeistDirRepository;
@@ -55,8 +56,8 @@ fn rollback(
     let mut errors = Vec::new();
 
     if git.worktree_exists(repo_root, slug) {
-        let worktree_path = crate::domain::worktree::worktree_path(repo_root, slug);
-        if let Err(e) = git.remove_worktree(repo_root, &worktree_path) {
+        let path = worktree_path(repo_root, slug);
+        if let Err(e) = git.remove_worktree(repo_root, &path) {
             errors.push(RollbackFailure::WorktreeRemove(e));
         }
     }
@@ -91,7 +92,7 @@ pub fn begin(
     if git.worktree_exists(repo_root, slug) {
         return Err(BeginError::Collision(CollisionArtifact::Worktree));
     }
-    let branch = crate::domain::worktree::branch_name(slug).map_err(BeginError::InvalidSlug)?;
+    let branch = branch_name(slug).map_err(BeginError::InvalidSlug)?;
     if git.branch_exists(repo_root, branch.as_ref()) {
         return Err(BeginError::Collision(CollisionArtifact::Branch));
     }
@@ -148,8 +149,10 @@ mod tests {
     use crate::adapters::testing::{
         FakeGit, FakeWorktreeFs, FixedClock, InMemoryHeistDirRepository, InMemoryStateRepository,
     };
+    use crate::domain::state::{Mode, Stage, State};
     use crate::domain::value::DateValue;
-    use std::path::Path;
+    use crate::ports::worktree_fs::WorktreeFs;
+    use std::path::{Path, PathBuf};
 
     fn fixed_clock() -> FixedClock {
         FixedClock(DateValue::parse("today", "2026-01-01").expect("valid date"))
@@ -175,8 +178,8 @@ mod tests {
 
         assert!(result.is_ok(), "begin should succeed");
         let state = repo.get("my-slug").expect("state should exist");
-        assert_eq!(state.mode, crate::domain::state::Mode::Medium);
-        assert_eq!(state.stage, crate::domain::state::Stage::Planning);
+        assert_eq!(state.mode, Mode::Medium);
+        assert_eq!(state.stage, Stage::Planning);
         assert!(state.worktree.is_some());
         assert!(state.branch.is_some());
     }
@@ -208,7 +211,7 @@ mod tests {
     fn begin_rejects_precheck_collision_for_existing_state_worktree_or_branch() {
         let repo_with_state = InMemoryStateRepository::new().with_state(
             "foo",
-            crate::domain::state::State::new(
+            State::new(
                 "foo",
                 DateValue::parse("today", "2026-01-01").expect("valid date"),
             )
@@ -316,14 +319,14 @@ mod tests {
             fn load(
                 &self,
                 slug: &str,
-            ) -> Result<crate::domain::state::State, crate::domain::error::StateError> {
+            ) -> Result<State, StateError> {
                 self.inner.load(slug)
             }
             fn save(
                 &self,
                 slug: &str,
-                state: &crate::domain::state::State,
-            ) -> Result<(), crate::domain::error::StateError> {
+                state: &State,
+            ) -> Result<(), StateError> {
                 let call = self.set_calls.get();
                 self.set_calls.set(call + 1);
                 // Saves happen in order: 0 = init's own save, 1 = the "mode"
@@ -332,7 +335,7 @@ mod tests {
                 // edge of the flowchart is actually exercised (not the
                 // earlier steps).
                 if call == 3 {
-                    return Err(crate::domain::error::StateError::Unreadable(
+                    return Err(StateError::Unreadable(
                         std::io::Error::other("simulated stage-save failure"),
                     ));
                 }
@@ -340,7 +343,7 @@ mod tests {
             }
             fn list_slugs(
                 &self,
-            ) -> Result<Vec<crate::domain::value::SlugValue>, crate::domain::error::StateError>
+            ) -> Result<Vec<SlugValue>, StateError>
             {
                 self.inner.list_slugs()
             }
@@ -380,9 +383,6 @@ mod tests {
 
     #[test]
     fn begin_rolls_back_worktree_and_branch_when_a_later_step_fails() {
-        use crate::ports::worktree_fs::WorktreeFs;
-        use std::path::PathBuf;
-
         struct FailingLinkFs;
         impl WorktreeFs for FailingLinkFs {
             fn ensure_worktrees_ignored(&self, _repo_root: &Path) -> std::io::Result<bool> {

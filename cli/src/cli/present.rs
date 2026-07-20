@@ -1,7 +1,10 @@
+use crate::app::begin::RollbackFailure;
 use crate::app::list::ListRow;
+use crate::app::sync::SyncAction;
 use crate::app::worktree::CleanupOutcome;
 use crate::domain::review::Lane;
 use crate::domain::state::State;
+use crate::ports::git::GitError;
 use std::fmt::Display;
 
 pub fn error(e: impl Display) {
@@ -32,9 +35,7 @@ pub fn no_state_for_remove(slug: &str) {
     eprintln!("no state found for slug {}", slug);
 }
 
-pub fn rollback_diagnostics(errors: &[crate::app::begin::RollbackFailure]) {
-    use crate::app::begin::RollbackFailure;
-
+pub fn rollback_diagnostics(errors: &[RollbackFailure]) {
     if errors.is_empty() {
         return;
     }
@@ -160,8 +161,7 @@ pub fn no_remote_default_for_review(slug: &str, e: impl Display) {
     );
 }
 
-pub fn sync_action(action: &crate::app::sync::SyncAction) {
-    use crate::app::sync::SyncAction;
+pub fn sync_action(action: &SyncAction) {
     match action {
         SyncAction::RebasedOntoMain { onto } => println!("synced: rebased onto {}", onto),
         SyncAction::MergedBase { base_ref } => println!("synced: merged {}", base_ref),
@@ -222,7 +222,7 @@ pub fn sync_wrong_checkout(slug: &str, expected: &str, actual: &str) {
     );
 }
 
-pub fn sync_fetch_failed(error: &crate::ports::git::GitError) {
+pub fn sync_fetch_failed(error: &GitError) {
     eprintln!(
         "refusing to sync: could not fetch origin, so local refs may be stale: {}. Fix the environment and re-run.",
         error

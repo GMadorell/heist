@@ -115,8 +115,6 @@ impl StateRepository for InMemoryStateRepository {
     }
 }
 
-/// In-memory `.heist/<slug>/` directory tracker for unit tests: mirrors
-/// `FileHeistDirRepository`'s create/remove semantics without touching disk.
 pub struct InMemoryHeistDirRepository {
     dirs: std::cell::RefCell<std::collections::HashSet<String>>,
 }
