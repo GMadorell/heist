@@ -2,7 +2,7 @@ use crate::app;
 use crate::domain::error::{FieldError, StateError};
 use crate::domain::value::{NonBlankValue, SlugValue};
 use crate::ports::clock::Clock;
-use crate::ports::git::GitRepository;
+use crate::ports::git::{GitError, GitRepository};
 use crate::ports::state_repository::StateRepository;
 use crate::ports::worktree_fs::WorktreeFs;
 use std::path::Path;
@@ -23,17 +23,23 @@ impl CollisionArtifact {
     }
 }
 
+pub enum RollbackFailure {
+    WorktreeRemove(GitError),
+    BranchDelete(GitError),
+    StateRemove(StateError),
+}
+
 pub enum BeginError {
     InvalidSlug(FieldError),
     Collision(CollisionArtifact),
     Init(StateError),
     State {
         error: app::state::SetError,
-        rollback_errors: Vec<String>,
+        rollback_errors: Vec<RollbackFailure>,
     },
     Worktree {
         error: app::worktree::AddError,
-        rollback_errors: Vec<String>,
+        rollback_errors: Vec<RollbackFailure>,
     },
 }
 
@@ -43,22 +49,22 @@ fn rollback(
     git: &dyn GitRepository,
     slug: &str,
     branch: &str,
-) -> Vec<String> {
+) -> Vec<RollbackFailure> {
     let mut errors = Vec::new();
 
     if git.worktree_exists(repo_root, slug) {
         let worktree_path = crate::domain::worktree::worktree_path(repo_root, slug);
         if let Err(e) = git.remove_worktree(repo_root, &worktree_path) {
-            errors.push(format!("failed to remove worktree: {}", e));
+            errors.push(RollbackFailure::WorktreeRemove(e));
         }
     }
     if git.branch_exists(repo_root, branch) {
         if let Err(e) = git.delete_branch(repo_root, branch) {
-            errors.push(format!("failed to delete branch: {}", e));
+            errors.push(RollbackFailure::BranchDelete(e));
         }
     }
     if let Err(e) = state_repo.remove(slug) {
-        errors.push(format!("failed to remove state directory: {}", e));
+        errors.push(RollbackFailure::StateRemove(e));
     }
     errors
 }

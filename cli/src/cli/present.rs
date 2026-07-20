@@ -32,6 +32,24 @@ pub fn no_state_for_remove(slug: &str) {
     eprintln!("no state found for slug {}", slug);
 }
 
+pub fn rollback_diagnostics(errors: &[crate::app::begin::RollbackFailure]) {
+    use crate::app::begin::RollbackFailure;
+
+    if errors.is_empty() {
+        return;
+    }
+    eprintln!("begin failed and rollback could not fully clean up:");
+    for e in errors {
+        match e {
+            RollbackFailure::WorktreeRemove(e) => eprintln!("  - failed to remove worktree: {}", e),
+            RollbackFailure::BranchDelete(e) => eprintln!("  - failed to delete branch: {}", e),
+            RollbackFailure::StateRemove(e) => {
+                eprintln!("  - failed to remove state directory: {}", e)
+            }
+        }
+    }
+}
+
 pub fn not_merged(branch: &str, main_branch: &str, verification_error: Option<&str>) {
     eprintln!("branch {} is not merged into {}", branch, main_branch);
     if let Some(e) = verification_error {
@@ -224,14 +242,4 @@ pub fn slug_collision(slug: &str, artifact: &str) {
         "note: pick a different slug, or clean up manually: git worktree remove --force .worktrees/{}, git branch -D heist/{}, rm -rf .heist/{}",
         slug, slug, slug
     );
-}
-
-pub fn rollback_diagnostics(errors: &[String]) {
-    if errors.is_empty() {
-        return;
-    }
-    eprintln!("begin failed and rollback could not fully clean up:");
-    for e in errors {
-        eprintln!("  - {}", e);
-    }
 }

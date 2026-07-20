@@ -119,21 +119,11 @@ impl GitRepository for RealGit {
     }
 
     fn branch_exists(&self, repo_root: &Path, branch: &str) -> bool {
-        // `.output()` (not `.status()`) so a fatal git diagnostic (e.g. "not
-        // a git repository") lands in a captured buffer instead of leaking
-        // onto heist's own stderr, matching every other subprocess call in
-        // this file.
-        std::process::Command::new("git")
-            .current_dir(repo_root)
-            .args([
-                "show-ref",
-                "--verify",
-                "--quiet",
-                &format!("refs/heads/{}", branch),
-            ])
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
+        let Ok(repo) = git2::Repository::open(repo_root) else {
+            return false;
+        };
+        let found = repo.find_branch(branch, git2::BranchType::Local).is_ok();
+        found
     }
 
     fn worktree_exists(&self, repo_root: &Path, slug: &str) -> bool {
