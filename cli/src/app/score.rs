@@ -9,9 +9,80 @@ pub struct CheckOutcome {
     pub waves: usize,
 }
 
+#[derive(Debug)]
+pub enum CheckError {
+    NoState,
+    NoScore,
+    Io(std::io::Error),
+    Findings(Vec<Finding>),
+}
+
+pub fn check(
+    repo: &dyn StateRepository,
+    scores: &dyn ScoreRepository,
+    slug: &str,
+) -> Result<CheckOutcome, CheckError> {
+    let (parsed, waves) = load_and_check(repo, scores, slug)?;
+    Ok(CheckOutcome {
+        steps: parsed.steps.len(),
+        waves,
+    })
+}
+
 pub struct RecordOutcome {
     pub steps: usize,
     pub waves: usize,
+}
+
+#[derive(Debug)]
+pub enum RecordError {
+    NoState,
+    NoScore,
+    Io(std::io::Error),
+    Findings(Vec<Finding>),
+    Save(StateError),
+}
+
+pub fn record(
+    repo: &dyn StateRepository,
+    scores: &dyn ScoreRepository,
+    clock: &dyn crate::ports::clock::Clock,
+    slug: &str,
+) -> Result<RecordOutcome, RecordError> {
+    let (parsed, waves) = load_and_check(repo, scores, slug)?;
+    let mut state = repo.load(slug).map_err(RecordError::Save)?;
+    state.score_steps_total = crate::domain::value::ScoreStepsTotal::new(parsed.steps.len() as u32);
+    state.score_waves_total = crate::domain::value::ScoreWavesTotal::new(waves as u32);
+    state.updated = clock.today();
+    repo.save(slug, &state).map_err(RecordError::Save)?;
+    Ok(RecordOutcome {
+        steps: parsed.steps.len(),
+        waves,
+    })
+}
+
+#[derive(Debug)]
+pub enum WaveError {
+    NoState,
+    NoScore,
+    Io(std::io::Error),
+    Findings(Vec<Finding>),
+    NoSuchWave(u32),
+}
+
+pub fn wave(
+    repo: &dyn StateRepository,
+    scores: &dyn ScoreRepository,
+    slug: &str,
+    n: u32,
+) -> Result<Vec<(u32, String)>, WaveError> {
+    if !repo.exists(slug) {
+        return Err(WaveError::NoState);
+    }
+    let text = scores.load_score(slug).map_err(WaveError::Io)?;
+    let text = text.ok_or(WaveError::NoScore)?;
+    let parsed = score::parse(&text).map_err(WaveError::Findings)?;
+    score::wave_blocks(&parsed, n).map_err(|score::NoSuchWave(n)| WaveError::NoSuchWave(n))
 }
 
 enum LoadError {
@@ -19,6 +90,28 @@ enum LoadError {
     NoScore,
     Io(std::io::Error),
     Findings(Vec<Finding>),
+}
+
+impl From<LoadError> for CheckError {
+    fn from(e: LoadError) -> Self {
+        match e {
+            LoadError::NoState => CheckError::NoState,
+            LoadError::NoScore => CheckError::NoScore,
+            LoadError::Io(e) => CheckError::Io(e),
+            LoadError::Findings(f) => CheckError::Findings(f),
+        }
+    }
+}
+
+impl From<LoadError> for RecordError {
+    fn from(e: LoadError) -> Self {
+        match e {
+            LoadError::NoState => RecordError::NoState,
+            LoadError::NoScore => RecordError::NoScore,
+            LoadError::Io(e) => RecordError::Io(e),
+            LoadError::Findings(f) => RecordError::Findings(f),
+        }
+    }
 }
 
 fn load_and_check(
@@ -40,99 +133,6 @@ fn load_and_check(
         parsed.steps.iter().map(|s| s.enclosing_wave).collect();
     let waves_count = waves.len();
     Ok((parsed, waves_count))
-}
-
-#[derive(Debug)]
-pub enum CheckError {
-    NoState,
-    NoScore,
-    Io(std::io::Error),
-    Findings(Vec<Finding>),
-}
-
-impl From<LoadError> for CheckError {
-    fn from(e: LoadError) -> Self {
-        match e {
-            LoadError::NoState => CheckError::NoState,
-            LoadError::NoScore => CheckError::NoScore,
-            LoadError::Io(e) => CheckError::Io(e),
-            LoadError::Findings(f) => CheckError::Findings(f),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum RecordError {
-    NoState,
-    NoScore,
-    Io(std::io::Error),
-    Findings(Vec<Finding>),
-    Save(StateError),
-}
-
-impl From<LoadError> for RecordError {
-    fn from(e: LoadError) -> Self {
-        match e {
-            LoadError::NoState => RecordError::NoState,
-            LoadError::NoScore => RecordError::NoScore,
-            LoadError::Io(e) => RecordError::Io(e),
-            LoadError::Findings(f) => RecordError::Findings(f),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum WaveError {
-    NoState,
-    NoScore,
-    Io(std::io::Error),
-    Findings(Vec<Finding>),
-    NoSuchWave(u32),
-}
-
-pub fn check(
-    repo: &dyn StateRepository,
-    scores: &dyn ScoreRepository,
-    slug: &str,
-) -> Result<CheckOutcome, CheckError> {
-    let (parsed, waves) = load_and_check(repo, scores, slug)?;
-    Ok(CheckOutcome {
-        steps: parsed.steps.len(),
-        waves,
-    })
-}
-
-pub fn record(
-    repo: &dyn StateRepository,
-    scores: &dyn ScoreRepository,
-    clock: &dyn crate::ports::clock::Clock,
-    slug: &str,
-) -> Result<RecordOutcome, RecordError> {
-    let (parsed, waves) = load_and_check(repo, scores, slug)?;
-    let mut state = repo.load(slug).map_err(RecordError::Save)?;
-    state.score_steps_total = crate::domain::value::ScoreStepsTotal::new(parsed.steps.len() as u32);
-    state.score_waves_total = crate::domain::value::ScoreWavesTotal::new(waves as u32);
-    state.updated = clock.today();
-    repo.save(slug, &state).map_err(RecordError::Save)?;
-    Ok(RecordOutcome {
-        steps: parsed.steps.len(),
-        waves,
-    })
-}
-
-pub fn wave(
-    repo: &dyn StateRepository,
-    scores: &dyn ScoreRepository,
-    slug: &str,
-    n: u32,
-) -> Result<Vec<(u32, String)>, WaveError> {
-    if !repo.exists(slug) {
-        return Err(WaveError::NoState);
-    }
-    let text = scores.load_score(slug).map_err(WaveError::Io)?;
-    let text = text.ok_or(WaveError::NoScore)?;
-    let parsed = score::parse(&text).map_err(WaveError::Findings)?;
-    score::wave_blocks(&parsed, n).map_err(|score::NoSuchWave(n)| WaveError::NoSuchWave(n))
 }
 
 #[cfg(test)]
