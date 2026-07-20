@@ -118,26 +118,26 @@ impl GitRepository for RealGit {
         })
     }
 
-    fn branch_exists(&self, repo_root: &Path, branch: &str) -> bool {
-        let Ok(repo) = git2::Repository::open(repo_root) else {
-            return false;
-        };
+    fn branch_exists(&self, repo_root: &Path, branch: &str) -> Result<bool, GitError> {
+        let repo = git2::Repository::open(repo_root).map_err(|e| GitError::CommandFailed {
+            command: "git2::Repository::open".to_string(),
+            message: e.message().to_string(),
+        })?;
         let found = repo.find_branch(branch, git2::BranchType::Local).is_ok();
-        found
+        Ok(found)
     }
 
-    fn worktree_exists(&self, repo_root: &Path, slug: &str) -> bool {
-        if let Ok(repo) = git2::Repository::open(repo_root) {
-            if let Ok(worktrees) = repo.worktrees() {
-                // iter() yields Result<Option<&str>, _>; flatten twice to reach &str.
-                return worktrees
-                    .iter()
-                    .flatten()
-                    .flatten()
-                    .any(|name| name == slug);
-            }
-        }
-        false
+    fn worktree_exists(&self, repo_root: &Path, slug: &str) -> Result<bool, GitError> {
+        let repo = git2::Repository::open(repo_root).map_err(|e| GitError::CommandFailed {
+            command: "git2::Repository::open".to_string(),
+            message: e.message().to_string(),
+        })?;
+        let worktrees = repo.worktrees().map_err(|e| GitError::CommandFailed {
+            command: "git worktree list".to_string(),
+            message: e.message().to_string(),
+        })?;
+        // iter() yields Result<Option<&str>, _>; flatten twice to reach &str.
+        Ok(worktrees.iter().flatten().flatten().any(|name| name == slug))
     }
 
     fn add_worktree(

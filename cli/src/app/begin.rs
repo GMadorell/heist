@@ -34,6 +34,10 @@ pub enum RollbackFailure {
 pub enum BeginError {
     InvalidSlug(FieldError),
     Collision(CollisionArtifact),
+    /// A git probe (worktree/branch existence check) failed inconclusively;
+    /// unlike a collision, this means we don't know whether the artifact
+    /// exists, so it must not be treated as "safe to proceed".
+    Probe(GitError),
     Init(StateError),
     State {
         error: app::state::SetError,
@@ -55,13 +59,15 @@ fn rollback(
 ) -> Vec<RollbackFailure> {
     let mut errors = Vec::new();
 
-    if git.worktree_exists(repo_root, slug) {
+    // A probe failure here is inconclusive, not a confirmed absence; default
+    // to NOT deleting rather than erroring the whole rollback over it.
+    if git.worktree_exists(repo_root, slug).unwrap_or(false) {
         let path = worktree_path(repo_root, slug);
         if let Err(e) = git.remove_worktree(repo_root, &path) {
             errors.push(RollbackFailure::WorktreeRemove(e));
         }
     }
-    if git.branch_exists(repo_root, branch) {
+    if git.branch_exists(repo_root, branch).unwrap_or(false) {
         if let Err(e) = git.delete_branch(repo_root, branch) {
             errors.push(RollbackFailure::BranchDelete(e));
         }
@@ -89,11 +95,17 @@ pub fn begin(
     if state_repo.exists(slug) {
         return Err(BeginError::Collision(CollisionArtifact::State));
     }
-    if git.worktree_exists(repo_root, slug) {
+    if git
+        .worktree_exists(repo_root, slug)
+        .map_err(BeginError::Probe)?
+    {
         return Err(BeginError::Collision(CollisionArtifact::Worktree));
     }
     let branch = branch_name(slug).map_err(BeginError::InvalidSlug)?;
-    if git.branch_exists(repo_root, branch.as_ref()) {
+    if git
+        .branch_exists(repo_root, branch.as_ref())
+        .map_err(BeginError::Probe)?
+    {
         return Err(BeginError::Collision(CollisionArtifact::Branch));
     }
 

@@ -231,14 +231,14 @@ fn worktree_exists_reflects_added_worktrees() {
     init_repo_with_commit(temp_dir.path());
     let worktree_path = temp_dir.path().join("worktrees").join("foo");
 
-    assert!(!RealGit.worktree_exists(temp_dir.path(), "foo"));
+    assert!(!RealGit.worktree_exists(temp_dir.path(), "foo").unwrap());
 
     RealGit
         .add_worktree(temp_dir.path(), &worktree_path, "heist/foo", "main")
         .expect("add should succeed");
 
-    assert!(RealGit.worktree_exists(temp_dir.path(), "foo"));
-    assert!(!RealGit.worktree_exists(temp_dir.path(), "bar"));
+    assert!(RealGit.worktree_exists(temp_dir.path(), "foo").unwrap());
+    assert!(!RealGit.worktree_exists(temp_dir.path(), "bar").unwrap());
 }
 
 #[test]
@@ -270,7 +270,7 @@ fn remove_worktree_removes_added_worktree() {
         .remove_worktree(temp_dir.path(), &worktree_path)
         .expect("remove should succeed");
 
-    assert!(!RealGit.worktree_exists(temp_dir.path(), "foo"));
+    assert!(!RealGit.worktree_exists(temp_dir.path(), "foo").unwrap());
 }
 
 #[test]
@@ -535,8 +535,8 @@ fn branch_exists_true_for_existing_branch_false_otherwise() {
     init_repo_with_commit(repo_root);
     run_git(repo_root, &["branch", "heist/foo"]);
 
-    assert!(RealGit.branch_exists(repo_root, "heist/foo"));
-    assert!(!RealGit.branch_exists(repo_root, "heist/does-not-exist"));
+    assert!(RealGit.branch_exists(repo_root, "heist/foo").unwrap());
+    assert!(!RealGit.branch_exists(repo_root, "heist/does-not-exist").unwrap());
 }
 
 /// Builds a scenario where a direct three-way `git merge` (not a rebase)

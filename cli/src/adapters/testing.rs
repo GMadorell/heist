@@ -394,8 +394,8 @@ impl GitRepository for FakeGit {
         self.default_branch.clone()
     }
 
-    fn branch_exists(&self, _repo_root: &Path, branch: &str) -> bool {
-        self.branches.borrow().contains(branch)
+    fn branch_exists(&self, _repo_root: &Path, branch: &str) -> Result<bool, GitError> {
+        Ok(self.branches.borrow().contains(branch))
     }
 
     fn current_branch(&self, _repo_root: &Path) -> Result<Option<String>, GitError> {
@@ -437,8 +437,8 @@ impl GitRepository for FakeGit {
         })
     }
 
-    fn worktree_exists(&self, _repo_root: &Path, slug: &str) -> bool {
-        self.worktrees.borrow().contains(slug)
+    fn worktree_exists(&self, _repo_root: &Path, slug: &str) -> Result<bool, GitError> {
+        Ok(self.worktrees.borrow().contains(slug))
     }
 
     fn add_worktree(

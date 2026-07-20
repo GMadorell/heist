@@ -42,13 +42,9 @@ pub trait GitRepository {
 
     fn delete_branch(&self, repo_root: &Path, branch: &str) -> Result<(), GitError>;
 
-    fn worktree_exists(&self, repo_root: &Path, slug: &str) -> bool;
+    fn worktree_exists(&self, repo_root: &Path, slug: &str) -> Result<bool, GitError>;
 
-    /// Returns true if a local branch named `branch` exists. Returns false
-    /// on any probe failure (e.g. not a git repo) rather than erroring, so
-    /// callers using this for create-tracking rollback default to NOT
-    /// deleting on an inconclusive result.
-    fn branch_exists(&self, repo_root: &Path, branch: &str) -> bool;
+    fn branch_exists(&self, repo_root: &Path, branch: &str) -> Result<bool, GitError>;
 
     fn add_worktree(
         &self,

@@ -683,6 +683,11 @@ fn run_begin(
             present::slug_collision(slug, &artifact.describe(slug));
             ExitCode::Precondition
         }
+        Err(app::begin::BeginError::Probe(e)) => {
+            let exit_code = ExitCode::from(&e);
+            present::error(e);
+            exit_code
+        }
         Err(app::begin::BeginError::Init(e)) => {
             present::state_init_failed(slug, &e);
             ExitCode::from(&e)
