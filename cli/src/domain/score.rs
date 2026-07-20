@@ -103,8 +103,55 @@ fn step_header_parts(line: &str) -> Option<(u32, &str)> {
     Some((step_num, &rest[colon_pos + 2..]))
 }
 
+/// Returns the offending token if `line` looks like a deliberate attempt
+/// at a `## Wave <N>` header (the reserved literal prefix, followed by
+/// exactly one whitespace-separated token) whose number isn't a valid
+/// non-negative integer. Distinguishes an actual typo'd header (single
+/// bad token, e.g. `## Wave two`) from ordinary column-0 prose that
+/// happens to share the prefix (multiple words, e.g. a sentence quoted
+/// inside a Change field) — the latter stays body text per the
+/// finding-7 boundary rule and raises no finding.
+fn malformed_wave_header(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix("## Wave ")?;
+    let trimmed = rest.trim();
+    if trimmed.is_empty() || trimmed.split_whitespace().count() != 1 {
+        return None;
+    }
+    if trimmed.chars().all(|c| c.is_ascii_digit()) {
+        return None; // valid, handled by wave_header_number
+    }
+    Some(trimmed)
+}
+
+/// Returns `(bad_id, title)` if `line` looks like a deliberate attempt at
+/// a Step header (canonical or flat prefix, then a single non-whitespace
+/// token before `": "`) whose step number isn't a valid non-negative
+/// integer. Same "single bad token" heuristic as `malformed_wave_header`
+/// keeps ordinary prose (e.g. `## Step by step guide: notes`, which has
+/// no plausible numeric-id token) from being misflagged.
+fn malformed_step_header(line: &str) -> Option<(&str, &str)> {
+    let rest = line
+        .strip_prefix("### Step ")
+        .or_else(|| line.strip_prefix("## Step "))?;
+    let colon_pos = rest.find(": ")?;
+    let id_str = &rest[..colon_pos];
+    if id_str.is_empty() || id_str.contains(char::is_whitespace) {
+        return None;
+    }
+    if id_str.chars().all(|c| c.is_ascii_digit()) {
+        return None; // valid, handled by step_header_parts
+    }
+    Some((id_str, &rest[colon_pos + 2..]))
+}
+
+/// True for a well-formed Wave/Step header *or* a plausible-but-malformed
+/// attempt at one, so a malformed header still ends the previous step's
+/// boundary instead of being silently swallowed into its body.
 fn is_header_token(line: &str) -> bool {
-    wave_header_number(line).is_some() || step_header_parts(line).is_some()
+    wave_header_number(line).is_some()
+        || step_header_parts(line).is_some()
+        || malformed_wave_header(line).is_some()
+        || malformed_step_header(line).is_some()
 }
 
 pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
@@ -137,6 +184,36 @@ pub fn parse(text: &str) -> Result<Score, Vec<Finding>> {
         // Check for a well-formed Wave header token
         if let Some(wave_num) = wave_header_number(line) {
             current_enclosing_wave = wave_num;
+            i += 1;
+            continue;
+        }
+
+        // Malformed Wave header attempt: flag it rather than silently
+        // absorbing it as body text or a mis-derived downstream finding.
+        if let Some(bad) = malformed_wave_header(line) {
+            findings.push(Finding {
+                step: 0,
+                message: format!(
+                    "line {}: malformed '## Wave' header: '{}' is not a valid wave number",
+                    i + 1,
+                    bad
+                ),
+            });
+            i += 1;
+            continue;
+        }
+
+        // Malformed Step header attempt: flag it instead of silently
+        // dropping the step from the model.
+        if let Some((bad, _title)) = malformed_step_header(line) {
+            findings.push(Finding {
+                step: 0,
+                message: format!(
+                    "line {}: malformed step header: '{}' is not a valid step number",
+                    i + 1,
+                    bad
+                ),
+            });
             i += 1;
             continue;
         }
@@ -539,16 +616,46 @@ pub fn check(score: &Score) -> Vec<Finding> {
     }
 
     for step in &score.steps {
-        if let Some(previous) = last_wave {
-            if step.enclosing_wave < previous {
-                findings.push(Finding {
-                    step: step.number,
-                    message: format!(
-                        "'## Wave {}' header is out of order (must be strictly ascending; previous wave header was {})",
-                        step.enclosing_wave, previous
-                    ),
-                });
+        match last_wave {
+            None => {
+                // Wheelman loops waves `1..=M`; a score.md whose first
+                // wave header isn't `## Wave 1` would break that loop
+                // before it even starts.
+                if step.enclosing_wave != 1 {
+                    findings.push(Finding {
+                        step: step.number,
+                        message: format!(
+                            "wave numbering must start at 1 (found first wave {})",
+                            step.enclosing_wave
+                        ),
+                    });
+                }
             }
+            Some(previous) if step.enclosing_wave != previous => {
+                if step.enclosing_wave < previous {
+                    findings.push(Finding {
+                        step: step.number,
+                        message: format!(
+                            "'## Wave {}' header is out of order (must be strictly ascending; previous wave header was {})",
+                            step.enclosing_wave, previous
+                        ),
+                    });
+                } else if step.enclosing_wave > previous + 1 {
+                    // Wheelman's `waves: M` / `1..=M` loop assumes wave
+                    // numbers are contiguous, not just ascending; a gap
+                    // would make it request a wave that doesn't exist.
+                    findings.push(Finding {
+                        step: step.number,
+                        message: format!(
+                            "wave numbers must be contiguous (no wave {} between wave {} and wave {})",
+                            previous + 1,
+                            previous,
+                            step.enclosing_wave
+                        ),
+                    });
+                }
+            }
+            _ => {}
         }
 
         if step.wave != step.enclosing_wave {
@@ -676,6 +783,50 @@ mod tests {
             }
             other => panic!("expected Change shape, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn parse_flags_malformed_step_header_instead_of_dropping_the_step() {
+        let text = "\
+## Wave 1
+
+### Step abc: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let findings = parse(text).expect_err("should fail to parse");
+        assert!(
+            findings.iter().any(|f| f.message.contains("abc")
+                && f.message.to_lowercase().contains("step")
+                && f.message.to_lowercase().contains("malformed")),
+            "expected a malformed-step-header finding naming the bad id, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn parse_flags_malformed_wave_header_directly() {
+        let text = "\
+## Wave one
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let findings = parse(text).expect_err("should fail to parse");
+        assert!(
+            findings.iter().any(|f| f.message.contains("one")
+                && f.message.to_lowercase().contains("wave")
+                && f.message.to_lowercase().contains("malformed")),
+            "expected a malformed-Wave-header finding naming the bad token, got: {:?}",
+            findings
+        );
     }
 
     #[test]
@@ -1064,6 +1215,42 @@ end of example.
                 && f.message.to_lowercase().contains("wave")
                 && f.message.to_lowercase().contains("ascending")),
             "expected a non-ascending-wave-header finding anchored to step 2, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn check_flags_wave_number_gap() {
+        // Waves 1 and 3 present, wave 2 missing: `wheelman.md` loops
+        // `1..=M` off the distinct-wave count, so a gap would make it
+        // request a wave that doesn't exist.
+        let score = Score {
+            steps: vec![
+                valid_change_step(1, 1, 1, "/tmp/a.rs"),
+                valid_change_step(2, 3, 3, "/tmp/b.rs"),
+            ],
+        };
+        let findings = check(&score);
+        assert!(
+            findings.iter().any(|f| f.step == 2
+                && f.message.contains('2')
+                && f.message.to_lowercase().contains("contiguous")),
+            "expected a wave-gap finding anchored to step 2, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn check_flags_wave_numbering_not_starting_at_one() {
+        let score = Score {
+            steps: vec![valid_change_step(1, 2, 2, "/tmp/a.rs")],
+        };
+        let findings = check(&score);
+        assert!(
+            findings.iter().any(|f| f.step == 1
+                && f.message.to_lowercase().contains("start")
+                && f.message.to_lowercase().contains("wave")),
+            "expected a wave-must-start-at-1 finding, got: {:?}",
             findings
         );
     }
