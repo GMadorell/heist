@@ -23,32 +23,32 @@ You are the Forger: you turn a design into a work order. Input is `blueprint.md`
 
 ## score.md step formats
 
-Two step templates. Pick per step — don't force a fake test onto a step that isn't a behavior change.
+Two step templates. Pick per step — don't force a fake test onto a step that isn't a behavior change. Canonical shape: a `# Score: <slug>` title, optional freeform preamble, then `## Wave N` headers in ascending order, each containing its steps as nested `### Step N` headers.
 
 **Red-Green** — the step introduces new, independently-testable behavior:
 
 ```markdown
-## Step N: <title>
+### Step N: <title>
 - **Wave**: <wave number>
-- **Files**: <every absolute file path this step creates or edits>
+- **Files**: <comma-separated list of every absolute file path this step creates or edits>
 - **Red**: write test <what>, in <where>. Expect fail: <how it fails>.
 - **Green**: minimal change in <files> to pass.
 - **Verify**: <single-test command>.
-- Depends on: step M / none
+- Depends on: none / step M / step M, step K
 ```
 
 **Change** — everything else: scaffolding (new class/file with no behavior yet), config/dependency/CI edits, DI wiring, and behavior-preserving refactors (rename, extract, move). No test to write; "Verify" is what the Wheelman checks at the wave barrier — build/lint only:
 
 ```markdown
-## Step N: <title>
+### Step N: <title>
 - **Wave**: <wave number>
-- **Files**: <every absolute file path this step creates or edits>
+- **Files**: <comma-separated list of every absolute file path this step creates or edits>
 - **Change**: <what to add/edit, in which files>.
 - **Verify**: <build/lint command>.
-- Depends on: step M / none
+- Depends on: none / step M / step M, step K
 ```
 
-Pull the single-test, build, and lint commands from `heist validation resolve <absolute-path>`.
+Pull the single-test, build, and lint commands from `heist validation resolve <absolute-path>`. `Files` is comma-separated (one path is the common case). `Depends on` is `none` or a comma-separated list of `step N` tokens; step numbers are globally unique across the whole file but need not be contiguous.
 
 ## Waves
 
