@@ -181,9 +181,9 @@ fn rollback(
         Ok(false) => {}
         Err(e) => errors.push(RollbackFailure::WorktreeProbe(e)),
     }
-    match git.branch_exists(repo_root, &branch) {
+    match git.branch_exists(repo_root, branch) {
         Ok(true) => {
-            if let Err(e) = git.delete_branch(repo_root, &branch) {
+            if let Err(e) = git.delete_branch(repo_root, branch) {
                 errors.push(RollbackFailure::BranchDelete(e));
             }
         }
