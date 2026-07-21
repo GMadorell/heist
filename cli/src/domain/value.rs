@@ -1,4 +1,4 @@
-use crate::domain::error::FieldError;
+use crate::domain::error::ValueError;
 use nutype::nutype;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -12,8 +12,8 @@ use time::Date;
 pub struct SlugValue(String);
 
 impl SlugValue {
-    pub fn parse(value: &str) -> Result<Self, FieldError> {
-        Self::try_new(value.to_string()).map_err(|_| FieldError::InvalidValue {
+    pub fn parse(value: &str) -> Result<Self, ValueError> {
+        Self::try_new(value.to_string()).map_err(|_| ValueError::InvalidValue {
             field: "slug".to_string(),
             value: value.to_string(),
             expected: "kebab-case: lowercase letters, digits, single hyphens".to_string(),
@@ -37,8 +37,8 @@ impl SlugValue {
 pub struct NonBlankValue(String);
 
 impl NonBlankValue {
-    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
-        Self::try_new(value.to_string()).map_err(|_| FieldError::InvalidValue {
+    pub fn parse(field: &str, value: &str) -> Result<Self, ValueError> {
+        Self::try_new(value.to_string()).map_err(|_| ValueError::InvalidValue {
             field: field.to_string(),
             value: value.to_string(),
             expected: "a non-blank string".to_string(),
@@ -53,8 +53,8 @@ impl NonBlankValue {
 pub struct DateValue(String);
 
 impl DateValue {
-    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
-        Self::try_new(value.to_string()).map_err(|_| FieldError::InvalidValue {
+    pub fn parse(field: &str, value: &str) -> Result<Self, ValueError> {
+        Self::try_new(value.to_string()).map_err(|_| ValueError::InvalidValue {
             field: field.to_string(),
             value: value.to_string(),
             expected: "an ISO 8601 date (YYYY-MM-DD)".to_string(),
@@ -82,7 +82,7 @@ impl DateValue {
 pub struct ScoreStepsTotal(u32);
 
 impl ScoreStepsTotal {
-    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
+    pub fn parse(field: &str, value: &str) -> Result<Self, ValueError> {
         parse_numeric(field, value, Self::new)
     }
 }
@@ -103,7 +103,7 @@ impl ScoreStepsTotal {
 pub struct ScoreWave(u32);
 
 impl ScoreWave {
-    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
+    pub fn parse(field: &str, value: &str) -> Result<Self, ValueError> {
         parse_numeric(field, value, Self::new)
     }
 }
@@ -124,7 +124,7 @@ impl ScoreWave {
 pub struct ScoreWavesTotal(u32);
 
 impl ScoreWavesTotal {
-    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
+    pub fn parse(field: &str, value: &str) -> Result<Self, ValueError> {
         parse_numeric(field, value, Self::new)
     }
 }
@@ -145,7 +145,7 @@ impl ScoreWavesTotal {
 pub struct FenceRounds(u32);
 
 impl FenceRounds {
-    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
+    pub fn parse(field: &str, value: &str) -> Result<Self, ValueError> {
         parse_numeric(field, value, Self::new)
     }
 }
@@ -159,12 +159,12 @@ pub enum SchemaVersion {
 impl SchemaVersion {
     pub const CURRENT: SchemaVersion = SchemaVersion::V1;
 
-    pub fn parse(value: &str) -> Result<Self, FieldError> {
-        let raw: u32 = value.parse().map_err(|_| FieldError::InvalidNumeric {
+    pub fn parse(value: &str) -> Result<Self, ValueError> {
+        let raw: u32 = value.parse().map_err(|_| ValueError::InvalidNumeric {
             field: "schema_version".to_string(),
             value: value.to_string(),
         })?;
-        SchemaVersion::try_from(raw).map_err(|_| FieldError::InvalidValue {
+        SchemaVersion::try_from(raw).map_err(|_| ValueError::InvalidValue {
             field: "schema_version".to_string(),
             value: value.to_string(),
             expected: format!(
@@ -222,11 +222,11 @@ fn parse_numeric<T>(
     field: &str,
     value: &str,
     ctor: impl FnOnce(u32) -> T,
-) -> Result<T, FieldError> {
+) -> Result<T, ValueError> {
     value
         .parse::<u32>()
         .map(ctor)
-        .map_err(|_| FieldError::InvalidNumeric {
+        .map_err(|_| ValueError::InvalidNumeric {
             field: field.to_string(),
             value: value.to_string(),
         })

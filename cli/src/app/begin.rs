@@ -1,5 +1,5 @@
 use crate::app;
-use crate::domain::error::{FieldError, StateError};
+use crate::domain::error::{StateError, ValueError};
 use crate::domain::value::{NonBlankValue, SlugValue};
 use crate::domain::worktree::{branch_name, worktree_path};
 use crate::ports::clock::Clock;
@@ -34,7 +34,7 @@ pub enum RollbackFailure {
 }
 
 pub enum BeginError {
-    InvalidSlug(FieldError),
+    InvalidSlug(ValueError),
     Collision(CollisionArtifact),
     /// Inconclusive probe (not a confirmed absence), so never safe to proceed.
     Probe(GitError),

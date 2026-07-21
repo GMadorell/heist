@@ -1,4 +1,4 @@
-use crate::domain::error::{FieldError, StateError};
+use crate::domain::error::{ValueError, StateError};
 use crate::domain::state::State;
 use crate::domain::value::DateValue;
 use crate::ports::clock::Clock;
@@ -6,7 +6,7 @@ use crate::ports::heist_dir_repository::HeistDirRepository;
 use crate::ports::state_repository::StateRepository;
 
 pub enum InitError {
-    InvalidSlug(FieldError),
+    InvalidSlug(ValueError),
     Init(StateError),
 }
 
@@ -23,7 +23,7 @@ pub fn init(
 
 pub enum GetError {
     Load(StateError),
-    Field(FieldError),
+    Field(ValueError),
 }
 
 pub fn get(repo: &dyn StateRepository, slug: &str, field: &str) -> Result<String, GetError> {
@@ -32,7 +32,7 @@ pub fn get(repo: &dyn StateRepository, slug: &str, field: &str) -> Result<String
 }
 
 pub enum SetError {
-    Field(FieldError),
+    Field(ValueError),
     Load(StateError),
     Save(StateError),
 }
@@ -51,7 +51,7 @@ pub fn set(
 }
 
 pub enum SchemaError {
-    InvalidExample(FieldError),
+    InvalidExample(ValueError),
     Serialize(serde_json::Error),
 }
 
@@ -79,7 +79,7 @@ pub fn schema() -> Result<String, SchemaError> {
 #[derive(Debug)]
 pub enum IncrError {
     Load(StateError),
-    Field(FieldError),
+    Field(ValueError),
     Save(StateError),
 }
 
@@ -93,9 +93,9 @@ pub fn incr(
     let current = state.get_field(field).map_err(IncrError::Field)?;
     let parsed: u32 = current
         .parse()
-        .map_err(|_| IncrError::Field(FieldError::NotIncrementable(field.to_string())))?;
+        .map_err(|_| IncrError::Field(ValueError::NotIncrementable(field.to_string())))?;
     let incremented = parsed.checked_add(1).ok_or_else(|| {
-        IncrError::Field(FieldError::InvalidNumeric {
+        IncrError::Field(ValueError::InvalidNumeric {
             field: field.to_string(),
             value: current.clone(),
         })
@@ -147,7 +147,7 @@ mod tests {
 
         let err = incr(&repo, &clock, "foo", "stage").expect_err("should reject non-numeric field");
         match err {
-            IncrError::Field(FieldError::NotIncrementable(field)) => assert_eq!(field, "stage"),
+            IncrError::Field(ValueError::NotIncrementable(field)) => assert_eq!(field, "stage"),
             _ => panic!("expected IncrError::Field(NotIncrementable), got a different variant"),
         }
     }
@@ -163,7 +163,7 @@ mod tests {
         let err =
             incr(&repo, &clock, "foo", "bogus_field").expect_err("should reject unknown field");
         match err {
-            IncrError::Field(FieldError::Unknown(field)) => assert_eq!(field, "bogus_field"),
+            IncrError::Field(ValueError::Unknown(field)) => assert_eq!(field, "bogus_field"),
             _ => panic!("expected IncrError::Field(Unknown), got a different variant"),
         }
     }
@@ -180,7 +180,7 @@ mod tests {
         let err = incr(&repo, &clock, "foo", "score_wave")
             .expect_err("should reject increment past u32::MAX");
         match err {
-            IncrError::Field(FieldError::InvalidNumeric { field, value }) => {
+            IncrError::Field(ValueError::InvalidNumeric { field, value }) => {
                 assert_eq!(field, "score_wave");
                 assert_eq!(value, u32::MAX.to_string());
             }

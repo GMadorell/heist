@@ -1,4 +1,4 @@
-use crate::domain::error::{FieldError, StateError};
+use crate::domain::error::{ValueError, StateError};
 use crate::domain::state::Stage;
 use crate::domain::value::{NonBlankValue, SlugValue};
 use crate::domain::worktree;
@@ -11,7 +11,7 @@ use std::path::Path;
 
 pub enum AddError {
     NoState,
-    Naming(FieldError),
+    Naming(ValueError),
     Fs(std::io::Error),
     Git(GitError),
     Load(StateError),
@@ -97,7 +97,7 @@ pub fn add(
 
 pub enum RemoveError {
     NoState,
-    Naming(FieldError),
+    Naming(ValueError),
     Git(GitError),
     NotMerged {
         branch: String,
