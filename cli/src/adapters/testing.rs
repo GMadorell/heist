@@ -1,11 +1,13 @@
 use crate::domain::error::StateError;
 use crate::domain::state::State;
+use crate::domain::tool::Tool;
 use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
 use crate::ports::heist_dir_repository::HeistDirRepository;
 use crate::ports::score_repository::ScoreRepository;
 use crate::ports::state_repository::StateRepository;
+use crate::ports::tool_probe::ToolProbe;
 use crate::ports::validation_source::ValidationSource;
 use crate::ports::worktree_fs::WorktreeFs;
 use std::cell::RefCell;
@@ -40,6 +42,37 @@ impl WorktreeFs for FakeWorktreeFs {
 
     fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
         Ok(path.to_path_buf())
+    }
+}
+
+/// In-memory tool probe for unit tests: reports a tool available only if
+/// explicitly registered via `with_available`.
+pub struct FakeToolProbe {
+    available: HashSet<Tool>,
+}
+
+impl Default for FakeToolProbe {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FakeToolProbe {
+    pub fn new() -> Self {
+        FakeToolProbe {
+            available: HashSet::new(),
+        }
+    }
+
+    pub fn with_available(mut self, tool: Tool) -> Self {
+        self.available.insert(tool);
+        self
+    }
+}
+
+impl ToolProbe for FakeToolProbe {
+    fn is_available(&self, tool: Tool) -> bool {
+        self.available.contains(&tool)
     }
 }
 

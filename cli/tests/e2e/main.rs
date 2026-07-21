@@ -1,4 +1,5 @@
 mod begin;
+mod doctor;
 mod list;
 mod resume;
 mod review_select;

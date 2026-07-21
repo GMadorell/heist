@@ -45,7 +45,7 @@ fn prints_slug_stage_next_step_and_worktree() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let expected = "slug: my-slug\nstage: forging\nmode: heavy\nnext_step: forging\nworktree: /abs/path/to/worktree\n";
+    let expected = "slug: my-slug\nstage: forging\nmode: heavy\nnext: pipeline-standard.md step 5\nworktree: /abs/path/to/worktree\n";
     assert_eq!(
         stdout.to_string(),
         expected,

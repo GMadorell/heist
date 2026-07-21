@@ -3,6 +3,7 @@ pub mod language;
 pub mod review;
 pub mod score;
 pub mod state;
+pub mod tool;
 pub mod validation;
 pub mod value;
 pub mod worktree;

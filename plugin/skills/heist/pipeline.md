@@ -12,7 +12,7 @@ Mode is chosen before step 2, persisted via `heist state set <slug> mode <mode>`
 
 ## Preflight
 
-If `heist` isn't on `PATH`, halt and point the human to the README install section. Otherwise proceed.
+If `heist` isn't on `PATH`, halt and point the human to the README install section. Otherwise run `heist doctor`. Nonzero exit: surface the missing tools listed in its output and halt.
 
 ### 1. Casing gate
 
@@ -65,8 +65,6 @@ Heavy only. medium/light skip this (stage is already `human_review`).
 6. Report to the human: Fence's findings, the revision summary, any disagreement. Continue to human review.
 
 ### 4. Human review (crit)
-
-If `crit` isn't on `PATH` (`command -v crit`), print the install command (`claude plugin marketplace add tomasz-tomczyk/crit && claude plugin install crit@crit`) and halt.
 
 Use `crit` to review `<worktree-path>/.heist/<slug>/blueprint.md`. If the human leaves comments, relay them to the Mastermind, ask it to apply them, answer each comment with what the Mastermind decided. Repeat until the human leaves no comments — that's approval.
 

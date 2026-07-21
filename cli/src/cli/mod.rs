@@ -6,6 +6,7 @@ use crate::adapters::file_score_repository::FileScoreRepository;
 use crate::adapters::file_state_repository::FileStateRepository;
 use crate::adapters::filesystem_worktree::FilesystemWorktree;
 use crate::adapters::real_git::RealGit;
+use crate::adapters::real_tool_probe::RealToolProbe;
 use crate::adapters::system_clock::SystemClock;
 use crate::adapters::validation_fs::ValidationFs;
 use crate::app;
@@ -14,6 +15,8 @@ use crate::ports::git::GitRepository;
 use crate::ports::heist_dir_repository::HeistDirRepository;
 use crate::ports::score_repository::ScoreRepository;
 use crate::ports::state_repository::StateRepository;
+use crate::ports::tool_probe::ToolProbe;
+use crate::ports::validation_source::ValidationSource;
 use crate::ports::worktree_fs::WorktreeFs;
 use clap::{Parser, Subcommand};
 use exit_code::ExitCode;
@@ -55,7 +58,7 @@ enum Commands {
         #[command(subcommand)]
         command: ReviewCommands,
     },
-    /// Print a short summary (stage, next_step, worktree) for picking a heist back up
+    /// Print a short summary (stage, next, worktree) for picking a heist back up
     Resume {
         /// Heist slug (directory name under .heist/)
         slug: String,
@@ -72,6 +75,8 @@ enum Commands {
         /// Heist slug (directory name under .heist/)
         slug: String,
     },
+    /// Check required tools (git, gh, crit) are on PATH; exit 2 if any is missing
+    Doctor,
     /// Atomically init state, set mode, create the worktree, and advance to planning; rolls back on failure
     Begin {
         /// Heist slug (directory name under .heist/)
@@ -199,6 +204,7 @@ pub fn run(cli: Cli) -> ExitCode {
     let fs = FilesystemWorktree;
     let clock = SystemClock;
     let validation_src = ValidationFs;
+    let tool_probe = RealToolProbe;
     let repo_root = Path::new(".");
 
     match cli.command {
@@ -212,6 +218,7 @@ pub fn run(cli: Cli) -> ExitCode {
         Commands::List => run_list(&state_repo),
         Commands::Base { slug } => run_base(&slug, repo_root, &state_repo, &git),
         Commands::Sync { slug } => run_sync(&slug, &state_repo, &git),
+        Commands::Doctor => run_doctor(&tool_probe),
         Commands::Begin { slug, mode, base } => run_begin(
             &slug,
             &mode,
@@ -390,7 +397,7 @@ fn run_worktree(
 
 fn run_validation(
     command: ValidationCommands,
-    src: &dyn crate::ports::validation_source::ValidationSource,
+    src: &dyn ValidationSource,
 ) -> ExitCode {
     match command {
         ValidationCommands::Resolve { paths } => {
@@ -492,6 +499,16 @@ fn run_list(repo: &dyn StateRepository) -> ExitCode {
             present::state_load_failed(slug.as_ref(), &error);
             ExitCode::from(&error)
         }
+    }
+}
+
+fn run_doctor(probe: &dyn ToolProbe) -> ExitCode {
+    let results = app::doctor::doctor(probe);
+    present::doctor(&results);
+    if results.iter().all(|status| status.available) {
+        ExitCode::Success
+    } else {
+        ExitCode::Precondition
     }
 }
 
@@ -739,7 +756,7 @@ fn run_score(
     command: ScoreCommands,
     state_repo: &dyn StateRepository,
     score_repo: &dyn ScoreRepository,
-    clock: &dyn crate::ports::clock::Clock,
+    clock: &dyn Clock,
 ) -> ExitCode {
     match command {
         ScoreCommands::Check { slug } => match app::score::check(state_repo, score_repo, &slug) {

@@ -1,9 +1,11 @@
 use crate::app::begin::RollbackFailure;
+use crate::app::doctor::ToolStatus;
 use crate::app::list::ListRow;
 use crate::app::sync::SyncAction;
 use crate::app::worktree::CleanupOutcome;
 use crate::domain::review::Lane;
-use crate::domain::state::State;
+use crate::domain::score::Finding;
+use crate::domain::state::{State, route};
 use crate::ports::git::GitError;
 use std::fmt::Display;
 
@@ -89,9 +91,9 @@ pub fn validation_check_failed(e: impl Display) {
 
 pub fn list_summary(rows: &[ListRow]) {
     for row in rows {
-        let next_step = row
-            .next_step
-            .map(|stage| stage.as_str().to_string())
+        let next = row
+            .next
+            .map(|r| r.to_string())
             .unwrap_or_else(|| "none".to_string());
         let worktree = row.worktree.as_ref().map(AsRef::as_ref).unwrap_or("none");
 
@@ -99,7 +101,7 @@ pub fn list_summary(rows: &[ListRow]) {
             "{}  {}  {}  {}  {}",
             row.slug,
             row.stage.as_str(),
-            next_step,
+            next,
             worktree,
             row.mode.as_str()
         );
@@ -107,10 +109,9 @@ pub fn list_summary(rows: &[ListRow]) {
 }
 
 pub fn resume_summary(state: &State) {
-    let next_step = match state.stage.next_step() {
-        Some(stage) => stage.as_str().to_string(),
-        None => "none".to_string(),
-    };
+    let next = route(state.stage, state.mode)
+        .map(|r| r.to_string())
+        .unwrap_or_else(|| "none".to_string());
     let worktree = state
         .worktree
         .as_ref()
@@ -120,7 +121,7 @@ pub fn resume_summary(state: &State) {
     println!("slug: {}", state.slug);
     println!("stage: {}", state.stage.as_str());
     println!("mode: {}", state.mode.as_str());
-    println!("next_step: {}", next_step);
+    println!("next: {}", next);
     println!("worktree: {}", worktree);
 }
 
@@ -242,6 +243,16 @@ pub fn abandoned_base_sync_refused(base_ref: &str) {
     );
 }
 
+pub fn doctor(results: &[ToolStatus]) {
+    for status in results {
+        println!(
+            "{}: {}",
+            status.tool,
+            if status.available { "ok" } else { "missing" }
+        );
+    }
+}
+
 pub fn slug_collision(slug: &str, artifact: &str) {
     eprintln!("cannot begin {}: {} already exists.", slug, artifact);
     eprintln!(
@@ -262,7 +273,7 @@ pub fn score_record_ok(steps: usize, waves: usize) {
     println!("waves: {}", waves);
 }
 
-pub fn score_findings(findings: &[crate::domain::score::Finding]) {
+pub fn score_findings(findings: &[Finding]) {
     for finding in findings {
         eprintln!("{}", finding);
     }

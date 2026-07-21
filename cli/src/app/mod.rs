@@ -1,5 +1,6 @@
 pub mod base;
 pub mod begin;
+pub mod doctor;
 pub mod list;
 pub mod resume;
 pub mod review;

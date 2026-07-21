@@ -106,7 +106,6 @@ pub enum Stage {
     FenceReview,
     HumanReview,
     Forging,
-    Safehouse,
     Implementing,
     Cleaning,
     Done,
@@ -120,7 +119,6 @@ impl Stage {
             Stage::FenceReview => "fence_review",
             Stage::HumanReview => "human_review",
             Stage::Forging => "forging",
-            Stage::Safehouse => "safehouse",
             Stage::Implementing => "implementing",
             Stage::Cleaning => "cleaning",
             Stage::Done => "done",
@@ -134,21 +132,12 @@ impl Stage {
             "fence_review" => Stage::FenceReview,
             "human_review" => Stage::HumanReview,
             "forging" => Stage::Forging,
-            "safehouse" => Stage::Safehouse,
             "implementing" => Stage::Implementing,
             "cleaning" => Stage::Cleaning,
             "done" => Stage::Done,
             _ => return Err(FieldError::InvalidStage(value.to_string())),
         };
         Ok(stage)
-    }
-
-    pub fn next_step(&self) -> Option<Stage> {
-        match self {
-            Stage::Safehouse => Some(Stage::Implementing),
-            Stage::Done => None,
-            other => Some(*other),
-        }
     }
 }
 
@@ -184,6 +173,87 @@ impl Mode {
                 expected: "one of: heavy, medium, light".to_string(),
             }),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PipelineFile {
+    Pipeline,
+    PipelineStandard,
+    PipelineLight,
+}
+
+impl PipelineFile {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PipelineFile::Pipeline => "pipeline.md",
+            PipelineFile::PipelineStandard => "pipeline-standard.md",
+            PipelineFile::PipelineLight => "pipeline-light.md",
+        }
+    }
+}
+
+impl std::fmt::Display for PipelineFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Routing {
+    pub file: PipelineFile,
+    pub step: u8,
+}
+
+impl std::fmt::Display for Routing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} step {}", self.file, self.step)
+    }
+}
+
+pub fn route(stage: Stage, mode: Mode) -> Option<Routing> {
+    match stage {
+        Stage::Casing => Some(Routing {
+            file: PipelineFile::Pipeline,
+            step: 1,
+        }),
+        Stage::Planning => Some(Routing {
+            file: PipelineFile::Pipeline,
+            step: 2,
+        }),
+        Stage::FenceReview => Some(Routing {
+            file: PipelineFile::Pipeline,
+            step: 3,
+        }),
+        Stage::HumanReview => Some(Routing {
+            file: PipelineFile::Pipeline,
+            step: 4,
+        }),
+        Stage::Forging => Some(Routing {
+            file: PipelineFile::PipelineStandard,
+            step: 5,
+        }),
+        Stage::Implementing => match mode {
+            Mode::Light => Some(Routing {
+                file: PipelineFile::PipelineLight,
+                step: 2,
+            }),
+            Mode::Medium | Mode::Heavy => Some(Routing {
+                file: PipelineFile::PipelineStandard,
+                step: 6,
+            }),
+        },
+        Stage::Cleaning => match mode {
+            Mode::Light => Some(Routing {
+                file: PipelineFile::PipelineLight,
+                step: 3,
+            }),
+            Mode::Medium | Mode::Heavy => Some(Routing {
+                file: PipelineFile::PipelineStandard,
+                step: 7,
+            }),
+        },
+        Stage::Done => None,
     }
 }
 
@@ -226,7 +296,6 @@ mod tests {
             (Stage::FenceReview, "fence_review"),
             (Stage::HumanReview, "human_review"),
             (Stage::Forging, "forging"),
-            (Stage::Safehouse, "safehouse"),
             (Stage::Implementing, "implementing"),
             (Stage::Cleaning, "cleaning"),
             (Stage::Done, "done"),
@@ -234,14 +303,6 @@ mod tests {
         for (stage, expected) in cases {
             assert_eq!(serde_json::to_value(stage).unwrap(), json!(expected));
         }
-    }
-
-    #[test]
-    fn next_step_is_none_only_for_done() {
-        assert_eq!(Stage::Forging.next_step(), Some(Stage::Forging));
-        assert_eq!(Stage::Safehouse.next_step(), Some(Stage::Implementing));
-        assert_eq!(Stage::Implementing.next_step(), Some(Stage::Implementing));
-        assert_eq!(Stage::Done.next_step(), None);
     }
 
     #[test]
@@ -271,5 +332,87 @@ mod tests {
             }
             _ => panic!("expected FieldError::InvalidValue, got a different variant"),
         }
+    }
+
+    #[test]
+    fn route_maps_every_stage_mode_pair_to_its_doc_pointer() {
+        assert_eq!(
+            route(Stage::Casing, Mode::Heavy),
+            Some(Routing {
+                file: PipelineFile::Pipeline,
+                step: 1
+            })
+        );
+        assert_eq!(
+            route(Stage::Planning, Mode::Light),
+            Some(Routing {
+                file: PipelineFile::Pipeline,
+                step: 2
+            })
+        );
+        assert_eq!(
+            route(Stage::FenceReview, Mode::Heavy),
+            Some(Routing {
+                file: PipelineFile::Pipeline,
+                step: 3
+            })
+        );
+        assert_eq!(
+            route(Stage::HumanReview, Mode::Medium),
+            Some(Routing {
+                file: PipelineFile::Pipeline,
+                step: 4
+            })
+        );
+        assert_eq!(
+            route(Stage::Forging, Mode::Heavy),
+            Some(Routing {
+                file: PipelineFile::PipelineStandard,
+                step: 5
+            })
+        );
+        assert_eq!(
+            route(Stage::Implementing, Mode::Medium),
+            Some(Routing {
+                file: PipelineFile::PipelineStandard,
+                step: 6
+            })
+        );
+        assert_eq!(
+            route(Stage::Implementing, Mode::Heavy),
+            Some(Routing {
+                file: PipelineFile::PipelineStandard,
+                step: 6
+            })
+        );
+        assert_eq!(
+            route(Stage::Implementing, Mode::Light),
+            Some(Routing {
+                file: PipelineFile::PipelineLight,
+                step: 2
+            })
+        );
+        assert_eq!(
+            route(Stage::Cleaning, Mode::Heavy),
+            Some(Routing {
+                file: PipelineFile::PipelineStandard,
+                step: 7
+            })
+        );
+        assert_eq!(
+            route(Stage::Cleaning, Mode::Medium),
+            Some(Routing {
+                file: PipelineFile::PipelineStandard,
+                step: 7
+            })
+        );
+        assert_eq!(
+            route(Stage::Cleaning, Mode::Light),
+            Some(Routing {
+                file: PipelineFile::PipelineLight,
+                step: 3
+            })
+        );
+        assert_eq!(route(Stage::Done, Mode::Heavy), None);
     }
 }
