@@ -42,7 +42,13 @@ pub fn rollback_diagnostics(errors: &[RollbackFailure]) {
     eprintln!("begin failed and rollback could not fully clean up:");
     for e in errors {
         match e {
+            RollbackFailure::WorktreeProbe(e) => {
+                eprintln!("  - could not verify whether the worktree still exists: {}", e)
+            }
             RollbackFailure::WorktreeRemove(e) => eprintln!("  - failed to remove worktree: {}", e),
+            RollbackFailure::BranchProbe(e) => {
+                eprintln!("  - could not verify whether the branch still exists: {}", e)
+            }
             RollbackFailure::BranchDelete(e) => eprintln!("  - failed to delete branch: {}", e),
             RollbackFailure::HeistDirRemove(e) => {
                 eprintln!("  - failed to remove state directory: {}", e)

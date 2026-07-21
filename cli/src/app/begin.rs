@@ -26,7 +26,9 @@ impl CollisionArtifact {
 }
 
 pub enum RollbackFailure {
+    WorktreeProbe(GitError),
     WorktreeRemove(GitError),
+    BranchProbe(GitError),
     BranchDelete(GitError),
     HeistDirRemove(StateError),
 }
@@ -34,9 +36,7 @@ pub enum RollbackFailure {
 pub enum BeginError {
     InvalidSlug(FieldError),
     Collision(CollisionArtifact),
-    /// A git probe (worktree/branch existence check) failed inconclusively;
-    /// unlike a collision, this means we don't know whether the artifact
-    /// exists, so it must not be treated as "safe to proceed".
+    /// Inconclusive probe (not a confirmed absence), so never safe to proceed.
     Probe(GitError),
     Init(StateError),
     State {
@@ -50,35 +50,6 @@ pub enum BeginError {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn rollback(
-    repo_root: &Path,
-    heist_dir_repo: &dyn HeistDirRepository,
-    git: &dyn GitRepository,
-    slug: &str,
-    branch: &str,
-) -> Vec<RollbackFailure> {
-    let mut errors = Vec::new();
-
-    // A probe failure here is inconclusive, not a confirmed absence; default
-    // to NOT deleting rather than erroring the whole rollback over it.
-    if git.worktree_exists(repo_root, slug).unwrap_or(false) {
-        let path = worktree_path(repo_root, slug);
-        if let Err(e) = git.remove_worktree(repo_root, &path) {
-            errors.push(RollbackFailure::WorktreeRemove(e));
-        }
-    }
-    if git.branch_exists(repo_root, branch).unwrap_or(false) {
-        if let Err(e) = git.delete_branch(repo_root, branch) {
-            errors.push(RollbackFailure::BranchDelete(e));
-        }
-    }
-    if let Err(e) = heist_dir_repo.remove(slug) {
-        errors.push(RollbackFailure::HeistDirRemove(e));
-    }
-    errors
-}
-
-#[allow(clippy::too_many_arguments)]
 pub fn begin(
     repo_root: &Path,
     heist_dir_repo: &dyn HeistDirRepository,
@@ -89,6 +60,64 @@ pub fn begin(
     slug: &str,
     mode: &str,
     base: Option<&str>,
+) -> Result<NonBlankValue, BeginError> {
+    let branch = check_preconditions(repo_root, state_repo, git, slug)?;
+
+    match app::state::init(heist_dir_repo, state_repo, clock, slug) {
+        Ok(()) => {}
+        Err(app::state::InitError::InvalidSlug(e)) => return Err(BeginError::InvalidSlug(e)),
+        // Only a lost pre-check/init race maps to Collision; any other
+        // StateError is a genuine init failure, not a collision.
+        Err(app::state::InitError::Init(StateError::AlreadyExists)) => {
+            return Err(BeginError::Collision(CollisionArtifact::State));
+        }
+        Err(app::state::InitError::Init(e)) => return Err(BeginError::Init(e)),
+    }
+
+    set_field_or_rollback(
+        state_repo,
+        clock,
+        repo_root,
+        heist_dir_repo,
+        git,
+        slug,
+        branch.as_ref(),
+        "mode",
+        mode,
+    )?;
+
+    let worktree_value = match app::worktree::add(repo_root, state_repo, git, fs, clock, slug, base)
+    {
+        Ok(v) => v,
+        Err(error) => {
+            let rollback_errors = rollback(repo_root, heist_dir_repo, git, slug, branch.as_ref());
+            return Err(BeginError::Worktree {
+                error,
+                rollback_errors,
+            });
+        }
+    };
+
+    set_field_or_rollback(
+        state_repo,
+        clock,
+        repo_root,
+        heist_dir_repo,
+        git,
+        slug,
+        branch.as_ref(),
+        "stage",
+        "planning",
+    )?;
+
+    Ok(worktree_value)
+}
+
+fn check_preconditions(
+    repo_root: &Path,
+    state_repo: &dyn StateRepository,
+    git: &dyn GitRepository,
+    slug: &str,
 ) -> Result<NonBlankValue, BeginError> {
     SlugValue::parse(slug).map_err(BeginError::InvalidSlug)?;
 
@@ -108,51 +137,64 @@ pub fn begin(
     {
         return Err(BeginError::Collision(CollisionArtifact::Branch));
     }
+    Ok(branch)
+}
 
-    match app::state::init(heist_dir_repo, state_repo, clock, slug) {
-        Ok(()) => {}
-        Err(app::state::InitError::InvalidSlug(e)) => return Err(BeginError::InvalidSlug(e)),
-        Err(app::state::InitError::Init(StateError::AlreadyExists)) => {
-            // Only a lost pre-check/init race maps to the dedicated collision
-            // signal; every other StateError (e.g. an I/O failure creating
-            // `.heist/<slug>/`) is a genuine init failure, not a collision,
-            // and must not drive the orchestrator's slug-autovary loop.
-            return Err(BeginError::Collision(CollisionArtifact::State));
-        }
-        Err(app::state::InitError::Init(e)) => {
-            return Err(BeginError::Init(e));
-        }
-    }
-
-    if let Err(error) = app::state::set(state_repo, clock, slug, "mode", mode) {
-        let rollback_errors = rollback(repo_root, heist_dir_repo, git, slug, branch.as_ref());
+#[allow(clippy::too_many_arguments)]
+fn set_field_or_rollback(
+    state_repo: &dyn StateRepository,
+    clock: &dyn Clock,
+    repo_root: &Path,
+    heist_dir_repo: &dyn HeistDirRepository,
+    git: &dyn GitRepository,
+    slug: &str,
+    branch: &str,
+    field: &str,
+    value: &str,
+) -> Result<(), BeginError> {
+    if let Err(error) = app::state::set(state_repo, clock, slug, field, value) {
+        let rollback_errors = rollback(repo_root, heist_dir_repo, git, slug, branch);
         return Err(BeginError::State {
             error,
             rollback_errors,
         });
     }
+    Ok(())
+}
 
-    let worktree_value = match app::worktree::add(repo_root, state_repo, git, fs, clock, slug, base)
-    {
-        Ok(v) => v,
-        Err(error) => {
-            let rollback_errors = rollback(repo_root, heist_dir_repo, git, slug, branch.as_ref());
-            return Err(BeginError::Worktree {
-                error,
-                rollback_errors,
-            });
+#[allow(clippy::too_many_arguments)]
+fn rollback(
+    repo_root: &Path,
+    heist_dir_repo: &dyn HeistDirRepository,
+    git: &dyn GitRepository,
+    slug: &str,
+    branch: &str,
+) -> Vec<RollbackFailure> {
+    let mut errors = Vec::new();
+
+    match git.worktree_exists(repo_root, slug) {
+        Ok(true) => {
+            let path = worktree_path(repo_root, slug);
+            if let Err(e) = git.remove_worktree(repo_root, &path) {
+                errors.push(RollbackFailure::WorktreeRemove(e));
+            }
         }
-    };
-
-    if let Err(error) = app::state::set(state_repo, clock, slug, "stage", "planning") {
-        let rollback_errors = rollback(repo_root, heist_dir_repo, git, slug, branch.as_ref());
-        return Err(BeginError::State {
-            error,
-            rollback_errors,
-        });
+        Ok(false) => {}
+        Err(e) => errors.push(RollbackFailure::WorktreeProbe(e)),
     }
-
-    Ok(worktree_value)
+    match git.branch_exists(repo_root, branch) {
+        Ok(true) => {
+            if let Err(e) = git.delete_branch(repo_root, branch) {
+                errors.push(RollbackFailure::BranchDelete(e));
+            }
+        }
+        Ok(false) => {}
+        Err(e) => errors.push(RollbackFailure::BranchProbe(e)),
+    }
+    if let Err(e) = heist_dir_repo.remove(slug) {
+        errors.push(RollbackFailure::HeistDirRemove(e));
+    }
+    errors
 }
 
 #[cfg(test)]
@@ -328,17 +370,10 @@ mod tests {
             fn exists(&self, slug: &str) -> bool {
                 self.inner.exists(slug)
             }
-            fn load(
-                &self,
-                slug: &str,
-            ) -> Result<State, StateError> {
+            fn load(&self, slug: &str) -> Result<State, StateError> {
                 self.inner.load(slug)
             }
-            fn save(
-                &self,
-                slug: &str,
-                state: &State,
-            ) -> Result<(), StateError> {
+            fn save(&self, slug: &str, state: &State) -> Result<(), StateError> {
                 let call = self.set_calls.get();
                 self.set_calls.set(call + 1);
                 // Saves happen in order: 0 = init's own save, 1 = the "mode"
@@ -347,16 +382,13 @@ mod tests {
                 // edge of the flowchart is actually exercised (not the
                 // earlier steps).
                 if call == 3 {
-                    return Err(StateError::Unreadable(
-                        std::io::Error::other("simulated stage-save failure"),
-                    ));
+                    return Err(StateError::Unreadable(std::io::Error::other(
+                        "simulated stage-save failure",
+                    )));
                 }
                 self.inner.save(slug, state)
             }
-            fn list_slugs(
-                &self,
-            ) -> Result<Vec<SlugValue>, StateError>
-            {
+            fn list_slugs(&self) -> Result<Vec<SlugValue>, StateError> {
                 self.inner.list_slugs()
             }
         }

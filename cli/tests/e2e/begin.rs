@@ -15,8 +15,7 @@ fn run_git(dir: &Path, args: &[&str]) {
     assert!(status.success(), "git {:?} failed", args);
 }
 
-/// Sets up a main repo pushed to a bare origin (no `state init` run — unlike
-/// worktree_add.rs's fixture, `begin` owns state creation itself).
+/// Sets up a main repo pushed to a bare origin.
 /// Returns (main_temp, bare_temp) — both must stay alive for the repo paths to remain valid.
 fn setup_repo() -> (TempDir, TempDir) {
     let main_temp = TempDir::new().expect("failed to create main temp dir");
