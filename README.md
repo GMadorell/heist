@@ -19,6 +19,8 @@ You type `/heist:heist add rate limiting to the public API` (optionally prefixed
 
 You come back to an open PR and a heat report: what got built, what got flagged, what's still on you to eyeball.
 
+Not sure a heist is even worth it, or which mode fits? `/heist:decide <description>` gives a verdict and, if worth it, the exact `heist` command to run.
+
 ## Pipeline
 
 ```mermaid
@@ -58,6 +60,7 @@ Every heist runs in one of three modes, chosen up front (or you're asked if none
 | `medium` | Same as heavy, minus Fence review |
 | `light` | Plan + human review only, then you implement directly and do a manual crit pass on the diff. For small, well-understood changes |
 
+
 ## Terms explanation
 
 | Heist term | Real concept |
@@ -70,6 +73,7 @@ Every heist runs in one of three modes, chosen up front (or you're asked if none
 | Cleaner | Cleans up after: checks the work, scrubs for risk, drives the getaway car (the PR) |
 | Review crew | Cleaner's lookouts: reviewers chosen from what the git diff touches |
 | Casing | Casing the joint before the job: one-time repo scouting, writes `validation.md` |
+| Decide | Is the job even worth pulling: cheap triage on whether a heist is worth it, and which mode |
 | Blueprint | The plan for the job: `blueprint.md`, the design doc |
 | Score | The job's step-by-step rundown: `score.md`, the ordered TDD work doc |
 | Risk label | How hot the job is: PR risk classification `low` / `medium` / `high` / `critical` |
@@ -96,7 +100,7 @@ Then, inside any project:
 
 You can also point it at an existing plan file instead of describing the change: `/heist:heist path/to/plan.md`. Heist detects the file, confirms with you, then works with that plan as the baseline.
 
-Note: plugin skills are always namespaced (`/heist:heist`, `/heist:casing`), there's no unprefixed shorthand. Worktree and state management is handled by the `heist` binary.
+Note: plugin skills are always namespaced (`/heist:heist`, `/heist:casing`, `/heist:decide`), there's no unprefixed shorthand. Worktree and state management is handled by the `heist` binary.
 
 ## Layout
 
