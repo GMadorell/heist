@@ -1,3 +1,4 @@
+use crate::domain::value::{BranchValue, RefValue, SlugValue};
 use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
 use std::path::{Path, PathBuf};
 
@@ -67,7 +68,7 @@ impl GitRepository for RealGit {
     fn is_branch_merged(
         &self,
         repo_root: &Path,
-        branch: &crate::domain::value::BranchValue,
+        branch: &BranchValue,
         into: &str,
     ) -> Result<MergeCheck, GitError> {
         let branch_str = branch.as_ref();
@@ -105,7 +106,7 @@ impl GitRepository for RealGit {
     fn delete_branch(
         &self,
         repo_root: &Path,
-        branch: &crate::domain::value::BranchValue,
+        branch: &BranchValue,
     ) -> Result<(), GitError> {
         let branch_str = branch.as_ref();
         let output = std::process::Command::new("git")
@@ -127,7 +128,7 @@ impl GitRepository for RealGit {
     fn branch_exists(
         &self,
         repo_root: &Path,
-        branch: &crate::domain::value::BranchValue,
+        branch: &BranchValue,
     ) -> Result<bool, GitError> {
         let repo = git2::Repository::open(repo_root).map_err(|e| GitError::CommandFailed {
             command: "git2::Repository::open".to_string(),
@@ -142,7 +143,7 @@ impl GitRepository for RealGit {
     fn worktree_exists(
         &self,
         repo_root: &Path,
-        slug: &crate::domain::value::SlugValue,
+        slug: &SlugValue,
     ) -> Result<bool, GitError> {
         let repo = git2::Repository::open(repo_root).map_err(|e| GitError::CommandFailed {
             command: "git2::Repository::open".to_string(),
@@ -164,8 +165,8 @@ impl GitRepository for RealGit {
         &self,
         repo_root: &Path,
         path: &Path,
-        branch: &crate::domain::value::BranchValue,
-        start_point: &crate::domain::value::RefValue,
+        branch: &BranchValue,
+        start_point: &RefValue,
     ) -> Result<(), GitError> {
         // `git worktree add` is a mutating porcelain command; git2's
         // worktree API is more manual and less battle-tested here, so
@@ -239,7 +240,7 @@ impl GitRepository for RealGit {
     fn resolve_ref(
         &self,
         repo_root: &Path,
-        ref_spec: &crate::domain::value::RefValue,
+        ref_spec: &RefValue,
     ) -> Result<(), GitError> {
         let ref_spec_str = ref_spec.as_ref();
         let resolve = || -> Result<(), git2::Error> {
@@ -283,7 +284,7 @@ impl GitRepository for RealGit {
         &self,
         repo_root: &Path,
         base_branch: &str,
-        head_ref: &crate::domain::value::RefValue,
+        head_ref: &RefValue,
     ) -> Result<Vec<PathBuf>, GitError> {
         let head_ref_str = head_ref.as_ref();
         let diff_paths = || -> Result<Vec<PathBuf>, git2::Error> {
@@ -323,7 +324,7 @@ impl GitRepository for RealGit {
     fn read_file_at(
         &self,
         repo_root: &Path,
-        rev: &crate::domain::value::RefValue,
+        rev: &RefValue,
         path: &Path,
     ) -> Result<Option<String>, GitError> {
         let rev_str = rev.as_ref();
@@ -347,8 +348,8 @@ impl GitRepository for RealGit {
     fn is_ancestor(
         &self,
         repo_root: &Path,
-        ancestor_ref: &crate::domain::value::RefValue,
-        descendant_ref: &crate::domain::value::RefValue,
+        ancestor_ref: &RefValue,
+        descendant_ref: &RefValue,
     ) -> Result<bool, GitError> {
         let ancestor_ref_str = ancestor_ref.as_ref();
         let descendant_ref_str = descendant_ref.as_ref();
@@ -368,12 +369,8 @@ impl GitRepository for RealGit {
         })
     }
 
-    fn pr_state(
-        &self,
-        repo_root: &Path,
-        branch: &crate::domain::value::RefValue,
-    ) -> Result<PrState, GitError> {
-        let branch_str = branch.as_ref();
+    fn pr_state(&self, repo_root: &Path, base_ref: &RefValue) -> Result<PrState, GitError> {
+        let branch_str = base_ref.as_ref();
         let output = std::process::Command::new("gh")
             .current_dir(repo_root)
             .args([
@@ -446,7 +443,7 @@ impl GitRepository for RealGit {
     fn rebase(
         &self,
         repo_root: &Path,
-        onto: &crate::domain::value::RefValue,
+        onto: &RefValue,
     ) -> Result<(), GitError> {
         if rebase_in_progress(repo_root) {
             return continue_rebase(repo_root);
@@ -473,7 +470,7 @@ impl GitRepository for RealGit {
     fn merge(
         &self,
         repo_root: &Path,
-        other_ref: &crate::domain::value::RefValue,
+        other_ref: &RefValue,
     ) -> Result<(), GitError> {
         if merge_in_progress(repo_root) {
             return continue_merge(repo_root);

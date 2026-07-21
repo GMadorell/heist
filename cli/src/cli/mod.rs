@@ -10,6 +10,8 @@ use crate::adapters::real_tool_probe::RealToolProbe;
 use crate::adapters::system_clock::SystemClock;
 use crate::adapters::validation_fs::ValidationFs;
 use crate::app;
+use crate::domain::state::Mode;
+use crate::domain::value::{RefValue, ScoreWave, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::GitRepository;
 use crate::ports::heist_dir_repository::HeistDirRepository;
@@ -234,6 +236,16 @@ pub fn run(cli: Cli) -> ExitCode {
     }
 }
 
+/// Parse a raw slug string at the CLI boundary, presenting the error and
+/// returning the precondition exit code on failure. Shared by every command
+/// that takes a slug argument.
+fn parse_slug_or_exit(slug: &str) -> Result<SlugValue, ExitCode> {
+    SlugValue::parse(slug).map_err(|e| {
+        present::error(e);
+        ExitCode::Precondition
+    })
+}
+
 fn run_state(
     command: StateCommands,
     heist_dir_repo: &dyn HeistDirRepository,
@@ -242,12 +254,9 @@ fn run_state(
 ) -> ExitCode {
     match command {
         StateCommands::Init { slug } => {
-            let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
                 Ok(v) => v,
-                Err(e) => {
-                    present::error(e);
-                    return ExitCode::Precondition;
-                }
+                Err(code) => return code,
             };
             match app::state::init(heist_dir_repo, repo, clock, &slug_value) {
                 Ok(()) => ExitCode::Success,
@@ -262,12 +271,9 @@ fn run_state(
             }
         }
         StateCommands::Get { slug, field } => {
-            let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
                 Ok(v) => v,
-                Err(e) => {
-                    present::error(e);
-                    return ExitCode::Precondition;
-                }
+                Err(code) => return code,
             };
             match app::state::get(repo, &slug_value, &field) {
                 Ok(value) => {
@@ -285,12 +291,9 @@ fn run_state(
             }
         }
         StateCommands::Set { slug, field, value } => {
-            let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
                 Ok(v) => v,
-                Err(e) => {
-                    present::error(e);
-                    return ExitCode::Precondition;
-                }
+                Err(code) => return code,
             };
             match app::state::set(repo, clock, &slug_value, &field, &value) {
                 Ok(()) => ExitCode::Success,
@@ -298,12 +301,9 @@ fn run_state(
             }
         }
         StateCommands::Incr { slug, field } => {
-            let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
                 Ok(v) => v,
-                Err(e) => {
-                    present::error(e);
-                    return ExitCode::Precondition;
-                }
+                Err(code) => return code,
             };
             match app::state::incr(repo, clock, &slug_value, &field) {
                 Ok(()) => ExitCode::Success,
@@ -349,18 +349,11 @@ fn run_worktree(
 ) -> ExitCode {
     match command {
         WorktreeCommands::Add { slug, base } => {
-            let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
                 Ok(v) => v,
-                Err(e) => {
-                    present::error(e);
-                    return ExitCode::Precondition;
-                }
+                Err(code) => return code,
             };
-            let base_ref = match base
-                .as_deref()
-                .map(crate::domain::value::RefValue::try_from_raw)
-                .transpose()
-            {
+            let base_ref = match base.as_deref().map(RefValue::try_from_raw).transpose() {
                 Ok(v) => v,
                 Err(e) => {
                     present::error(e);
@@ -384,12 +377,9 @@ fn run_worktree(
             }
         }
         WorktreeCommands::Remove { slug } => {
-            let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
                 Ok(v) => v,
-                Err(e) => {
-                    present::error(e);
-                    return ExitCode::Precondition;
-                }
+                Err(code) => return code,
             };
             match app::worktree::remove(repo_root, state_repo, git, clock, &slug_value) {
                 Ok(()) => ExitCode::Success,
@@ -496,19 +486,16 @@ fn run_review(
 ) -> ExitCode {
     match command {
         ReviewCommands::Select { slug } => {
-            let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
                 Ok(v) => v,
-                Err(e) => {
-                    present::error(e);
-                    return ExitCode::Precondition;
-                }
+                Err(code) => return code,
             };
             match app::review::select(repo_root, state_repo, git, &slug_value) {
                 Ok(lanes) => {
                     present::lane_list(&lanes);
                     ExitCode::Success
                 }
-                Err(app::review::SelectError::InvalidSlug(e)) => {
+                Err(app::review::SelectError::InvalidStoredBranch(e)) => {
                     present::error(e);
                     ExitCode::Precondition
                 }
@@ -538,12 +525,9 @@ fn run_review(
 }
 
 fn run_resume(slug: &str, repo: &dyn StateRepository) -> ExitCode {
-    let slug_value = match crate::domain::value::SlugValue::parse(slug) {
+    let slug_value = match parse_slug_or_exit(slug) {
         Ok(v) => v,
-        Err(e) => {
-            present::error(e);
-            return ExitCode::Precondition;
-        }
+        Err(code) => return code,
     };
     match app::resume::resume(repo, &slug_value) {
         Ok(state) => {
@@ -590,12 +574,9 @@ fn run_base(
     state_repo: &dyn StateRepository,
     git: &dyn GitRepository,
 ) -> ExitCode {
-    let slug_value = match crate::domain::value::SlugValue::parse(slug) {
+    let slug_value = match parse_slug_or_exit(slug) {
         Ok(v) => v,
-        Err(e) => {
-            present::error(e);
-            return ExitCode::Precondition;
-        }
+        Err(code) => return code,
     };
     let main_branch = git.default_branch(repo_root);
 
@@ -655,12 +636,9 @@ fn run_base(
 }
 
 fn run_sync(slug: &str, state_repo: &dyn StateRepository, git: &dyn GitRepository) -> ExitCode {
-    let slug_value = match crate::domain::value::SlugValue::parse(slug) {
+    let slug_value = match parse_slug_or_exit(slug) {
         Ok(v) => v,
-        Err(e) => {
-            present::error(e);
-            return ExitCode::Precondition;
-        }
+        Err(code) => return code,
     };
     match app::sync::sync(state_repo, git, &slug_value) {
         Ok(action) => {
@@ -744,24 +722,18 @@ fn run_begin(
     fs: &dyn WorktreeFs,
     clock: &dyn Clock,
 ) -> ExitCode {
-    let slug_value = match crate::domain::value::SlugValue::parse(slug) {
+    let slug_value = match parse_slug_or_exit(slug) {
         Ok(v) => v,
-        Err(e) => {
-            present::error(e);
-            return ExitCode::Precondition;
-        }
+        Err(code) => return code,
     };
-    let mode_value = match crate::domain::state::Mode::parse(mode) {
+    let mode_value = match Mode::parse(mode) {
         Ok(m) => m,
         Err(e) => {
             present::error(e);
             return ExitCode::Precondition;
         }
     };
-    let base_ref = match base
-        .map(crate::domain::value::RefValue::try_from_raw)
-        .transpose()
-    {
+    let base_ref = match base.map(RefValue::try_from_raw).transpose() {
         Ok(v) => v,
         Err(e) => {
             present::error(e);
@@ -886,12 +858,9 @@ fn run_score(
 ) -> ExitCode {
     match command {
         ScoreCommands::Check { slug } => {
-            let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
                 Ok(v) => v,
-                Err(e) => {
-                    present::error(e);
-                    return ExitCode::Precondition;
-                }
+                Err(code) => return code,
             };
             match app::score::check(state_repo, score_repo, &slug_value) {
                 Ok(outcome) => {
@@ -917,12 +886,9 @@ fn run_score(
             }
         }
         ScoreCommands::Record { slug } => {
-            let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
                 Ok(v) => v,
-                Err(e) => {
-                    present::error(e);
-                    return ExitCode::Precondition;
-                }
+                Err(code) => return code,
             };
             match app::score::record(state_repo, score_repo, clock, &slug_value) {
                 Ok(outcome) => {
@@ -952,14 +918,11 @@ fn run_score(
             }
         }
         ScoreCommands::Wave { slug, n } => {
-            let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
                 Ok(v) => v,
-                Err(e) => {
-                    present::error(e);
-                    return ExitCode::Precondition;
-                }
+                Err(code) => return code,
             };
-            let score_wave = crate::domain::value::ScoreWave::new(n);
+            let score_wave = ScoreWave::new(n);
             match app::score::wave(state_repo, score_repo, &slug_value, score_wave) {
                 Ok(blocks) => {
                     present::score_wave_blocks(&blocks);
@@ -997,7 +960,7 @@ mod tests {
         FakeGit, FakeWorktreeFs, FixedClock, InMemoryHeistDirRepository, InMemoryStateRepository,
     };
     use crate::domain::state::{Stage, State};
-    use crate::domain::value::{DateValue, NonBlankValue, ScoreWave, SlugValue};
+    use crate::domain::value::{DateValue, NonBlankValue};
     use crate::ports::git::{GitError, PrState};
     use tempfile::TempDir;
 

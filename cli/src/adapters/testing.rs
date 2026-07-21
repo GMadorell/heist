@@ -1,7 +1,7 @@
 use crate::domain::error::StateError;
 use crate::domain::state::State;
 use crate::domain::tool::Tool;
-use crate::domain::value::{DateValue, SlugValue};
+use crate::domain::value::{BranchValue, DateValue, RefValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
 use crate::ports::heist_dir_repository::HeistDirRepository;
@@ -133,12 +133,12 @@ impl InMemoryStateRepository {
 }
 
 impl StateRepository for InMemoryStateRepository {
-    fn exists(&self, slug: &crate::domain::value::SlugValue) -> bool {
+    fn exists(&self, slug: &SlugValue) -> bool {
         let key = slug.as_ref();
         self.states.borrow().contains_key(key) || self.load_errors.borrow().contains_key(key)
     }
 
-    fn load(&self, slug: &crate::domain::value::SlugValue) -> Result<State, StateError> {
+    fn load(&self, slug: &SlugValue) -> Result<State, StateError> {
         let key = slug.as_ref();
         if let Some(error) = self.load_errors.borrow_mut().remove(key) {
             return Err(error);
@@ -152,7 +152,7 @@ impl StateRepository for InMemoryStateRepository {
 
     fn save(
         &self,
-        slug: &crate::domain::value::SlugValue,
+        slug: &SlugValue,
         state: &State,
     ) -> Result<(), StateError> {
         self.states
@@ -176,7 +176,7 @@ impl StateRepository for InMemoryStateRepository {
 impl ScoreRepository for InMemoryStateRepository {
     fn load_score(
         &self,
-        slug: &crate::domain::value::SlugValue,
+        slug: &SlugValue,
     ) -> Result<Option<String>, std::io::Error> {
         let key = slug.as_ref();
         if let Some(message) = self.score_errors.borrow().get(key) {
@@ -214,7 +214,7 @@ impl InMemoryHeistDirRepository {
 }
 
 impl HeistDirRepository for InMemoryHeistDirRepository {
-    fn create(&self, slug: &crate::domain::value::SlugValue) -> Result<(), StateError> {
+    fn create(&self, slug: &SlugValue) -> Result<(), StateError> {
         let key = slug.as_ref();
         let mut dirs = self.dirs.borrow_mut();
         if dirs.contains(key) {
@@ -224,7 +224,7 @@ impl HeistDirRepository for InMemoryHeistDirRepository {
         Ok(())
     }
 
-    fn remove(&self, slug: &crate::domain::value::SlugValue) -> Result<(), StateError> {
+    fn remove(&self, slug: &SlugValue) -> Result<(), StateError> {
         self.dirs.borrow_mut().remove(slug.as_ref());
         Ok(())
     }
@@ -469,7 +469,7 @@ impl GitRepository for FakeGit {
     fn branch_exists(
         &self,
         _repo_root: &Path,
-        branch: &crate::domain::value::BranchValue,
+        branch: &BranchValue,
     ) -> Result<bool, GitError> {
         Ok(self.branches.borrow().contains(branch.as_ref()))
     }
@@ -490,7 +490,7 @@ impl GitRepository for FakeGit {
     fn is_branch_merged(
         &self,
         _repo_root: &Path,
-        branch: &crate::domain::value::BranchValue,
+        branch: &BranchValue,
         _into: &str,
     ) -> Result<MergeCheck, GitError> {
         let branch_str = branch.as_ref();
@@ -517,7 +517,7 @@ impl GitRepository for FakeGit {
     fn worktree_exists(
         &self,
         _repo_root: &Path,
-        slug: &crate::domain::value::SlugValue,
+        slug: &SlugValue,
     ) -> Result<bool, GitError> {
         Ok(self.worktrees.borrow().contains(slug.as_ref()))
     }
@@ -526,8 +526,8 @@ impl GitRepository for FakeGit {
         &self,
         _repo_root: &Path,
         _path: &Path,
-        branch: &crate::domain::value::BranchValue,
-        start_point: &crate::domain::value::RefValue,
+        branch: &BranchValue,
+        start_point: &RefValue,
     ) -> Result<(), GitError> {
         if let Some(err) = &self.add_error {
             return Err(err.clone());
@@ -556,7 +556,7 @@ impl GitRepository for FakeGit {
     fn delete_branch(
         &self,
         _repo_root: &Path,
-        branch: &crate::domain::value::BranchValue,
+        branch: &BranchValue,
     ) -> Result<(), GitError> {
         self.deleted_branch_names
             .borrow_mut()
@@ -585,7 +585,7 @@ impl GitRepository for FakeGit {
     fn resolve_ref(
         &self,
         _repo_root: &Path,
-        ref_spec: &crate::domain::value::RefValue,
+        ref_spec: &RefValue,
     ) -> Result<(), GitError> {
         if let Some((ref_name, err)) = &self.resolve_ref_error_for {
             if ref_name == ref_spec.as_ref() {
@@ -599,7 +599,7 @@ impl GitRepository for FakeGit {
         &self,
         _repo_root: &Path,
         _base_branch: &str,
-        _head_ref: &crate::domain::value::RefValue,
+        _head_ref: &RefValue,
     ) -> Result<Vec<PathBuf>, GitError> {
         if let Some(err) = &self.changed_paths_error {
             return Err(err.clone());
@@ -610,7 +610,7 @@ impl GitRepository for FakeGit {
     fn read_file_at(
         &self,
         _repo_root: &Path,
-        _rev: &crate::domain::value::RefValue,
+        _rev: &RefValue,
         path: &Path,
     ) -> Result<Option<String>, GitError> {
         Ok(self.file_contents.get(path).cloned())
@@ -619,8 +619,8 @@ impl GitRepository for FakeGit {
     fn is_ancestor(
         &self,
         _repo_root: &Path,
-        ancestor_ref: &crate::domain::value::RefValue,
-        descendant_ref: &crate::domain::value::RefValue,
+        ancestor_ref: &RefValue,
+        descendant_ref: &RefValue,
     ) -> Result<bool, GitError> {
         *self.is_ancestor_calls.borrow_mut() += 1;
         if ancestor_ref.as_ref() == descendant_ref.as_ref() {
@@ -632,19 +632,15 @@ impl GitRepository for FakeGit {
         )))
     }
 
-    fn pr_state(
-        &self,
-        _repo_root: &Path,
-        branch: &crate::domain::value::RefValue,
-    ) -> Result<PrState, GitError> {
+    fn pr_state(&self, _repo_root: &Path, base_ref: &RefValue) -> Result<PrState, GitError> {
         if let Some((failing_branch, err)) = &self.pr_state_error_for {
-            if failing_branch == branch.as_ref() {
+            if failing_branch == base_ref.as_ref() {
                 return Err(err.clone());
             }
         }
         Ok(self
             .pr_states
-            .get(branch.as_ref())
+            .get(base_ref.as_ref())
             .cloned()
             .unwrap_or(PrState::None))
     }
@@ -652,7 +648,7 @@ impl GitRepository for FakeGit {
     fn rebase(
         &self,
         _repo_root: &Path,
-        onto: &crate::domain::value::RefValue,
+        onto: &RefValue,
     ) -> Result<(), GitError> {
         self.rebase_calls.borrow_mut().push(onto.to_string());
         self.call_log.borrow_mut().push("rebase".to_string());
@@ -665,7 +661,7 @@ impl GitRepository for FakeGit {
     fn merge(
         &self,
         _repo_root: &Path,
-        other_ref: &crate::domain::value::RefValue,
+        other_ref: &RefValue,
     ) -> Result<(), GitError> {
         self.merge_calls.borrow_mut().push(other_ref.to_string());
         self.call_log.borrow_mut().push("merge".to_string());

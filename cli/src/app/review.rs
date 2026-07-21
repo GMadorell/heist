@@ -1,4 +1,4 @@
-use crate::domain::error::StateError;
+use crate::domain::error::{StateError, ValueError};
 use crate::domain::language;
 use crate::domain::review::{self, Lane};
 use crate::domain::value::{RefValue, SlugValue};
@@ -10,7 +10,7 @@ use std::path::Path;
 pub enum SelectError {
     NoState,
     NoBranch,
-    InvalidSlug(crate::domain::error::ValueError),
+    InvalidStoredBranch(ValueError),
     Load(StateError),
     NoRemoteDefault(GitError),
     Git(GitError),
@@ -26,23 +26,21 @@ pub fn select(
         return Err(SelectError::NoState);
     }
     let state = state_repo.load(slug).map_err(SelectError::Load)?;
-    let _branch_recorded = state.branch.ok_or(SelectError::NoBranch)?;
-
-    let branch = crate::domain::worktree::branch_name(slug).map_err(SelectError::InvalidSlug)?;
+    let branch_recorded = state.branch.ok_or(SelectError::NoBranch)?;
+    let branch = RefValue::try_from_raw(branch_recorded.as_ref())
+        .map_err(SelectError::InvalidStoredBranch)?;
 
     let main_branch = git.default_branch(repo_root);
     git.remote_default_resolves(repo_root, &main_branch)
         .map_err(SelectError::NoRemoteDefault)?;
     let paths = git
-        .changed_paths(repo_root, &main_branch, &RefValue::from(branch.clone()))
+        .changed_paths(repo_root, &main_branch, &branch)
         .map_err(SelectError::Git)?;
 
     let language_types: Vec<_> = paths
         .iter()
         .map(|p| {
-            let content = git
-                .read_file_at(repo_root, &RefValue::from(branch.clone()), p)
-                .unwrap_or(None);
+            let content = git.read_file_at(repo_root, &branch, p).unwrap_or(None);
             language::classify(p, content.as_deref())
         })
         .collect();

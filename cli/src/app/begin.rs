@@ -226,7 +226,7 @@ mod tests {
             &FakeWorktreeFs,
             &fixed_clock(),
             &slug,
-            crate::domain::state::Mode::Medium,
+            Mode::Medium,
             None,
         );
 
@@ -259,7 +259,7 @@ mod tests {
             &FakeWorktreeFs,
             &fixed_clock(),
             &foo,
-            crate::domain::state::Mode::Heavy,
+            Mode::Heavy,
             None,
         );
         assert!(matches!(
@@ -280,7 +280,7 @@ mod tests {
             &FakeWorktreeFs,
             &fixed_clock(),
             &bar,
-            crate::domain::state::Mode::Heavy,
+            Mode::Heavy,
             None,
         );
         assert!(matches!(
@@ -300,7 +300,7 @@ mod tests {
             &FakeWorktreeFs,
             &fixed_clock(),
             &baz,
-            crate::domain::state::Mode::Heavy,
+            Mode::Heavy,
             None,
         );
         assert!(matches!(
@@ -359,7 +359,7 @@ mod tests {
             &FakeWorktreeFs,
             &fixed_clock(),
             &foo,
-            crate::domain::state::Mode::Heavy,
+            Mode::Heavy,
             None,
         );
 
@@ -409,7 +409,7 @@ mod tests {
             &FailingLinkFs,
             &fixed_clock(),
             &foo,
-            crate::domain::state::Mode::Heavy,
+            Mode::Heavy,
             None,
         );
 

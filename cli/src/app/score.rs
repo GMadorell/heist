@@ -1,5 +1,6 @@
 use crate::domain::error::StateError;
 use crate::domain::score::{self, Finding};
+use crate::domain::value::{ScoreStepsTotal, ScoreWave, ScoreWavesTotal, SlugValue};
 use crate::ports::score_repository::ScoreRepository;
 use crate::ports::state_repository::StateRepository;
 
@@ -20,7 +21,7 @@ pub enum CheckError {
 pub fn check(
     repo: &dyn StateRepository,
     scores: &dyn ScoreRepository,
-    slug: &crate::domain::value::SlugValue,
+    slug: &SlugValue,
 ) -> Result<CheckOutcome, CheckError> {
     let (parsed, waves) = load_and_check(repo, scores, slug)?;
     Ok(CheckOutcome {
@@ -47,12 +48,12 @@ pub fn record(
     repo: &dyn StateRepository,
     scores: &dyn ScoreRepository,
     clock: &dyn crate::ports::clock::Clock,
-    slug: &crate::domain::value::SlugValue,
+    slug: &SlugValue,
 ) -> Result<RecordOutcome, RecordError> {
     let (parsed, waves) = load_and_check(repo, scores, slug)?;
     let mut state = repo.load(slug).map_err(RecordError::Save)?;
-    state.score_steps_total = crate::domain::value::ScoreStepsTotal::new(parsed.steps.len() as u32);
-    state.score_waves_total = crate::domain::value::ScoreWavesTotal::new(waves as u32);
+    state.score_steps_total = ScoreStepsTotal::new(parsed.steps.len() as u32);
+    state.score_waves_total = ScoreWavesTotal::new(waves as u32);
     state.updated = clock.today();
     repo.save(slug, &state).map_err(RecordError::Save)?;
     Ok(RecordOutcome {
@@ -73,8 +74,8 @@ pub enum WaveError {
 pub fn wave(
     repo: &dyn StateRepository,
     scores: &dyn ScoreRepository,
-    slug: &crate::domain::value::SlugValue,
-    n: crate::domain::value::ScoreWave,
+    slug: &SlugValue,
+    n: ScoreWave,
 ) -> Result<Vec<(u32, String)>, WaveError> {
     if !repo.exists(slug) {
         return Err(WaveError::NoState);
@@ -118,7 +119,7 @@ impl From<LoadError> for RecordError {
 fn load_and_check(
     repo: &dyn StateRepository,
     scores: &dyn ScoreRepository,
-    slug: &crate::domain::value::SlugValue,
+    slug: &SlugValue,
 ) -> Result<(score::Score, usize), LoadError> {
     if !repo.exists(slug) {
         return Err(LoadError::NoState);
@@ -141,7 +142,7 @@ mod tests {
     use super::*;
     use crate::adapters::testing::InMemoryStateRepository;
     use crate::domain::state::State;
-    use crate::domain::value::{DateValue, SlugValue};
+    use crate::domain::value::DateValue;
 
     const VALID_SCORE: &str = "\
 ## Wave 1
@@ -243,13 +244,13 @@ mod tests {
             .with_state("foo", State::new(slug, fixed_date()).expect("valid slug"))
             .with_score("foo", TWO_WAVE_SCORE);
 
-        let blocks = wave(&repo, &repo, slug, crate::domain::value::ScoreWave::new(1))
+        let blocks = wave(&repo, &repo, slug, ScoreWave::new(1))
             .expect("wave 1 should exist");
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].0, 1);
         assert!(blocks[0].1.starts_with("### Step 1: add widget"));
 
-        let err = wave(&repo, &repo, slug, crate::domain::value::ScoreWave::new(3))
+        let err = wave(&repo, &repo, slug, ScoreWave::new(3))
             .expect_err("wave 3 should not exist");
         match err {
             WaveError::NoSuchWave(3) => {}
@@ -264,7 +265,7 @@ mod tests {
             .with_state("foo", State::new(slug, fixed_date()).expect("valid slug"))
             .with_score("foo", TWO_WAVE_SCORE);
 
-        let blocks = wave(&repo, &repo, slug, crate::domain::value::ScoreWave::new(1))
+        let blocks = wave(&repo, &repo, slug, ScoreWave::new(1))
             .expect("wave 1 should exist");
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].0, 1);

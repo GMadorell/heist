@@ -30,7 +30,7 @@ pub fn add(
     git: &dyn GitRepository,
     fs: &dyn WorktreeFs,
     clock: &dyn Clock,
-    slug: &crate::domain::value::SlugValue,
+    slug: &SlugValue,
     base: Option<&RefValue>,
 ) -> Result<NonBlankValue, AddError> {
     if !state_repo.exists(slug) {
@@ -120,7 +120,7 @@ pub fn remove(
     state_repo: &dyn StateRepository,
     git: &dyn GitRepository,
     clock: &dyn Clock,
-    slug: &crate::domain::value::SlugValue,
+    slug: &SlugValue,
 ) -> Result<(), RemoveError> {
     if !state_repo.exists(slug) {
         return Err(RemoveError::NoState);
