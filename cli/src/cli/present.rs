@@ -1,9 +1,11 @@
 use crate::app::begin::RollbackFailure;
+use crate::app::doctor::ToolStatus;
 use crate::app::list::ListRow;
 use crate::app::sync::SyncAction;
 use crate::app::worktree::CleanupOutcome;
 use crate::domain::review::Lane;
-use crate::domain::state::State;
+use crate::domain::score::Finding;
+use crate::domain::state::{State, route};
 use crate::ports::git::GitError;
 use std::fmt::Display;
 
@@ -107,7 +109,7 @@ pub fn list_summary(rows: &[ListRow]) {
 }
 
 pub fn resume_summary(state: &State) {
-    let next = crate::domain::state::route(state.stage, state.mode)
+    let next = route(state.stage, state.mode)
         .map(|r| r.to_string())
         .unwrap_or_else(|| "none".to_string());
     let worktree = state
@@ -241,7 +243,7 @@ pub fn abandoned_base_sync_refused(base_ref: &str) {
     );
 }
 
-pub fn doctor(results: &[crate::app::doctor::ToolStatus]) {
+pub fn doctor(results: &[ToolStatus]) {
     for status in results {
         println!(
             "{}: {}",
@@ -271,7 +273,7 @@ pub fn score_record_ok(steps: usize, waves: usize) {
     println!("waves: {}", waves);
 }
 
-pub fn score_findings(findings: &[crate::domain::score::Finding]) {
+pub fn score_findings(findings: &[Finding]) {
     for finding in findings {
         eprintln!("{}", finding);
     }

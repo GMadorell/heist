@@ -6,6 +6,7 @@ use crate::adapters::file_score_repository::FileScoreRepository;
 use crate::adapters::file_state_repository::FileStateRepository;
 use crate::adapters::filesystem_worktree::FilesystemWorktree;
 use crate::adapters::real_git::RealGit;
+use crate::adapters::real_tool_probe::RealToolProbe;
 use crate::adapters::system_clock::SystemClock;
 use crate::adapters::validation_fs::ValidationFs;
 use crate::app;
@@ -14,6 +15,8 @@ use crate::ports::git::GitRepository;
 use crate::ports::heist_dir_repository::HeistDirRepository;
 use crate::ports::score_repository::ScoreRepository;
 use crate::ports::state_repository::StateRepository;
+use crate::ports::tool_probe::ToolProbe;
+use crate::ports::validation_source::ValidationSource;
 use crate::ports::worktree_fs::WorktreeFs;
 use clap::{Parser, Subcommand};
 use exit_code::ExitCode;
@@ -201,7 +204,7 @@ pub fn run(cli: Cli) -> ExitCode {
     let fs = FilesystemWorktree;
     let clock = SystemClock;
     let validation_src = ValidationFs;
-    let tool_probe = crate::adapters::real_tool_probe::RealToolProbe;
+    let tool_probe = RealToolProbe;
     let repo_root = Path::new(".");
 
     match cli.command {
@@ -394,7 +397,7 @@ fn run_worktree(
 
 fn run_validation(
     command: ValidationCommands,
-    src: &dyn crate::ports::validation_source::ValidationSource,
+    src: &dyn ValidationSource,
 ) -> ExitCode {
     match command {
         ValidationCommands::Resolve { paths } => {
@@ -499,7 +502,7 @@ fn run_list(repo: &dyn StateRepository) -> ExitCode {
     }
 }
 
-fn run_doctor(probe: &dyn crate::ports::tool_probe::ToolProbe) -> ExitCode {
+fn run_doctor(probe: &dyn ToolProbe) -> ExitCode {
     let results = app::doctor::doctor(probe);
     present::doctor(&results);
     if results.iter().all(|status| status.available) {
@@ -753,7 +756,7 @@ fn run_score(
     command: ScoreCommands,
     state_repo: &dyn StateRepository,
     score_repo: &dyn ScoreRepository,
-    clock: &dyn crate::ports::clock::Clock,
+    clock: &dyn Clock,
 ) -> ExitCode {
     match command {
         ScoreCommands::Check { slug } => match app::score::check(state_repo, score_repo, &slug) {
