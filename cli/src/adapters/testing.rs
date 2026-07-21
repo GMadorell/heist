@@ -133,25 +133,27 @@ impl InMemoryStateRepository {
 }
 
 impl StateRepository for InMemoryStateRepository {
-    fn exists(&self, slug: &str) -> bool {
-        self.states.borrow().contains_key(slug) || self.load_errors.borrow().contains_key(slug)
+    fn exists(&self, slug: &crate::domain::value::SlugValue) -> bool {
+        let key = slug.as_ref();
+        self.states.borrow().contains_key(key) || self.load_errors.borrow().contains_key(key)
     }
 
-    fn load(&self, slug: &str) -> Result<State, StateError> {
-        if let Some(error) = self.load_errors.borrow_mut().remove(slug) {
+    fn load(&self, slug: &crate::domain::value::SlugValue) -> Result<State, StateError> {
+        let key = slug.as_ref();
+        if let Some(error) = self.load_errors.borrow_mut().remove(key) {
             return Err(error);
         }
         self.states
             .borrow()
-            .get(slug)
+            .get(key)
             .cloned()
             .ok_or(StateError::Missing)
     }
 
-    fn save(&self, slug: &str, state: &State) -> Result<(), StateError> {
+    fn save(&self, slug: &crate::domain::value::SlugValue, state: &State) -> Result<(), StateError> {
         self.states
             .borrow_mut()
-            .insert(slug.to_string(), state.clone());
+            .insert(slug.as_ref().to_string(), state.clone());
         Ok(())
     }
 
@@ -168,11 +170,12 @@ impl StateRepository for InMemoryStateRepository {
 }
 
 impl ScoreRepository for InMemoryStateRepository {
-    fn load_score(&self, slug: &str) -> Result<Option<String>, std::io::Error> {
-        if let Some(message) = self.score_errors.borrow().get(slug) {
+    fn load_score(&self, slug: &crate::domain::value::SlugValue) -> Result<Option<String>, std::io::Error> {
+        let key = slug.as_ref();
+        if let Some(message) = self.score_errors.borrow().get(key) {
             return Err(std::io::Error::other(message.clone()));
         }
-        Ok(self.scores.borrow().get(slug).cloned())
+        Ok(self.scores.borrow().get(key).cloned())
     }
 }
 
@@ -204,17 +207,18 @@ impl InMemoryHeistDirRepository {
 }
 
 impl HeistDirRepository for InMemoryHeistDirRepository {
-    fn create(&self, slug: &str) -> Result<(), StateError> {
+    fn create(&self, slug: &crate::domain::value::SlugValue) -> Result<(), StateError> {
+        let key = slug.as_ref();
         let mut dirs = self.dirs.borrow_mut();
-        if dirs.contains(slug) {
+        if dirs.contains(key) {
             return Err(StateError::AlreadyExists);
         }
-        dirs.insert(slug.to_string());
+        dirs.insert(key.to_string());
         Ok(())
     }
 
-    fn remove(&self, slug: &str) -> Result<(), StateError> {
-        self.dirs.borrow_mut().remove(slug);
+    fn remove(&self, slug: &crate::domain::value::SlugValue) -> Result<(), StateError> {
+        self.dirs.borrow_mut().remove(slug.as_ref());
         Ok(())
     }
 }

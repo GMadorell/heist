@@ -33,7 +33,7 @@ pub fn list(repo: &dyn StateRepository) -> Result<Vec<ListRow>, ListError> {
 
     let mut rows = Vec::with_capacity(slugs.len());
     for slug in slugs {
-        let state = repo.load(slug.as_ref()).map_err(|error| ListError::Load {
+        let state = repo.load(&slug).map_err(|error| ListError::Load {
             slug: slug.clone(),
             error,
         })?;

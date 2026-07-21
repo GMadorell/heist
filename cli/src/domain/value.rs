@@ -47,6 +47,41 @@ impl NonBlankValue {
 }
 
 #[nutype(
+    validate(predicate = BranchValue::is_valid_branch),
+    derive(Debug, Clone, PartialEq, Eq, AsRef, Serialize, Deserialize, Display)
+)]
+pub struct BranchValue(String);
+
+impl BranchValue {
+    pub fn try_from_raw(field: &str, value: &str) -> Result<Self, ValueError> {
+        Self::try_new(value.to_string()).map_err(|_| ValueError::InvalidValue {
+            field: field.to_string(),
+            value: value.to_string(),
+            expected: "a valid git branch name".to_string(),
+        })
+    }
+
+    fn is_valid_branch(s: &str) -> bool {
+        if s.is_empty() {
+            return false;
+        }
+        if s.chars().any(|c| c.is_whitespace() || c.is_control()) {
+            return false;
+        }
+        if s.contains("..") || s.starts_with('-') || s.contains("@{") {
+            return false;
+        }
+        if s.ends_with('/') || s.ends_with(".lock") {
+            return false;
+        }
+        if s.contains("//") {
+            return false;
+        }
+        true
+    }
+}
+
+#[nutype(
     validate(predicate = DateValue::is_valid_date),
     derive(Debug, Clone, PartialEq, Eq, AsRef, Serialize, Deserialize, Display)
 )]
@@ -230,4 +265,63 @@ fn parse_numeric<T>(
             field: field.to_string(),
             value: value.to_string(),
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn branch_value_accepts_slug_derived_branch() {
+        let result = BranchValue::try_from_raw("branch", "heist/foo");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn branch_value_rejects_empty() {
+        let result = BranchValue::try_from_raw("branch", "");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_leading_dash() {
+        let result = BranchValue::try_from_raw("branch", "-foo");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_double_dot() {
+        let result = BranchValue::try_from_raw("branch", "foo..bar");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_at_brace() {
+        let result = BranchValue::try_from_raw("branch", "foo@{bar");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_trailing_slash() {
+        let result = BranchValue::try_from_raw("branch", "foo/");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_trailing_dot_lock() {
+        let result = BranchValue::try_from_raw("branch", "foo.lock");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_double_slash() {
+        let result = BranchValue::try_from_raw("branch", "foo//bar");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_whitespace() {
+        let result = BranchValue::try_from_raw("branch", "foo bar");
+        assert!(result.is_err());
+    }
 }

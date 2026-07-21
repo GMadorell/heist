@@ -20,7 +20,7 @@ pub enum CheckError {
 pub fn check(
     repo: &dyn StateRepository,
     scores: &dyn ScoreRepository,
-    slug: &str,
+    slug: &crate::domain::value::SlugValue,
 ) -> Result<CheckOutcome, CheckError> {
     let (parsed, waves) = load_and_check(repo, scores, slug)?;
     Ok(CheckOutcome {
@@ -47,7 +47,7 @@ pub fn record(
     repo: &dyn StateRepository,
     scores: &dyn ScoreRepository,
     clock: &dyn crate::ports::clock::Clock,
-    slug: &str,
+    slug: &crate::domain::value::SlugValue,
 ) -> Result<RecordOutcome, RecordError> {
     let (parsed, waves) = load_and_check(repo, scores, slug)?;
     let mut state = repo.load(slug).map_err(RecordError::Save)?;
@@ -73,7 +73,7 @@ pub enum WaveError {
 pub fn wave(
     repo: &dyn StateRepository,
     scores: &dyn ScoreRepository,
-    slug: &str,
+    slug: &crate::domain::value::SlugValue,
     n: crate::domain::value::ScoreWave,
 ) -> Result<Vec<(u32, String)>, WaveError> {
     if !repo.exists(slug) {
@@ -117,7 +117,7 @@ impl From<LoadError> for RecordError {
 fn load_and_check(
     repo: &dyn StateRepository,
     scores: &dyn ScoreRepository,
-    slug: &str,
+    slug: &crate::domain::value::SlugValue,
 ) -> Result<(score::Score, usize), LoadError> {
     if !repo.exists(slug) {
         return Err(LoadError::NoState);
@@ -140,7 +140,7 @@ mod tests {
     use super::*;
     use crate::adapters::testing::InMemoryStateRepository;
     use crate::domain::state::State;
-    use crate::domain::value::DateValue;
+    use crate::domain::value::{DateValue, SlugValue};
 
     const VALID_SCORE: &str = "\
 ## Wave 1
@@ -169,22 +169,24 @@ mod tests {
 
     #[test]
     fn check_returns_steps_and_waves_for_a_valid_score() {
+        let slug = &SlugValue::parse("foo").expect("valid slug");
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_state("foo", State::new(slug, fixed_date()).expect("valid slug"))
             .with_score("foo", VALID_SCORE);
 
-        let outcome = check(&repo, &repo, "foo").expect("should check ok");
+        let outcome = check(&repo, &repo, slug).expect("should check ok");
         assert_eq!(outcome.steps, 1);
         assert_eq!(outcome.waves, 1);
     }
 
     #[test]
     fn check_returns_findings_for_a_malformed_score() {
+        let slug = &SlugValue::parse("foo").expect("valid slug");
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_state("foo", State::new(slug, fixed_date()).expect("valid slug"))
             .with_score("foo", MALFORMED_SCORE);
 
-        let err = check(&repo, &repo, "foo").expect_err("should fail");
+        let err = check(&repo, &repo, slug).expect_err("should fail");
         match err {
             CheckError::Findings(findings) => assert!(!findings.is_empty()),
             _ => panic!("expected CheckError::Findings"),
@@ -195,14 +197,15 @@ mod tests {
     fn record_persists_totals_and_bumps_updated() {
         use crate::adapters::testing::FixedClock;
 
+        let slug = &SlugValue::parse("foo").expect("valid slug");
         let created = fixed_date();
         let today = DateValue::parse("today", "2026-01-02").expect("valid date");
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", created).expect("valid slug"))
+            .with_state("foo", State::new(slug, created).expect("valid slug"))
             .with_score("foo", VALID_SCORE);
         let clock = FixedClock(today.clone());
 
-        let outcome = record(&repo, &repo, &clock, "foo").expect("should record ok");
+        let outcome = record(&repo, &repo, &clock, slug).expect("should record ok");
         assert_eq!(outcome.steps, 1);
         assert_eq!(outcome.waves, 1);
 
@@ -234,16 +237,17 @@ mod tests {
 
     #[test]
     fn wave_returns_numbered_blocks_and_no_such_wave_error() {
+        let slug = &SlugValue::parse("foo").expect("valid slug");
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_state("foo", State::new(slug, fixed_date()).expect("valid slug"))
             .with_score("foo", TWO_WAVE_SCORE);
 
-        let blocks = wave(&repo, &repo, "foo", crate::domain::value::ScoreWave::new(1)).expect("wave 1 should exist");
+        let blocks = wave(&repo, &repo, slug, crate::domain::value::ScoreWave::new(1)).expect("wave 1 should exist");
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].0, 1);
         assert!(blocks[0].1.starts_with("### Step 1: add widget"));
 
-        let err = wave(&repo, &repo, "foo", crate::domain::value::ScoreWave::new(3)).expect_err("wave 3 should not exist");
+        let err = wave(&repo, &repo, slug, crate::domain::value::ScoreWave::new(3)).expect_err("wave 3 should not exist");
         match err {
             WaveError::NoSuchWave(3) => {}
             _ => panic!("expected WaveError::NoSuchWave(3)"),
@@ -252,11 +256,12 @@ mod tests {
 
     #[test]
     fn wave_accepts_score_wave_value_object() {
+        let slug = &SlugValue::parse("foo").expect("valid slug");
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_state("foo", State::new(slug, fixed_date()).expect("valid slug"))
             .with_score("foo", TWO_WAVE_SCORE);
 
-        let blocks = wave(&repo, &repo, "foo", crate::domain::value::ScoreWave::new(1))
+        let blocks = wave(&repo, &repo, slug, crate::domain::value::ScoreWave::new(1))
             .expect("wave 1 should exist");
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].0, 1);

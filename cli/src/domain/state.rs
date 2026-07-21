@@ -23,10 +23,10 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(slug: &str, today: DateValue) -> Result<Self, ValueError> {
+    pub fn new(slug: &SlugValue, today: DateValue) -> Result<Self, ValueError> {
         Ok(State {
             schema_version: SchemaVersion::CURRENT,
-            slug: SlugValue::parse(slug)?,
+            slug: slug.clone(),
             stage: Stage::Casing,
             mode: Mode::default(),
             worktree: None,
@@ -265,7 +265,7 @@ mod tests {
     #[test]
     fn new_state_has_expected_defaults() {
         let today = DateValue::parse("today", "2026-01-01").expect("valid date");
-        let state = State::new("my-slug", today.clone()).expect("valid slug");
+        let state = State::new(&SlugValue::parse("my-slug").expect("valid slug"), today.clone()).expect("valid slug");
         let json = serde_json::to_value(&state).expect("failed to serialize");
 
         assert_eq!(
@@ -286,6 +286,13 @@ mod tests {
                 "updated": today.to_string(),
             })
         );
+    }
+
+    #[test]
+    fn new_state_accepts_pre_validated_slug_value() {
+        let today = DateValue::parse("today", "2026-01-01").expect("valid date");
+        let state = State::new(&SlugValue::parse("my-slug").expect("valid slug"), today).expect("valid slug");
+        assert_eq!(state.slug.to_string(), "my-slug");
     }
 
     #[test]
