@@ -459,8 +459,8 @@ impl GitRepository for FakeGit {
         self.default_branch.clone()
     }
 
-    fn branch_exists(&self, _repo_root: &Path, branch: &str) -> Result<bool, GitError> {
-        Ok(self.branches.borrow().contains(branch))
+    fn branch_exists(&self, _repo_root: &Path, branch: &crate::domain::value::BranchValue) -> Result<bool, GitError> {
+        Ok(self.branches.borrow().contains(branch.as_ref()))
     }
 
     fn current_branch(&self, _repo_root: &Path) -> Result<Option<String>, GitError> {
@@ -479,19 +479,20 @@ impl GitRepository for FakeGit {
     fn is_branch_merged(
         &self,
         _repo_root: &Path,
-        branch: &str,
+        branch: &crate::domain::value::BranchValue,
         _into: &str,
     ) -> Result<MergeCheck, GitError> {
+        let branch_str = branch.as_ref();
         if let Some((failing_branch, err)) = &self.merge_check_error_for {
-            if failing_branch == branch {
+            if failing_branch == branch_str {
                 return Err(err.clone());
             }
         }
-        if self.merged_branches.contains(branch) {
+        if self.merged_branches.contains(branch_str) {
             return Ok(MergeCheck::Merged);
         }
         if let Some((failing_branch, message)) = &self.verification_error_for {
-            if failing_branch == branch {
+            if failing_branch == branch_str {
                 return Ok(MergeCheck::NotMerged {
                     verification_error: Some(message.clone()),
                 });
@@ -502,27 +503,28 @@ impl GitRepository for FakeGit {
         })
     }
 
-    fn worktree_exists(&self, _repo_root: &Path, slug: &str) -> Result<bool, GitError> {
-        Ok(self.worktrees.borrow().contains(slug))
+    fn worktree_exists(&self, _repo_root: &Path, slug: &crate::domain::value::SlugValue) -> Result<bool, GitError> {
+        Ok(self.worktrees.borrow().contains(slug.as_ref()))
     }
 
     fn add_worktree(
         &self,
         _repo_root: &Path,
         _path: &Path,
-        branch: &str,
-        start_point: &str,
+        branch: &crate::domain::value::BranchValue,
+        start_point: &crate::domain::value::RefValue,
     ) -> Result<(), GitError> {
         if let Some(err) = &self.add_error {
             return Err(err.clone());
         }
         self.add_worktree_start_points
             .borrow_mut()
-            .push(start_point.to_string());
+            .push(start_point.as_ref().to_string());
         // Register by the branch's slug suffix (`heist/<slug>` -> `<slug>`).
-        let slug = branch.rsplit('/').next().unwrap_or(branch);
+        let branch_str = branch.as_ref();
+        let slug = branch_str.rsplit('/').next().unwrap_or(branch_str);
         self.worktrees.borrow_mut().insert(slug.to_string());
-        self.branches.borrow_mut().insert(branch.to_string());
+        self.branches.borrow_mut().insert(branch_str.to_string());
         Ok(())
     }
 
@@ -536,10 +538,10 @@ impl GitRepository for FakeGit {
         Ok(())
     }
 
-    fn delete_branch(&self, _repo_root: &Path, branch: &str) -> Result<(), GitError> {
+    fn delete_branch(&self, _repo_root: &Path, branch: &crate::domain::value::BranchValue) -> Result<(), GitError> {
         self.deleted_branch_names
             .borrow_mut()
-            .push(branch.to_string());
+            .push(branch.as_ref().to_string());
         if let Some(err) = &self.delete_error {
             return Err(err.clone());
         }

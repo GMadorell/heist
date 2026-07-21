@@ -31,27 +31,28 @@ pub trait GitRepository {
 
     fn current_branch(&self, repo_root: &Path) -> Result<Option<String>, GitError>;
 
+    /// remote: git-owned/git-sourced output, not a VO
     fn fetch(&self, repo_root: &Path, remote: &str) -> Result<(), GitError>;
 
     fn is_branch_merged(
         &self,
         repo_root: &Path,
-        branch: &str,
+        branch: &crate::domain::value::BranchValue,
         into: &str,
     ) -> Result<MergeCheck, GitError>;
 
-    fn delete_branch(&self, repo_root: &Path, branch: &str) -> Result<(), GitError>;
+    fn delete_branch(&self, repo_root: &Path, branch: &crate::domain::value::BranchValue) -> Result<(), GitError>;
 
-    fn worktree_exists(&self, repo_root: &Path, slug: &str) -> Result<bool, GitError>;
+    fn worktree_exists(&self, repo_root: &Path, slug: &crate::domain::value::SlugValue) -> Result<bool, GitError>;
 
-    fn branch_exists(&self, repo_root: &Path, branch: &str) -> Result<bool, GitError>;
+    fn branch_exists(&self, repo_root: &Path, branch: &crate::domain::value::BranchValue) -> Result<bool, GitError>;
 
     fn add_worktree(
         &self,
         repo_root: &Path,
         path: &Path,
-        branch: &str,
-        start_point: &str,
+        branch: &crate::domain::value::BranchValue,
+        start_point: &crate::domain::value::RefValue,
     ) -> Result<(), GitError>;
 
     fn remove_worktree(&self, repo_root: &Path, path: &Path) -> Result<(), GitError>;
@@ -60,23 +61,25 @@ pub trait GitRepository {
 
     /// Checks that `origin/<main_branch>` resolves to a commit, without
     /// requiring a local branch of the same name to exist.
+    /// main_branch: git-owned/git-sourced output, not a VO
     fn remote_default_resolves(&self, repo_root: &Path, main_branch: &str) -> Result<(), GitError>;
 
     /// Resolves `ref_spec` verbatim (no `origin/` prefixing, unlike `remote_default_resolves`),
     /// existence-only check, no ancestry verification.
-    fn resolve_ref(&self, repo_root: &Path, ref_spec: &str) -> Result<(), GitError>;
+    fn resolve_ref(&self, repo_root: &Path, ref_spec: &crate::domain::value::RefValue) -> Result<(), GitError>;
 
+    /// base_branch: git-owned/git-sourced output, not a VO
     fn changed_paths(
         &self,
         repo_root: &Path,
         base_branch: &str,
-        head_ref: &str,
+        head_ref: &crate::domain::value::RefValue,
     ) -> Result<Vec<PathBuf>, GitError>;
 
     fn read_file_at(
         &self,
         repo_root: &Path,
-        rev: &str,
+        rev: &crate::domain::value::RefValue,
         path: &Path,
     ) -> Result<Option<String>, GitError>;
 
@@ -85,15 +88,15 @@ pub trait GitRepository {
     fn is_ancestor(
         &self,
         repo_root: &Path,
-        ancestor_ref: &str,
-        descendant_ref: &str,
+        ancestor_ref: &crate::domain::value::RefValue,
+        descendant_ref: &crate::domain::value::RefValue,
     ) -> Result<bool, GitError>;
 
-    fn pr_state(&self, repo_root: &Path, branch: &str) -> Result<PrState, GitError>;
+    fn pr_state(&self, repo_root: &Path, branch: &crate::domain::value::RefValue) -> Result<PrState, GitError>;
 
-    fn rebase(&self, repo_root: &Path, onto: &str) -> Result<(), GitError>;
+    fn rebase(&self, repo_root: &Path, onto: &crate::domain::value::RefValue) -> Result<(), GitError>;
 
-    fn merge(&self, repo_root: &Path, other_ref: &str) -> Result<(), GitError>;
+    fn merge(&self, repo_root: &Path, other_ref: &crate::domain::value::RefValue) -> Result<(), GitError>;
 }
 
 #[derive(Debug, Clone)]
