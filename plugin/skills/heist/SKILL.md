@@ -28,10 +28,10 @@ Run `heist list`, filter to rows whose `stage` isn't `done`.
 - `--base <branch>` omitted: step 2 runs `heist worktree add <slug>` exactly as before, no behavior change.
 - `--slug <slug>` given: strip it off; carry it through step 2, which uses it verbatim.
 - `--slug <slug>` omitted: don't propose one here; carry nothing, step 2 of `pipeline.md` proposes a slug inline.
-- Mode omitted: ask via `AskUserQuestion` before anything else — don't default silently. Present `heavy` as recommended.
-  - `heavy` (recommended) — full pipeline: Fence review, Forger/score.md, Wheelman+Muscle, Cleaner.
-  - `medium` — same as heavy, minus Fence review.
-  - `light` — plan + human review only, then direct implementation and a manual crit review of the diff. For small, well-understood changes.
+- Mode omitted: judge scope from the description/plan (files touched, new capability vs tweak, blast radius) and ask via `AskUserQuestion`, pre-selecting the fitting mode with a one-line reason. Never default silently; human still confirms. Ambiguous/thin description -> recommend `heavy`.
+  - `heavy` — full pipeline (Fence, Forger/score.md, Wheelman+Muscle, Cleaner). Multi-module, new capability, real blast radius, or open design questions.
+  - `medium` — heavy minus Fence review. Moderate, well-understood changes.
+  - `light` — plan + human review, then direct implementation + manual crit. Small, single-file/module, well-understood changes.
 
 ### Plan detection
 
