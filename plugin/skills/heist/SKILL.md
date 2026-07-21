@@ -1,6 +1,6 @@
 ---
 name: heist
-description: Entry point and orchestrator for the heist workflow. Invoke when the user wants to plan/brainstorm/design and implement a difficult task, or when the user wants to continue a heist.
+description: Entry point and orchestrator for the heist workflow. Suggest usage, confirmed with user, when the user wants to plan/brainstorm/design and/or implement a difficult task, or when the user wants to continue a heist.
 argument-hint: "[heavy|medium|light] <description of change | path(s) to plan file(s)>"
 ---
 
