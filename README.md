@@ -10,7 +10,7 @@ It ships as a single Claude Code plugin: one entry point, a crew of specialized 
 
 You type `/heist:heist add rate limiting to the public API` (optionally prefixed with a mode, see [Modes](#modes)) and the crew gets to work:
 
-1. **Slugger** picks a short slug for the job, then **Mastermind** interviews you with multiple-choice questions like a detective, then writes `blueprint.md`. If the scope is too big for one blueprint, Mastermind proposes a split into multiple plans instead.
+1. **Mastermind** interviews you with multiple-choice questions like a detective, then writes `blueprint.md`. If the scope is too big for one blueprint, Mastermind proposes a split into multiple plans instead.
 2. **Fence** reads it and immediately starts talking about everything wrong with the plan, because that's the job. Mastermind fixes what actually lands.
 3. You take a pass yourself in [crit](https://crit.md), leaving comments until you're out of things to nitpick. Silence is approval.
 4. **Forger** breaks the blueprint into `score.md`, a checklist so granular a Muscle can't screw it up.
@@ -25,9 +25,8 @@ You come back to an open PR and a heat report: what got built, what got flagged,
 flowchart TD
     A["/heist <slug>"] --> B{validation.md exists?}
     B -- no --> C["/heist:casing → validation.md"]
-    B -- yes --> S[Slugger: pick slug]
-    C --> S
-    S --> I["heist worktree add → planning"]
+    B -- yes --> I["heist begin → planning"]
+    C --> I
     I --> D[Mastermind: relay interview → blueprint.md]
     D -- scope too big --> SP["Split accepted → heat.md: one /heist per piece, parent heist ends"]
     SP -. each piece re-enters as its own heist .-> A
@@ -121,7 +120,6 @@ A heist can carry a `base` branch, set via `heist worktree add --base <branch> <
 
 | Crew member | Model | Why |
 |---|---|---|
-| Slugger | Haiku | Picking a slug from a description is trivial, no design reasoning needed |
 | Mastermind | Opus | Design quality matters most here, it's the one doc everything downstream depends on |
 | Fence | Sonnet | Adversarial review is bounded and structured; doesn't need Opus-level reasoning |
 | Forger | Sonnet | Mechanical transformation of an already-approved design |

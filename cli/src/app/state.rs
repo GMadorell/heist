@@ -2,6 +2,7 @@ use crate::domain::error::{FieldError, StateError};
 use crate::domain::state::State;
 use crate::domain::value::DateValue;
 use crate::ports::clock::Clock;
+use crate::ports::heist_dir_repository::HeistDirRepository;
 use crate::ports::state_repository::StateRepository;
 
 pub enum InitError {
@@ -9,9 +10,15 @@ pub enum InitError {
     Init(StateError),
 }
 
-pub fn init(repo: &dyn StateRepository, clock: &dyn Clock, slug: &str) -> Result<(), InitError> {
+pub fn init(
+    heist_dir_repo: &dyn HeistDirRepository,
+    repo: &dyn StateRepository,
+    clock: &dyn Clock,
+    slug: &str,
+) -> Result<(), InitError> {
     let state = State::new(slug, clock.today()).map_err(InitError::InvalidSlug)?;
-    repo.init(slug, &state).map_err(InitError::Init)
+    heist_dir_repo.create(slug).map_err(InitError::Init)?;
+    repo.save(slug, &state).map_err(InitError::Init)
 }
 
 pub enum GetError {

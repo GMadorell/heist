@@ -51,7 +51,7 @@ pub fn add(
         .map(str::to_string)
         .unwrap_or_else(|| format!("origin/{}", main_branch));
 
-    let worktree_exists = git.worktree_exists(repo_root, slug);
+    let worktree_exists = git.worktree_exists(repo_root, slug).map_err(AddError::Git)?;
 
     // A `--base` only takes effect when the worktree (and its branch) is
     // created. Passing one for an existing worktree that was built from a

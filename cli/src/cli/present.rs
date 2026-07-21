@@ -1,7 +1,10 @@
+use crate::app::begin::RollbackFailure;
 use crate::app::list::ListRow;
+use crate::app::sync::SyncAction;
 use crate::app::worktree::CleanupOutcome;
 use crate::domain::review::Lane;
 use crate::domain::state::State;
+use crate::ports::git::GitError;
 use std::fmt::Display;
 
 pub fn error(e: impl Display) {
@@ -30,6 +33,28 @@ pub fn no_state_for_add(slug: &str) {
 
 pub fn no_state_for_remove(slug: &str) {
     eprintln!("no state found for slug {}", slug);
+}
+
+pub fn rollback_diagnostics(errors: &[RollbackFailure]) {
+    if errors.is_empty() {
+        return;
+    }
+    eprintln!("begin failed and rollback could not fully clean up:");
+    for e in errors {
+        match e {
+            RollbackFailure::WorktreeProbe(e) => {
+                eprintln!("  - could not verify whether the worktree still exists: {}", e)
+            }
+            RollbackFailure::WorktreeRemove(e) => eprintln!("  - failed to remove worktree: {}", e),
+            RollbackFailure::BranchProbe(e) => {
+                eprintln!("  - could not verify whether the branch still exists: {}", e)
+            }
+            RollbackFailure::BranchDelete(e) => eprintln!("  - failed to delete branch: {}", e),
+            RollbackFailure::HeistDirRemove(e) => {
+                eprintln!("  - failed to remove state directory: {}", e)
+            }
+        }
+    }
 }
 
 pub fn not_merged(branch: &str, main_branch: &str, verification_error: Option<&str>) {
@@ -141,8 +166,7 @@ pub fn no_remote_default_for_review(slug: &str, e: impl Display) {
     );
 }
 
-pub fn sync_action(action: &crate::app::sync::SyncAction) {
-    use crate::app::sync::SyncAction;
+pub fn sync_action(action: &SyncAction) {
     match action {
         SyncAction::RebasedOntoMain { onto } => println!("synced: rebased onto {}", onto),
         SyncAction::MergedBase { base_ref } => println!("synced: merged {}", base_ref),
@@ -203,7 +227,7 @@ pub fn sync_wrong_checkout(slug: &str, expected: &str, actual: &str) {
     );
 }
 
-pub fn sync_fetch_failed(error: &crate::ports::git::GitError) {
+pub fn sync_fetch_failed(error: &GitError) {
     eprintln!(
         "refusing to sync: could not fetch origin, so local refs may be stale: {}. Fix the environment and re-run.",
         error
@@ -224,5 +248,55 @@ pub fn doctor(results: &[crate::app::doctor::ToolStatus]) {
             status.tool,
             if status.available { "ok" } else { "missing" }
         );
+    }
+}
+
+pub fn slug_collision(slug: &str, artifact: &str) {
+    eprintln!("cannot begin {}: {} already exists.", slug, artifact);
+    eprintln!(
+        "note: pick a different slug, or clean up manually: git worktree remove --force .worktrees/{}, git branch -D heist/{}, rm -rf .heist/{}",
+        slug, slug, slug
+    );
+}
+
+pub fn score_check_ok(steps: usize, waves: usize) {
+    println!("ok");
+    println!("steps: {}", steps);
+    println!("waves: {}", waves);
+}
+
+pub fn score_record_ok(steps: usize, waves: usize) {
+    println!("recorded");
+    println!("steps: {}", steps);
+    println!("waves: {}", waves);
+}
+
+pub fn score_findings(findings: &[crate::domain::score::Finding]) {
+    for finding in findings {
+        eprintln!("{}", finding);
+    }
+}
+
+pub fn no_state_for_score(slug: &str) {
+    eprintln!("no state found for slug {}; run `state init` first", slug);
+}
+
+pub fn no_score_for_slug(slug: &str) {
+    eprintln!("no score.md found for slug {}; run the Forger first", slug);
+}
+
+pub fn score_io_failed(slug: &str, e: impl Display) {
+    eprintln!("failed to read score.md for slug {}: {}", slug, e);
+}
+
+pub fn score_no_such_wave(slug: &str, n: u32) {
+    eprintln!("no wave {} found in score.md for slug {}", n, slug);
+}
+
+pub fn score_wave_blocks(blocks: &[(u32, String)]) {
+    println!("steps: {}", blocks.len());
+    for (number, raw) in blocks {
+        println!("--- step {} ---", number);
+        println!("{}", raw);
     }
 }

@@ -18,9 +18,8 @@ Read manifests/lockfiles/CI/scripts directly — never guess stack from project 
 3. **Lint/format**: exact commands, lint-check and format separately if distinct.
 4. **Docs**: note existing convention (docs/, doc comments, changelog) — don't prescribe one if none exists.
 5. **CI**: `.github/workflows/`, `.gitlab-ci.yml`, etc. — ground truth for exact invocations when present.
-6. **Main branch**: `git branch --show-current` or remote default.
-7. **PR conventions**: `git log --oneline -20` for commit style; check for PR template.
-8. **Quirks**: flaky tests, slow suites, required env/services — only with concrete evidence (comment, skip annotation, README), never speculate.
+6. **PR conventions**: `git log --oneline -20` for commit style; check for PR template.
+7. **Quirks**: flaky tests, slow suites, required env/services — only with concrete evidence (comment, skip annotation, README), never speculate.
 
 ## Output
 
@@ -43,7 +42,6 @@ Write `validation.md` at repo root — exact commands, no prose padding:
 <conventions and/or commands for keeping docs in sync — omit if none>
 
 ## PR conventions
-- Main branch: <name>
 - Commit style: <convention observed>
 - <PR template location, if any>
 

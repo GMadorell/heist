@@ -1,13 +1,20 @@
 pub mod exit_code;
 mod present;
 
+use crate::adapters::file_heist_dir_repository::FileHeistDirRepository;
+use crate::adapters::file_score_repository::FileScoreRepository;
 use crate::adapters::file_state_repository::FileStateRepository;
 use crate::adapters::filesystem_worktree::FilesystemWorktree;
 use crate::adapters::real_git::RealGit;
 use crate::adapters::system_clock::SystemClock;
 use crate::adapters::validation_fs::ValidationFs;
 use crate::app;
+use crate::ports::clock::Clock;
+use crate::ports::git::GitRepository;
+use crate::ports::heist_dir_repository::HeistDirRepository;
+use crate::ports::score_repository::ScoreRepository;
 use crate::ports::state_repository::StateRepository;
+use crate::ports::worktree_fs::WorktreeFs;
 use clap::{Parser, Subcommand};
 use exit_code::ExitCode;
 use std::path::Path;
@@ -67,6 +74,22 @@ enum Commands {
     },
     /// Check required tools (git, gh, crit) are on PATH; exit 2 if any is missing
     Doctor,
+    /// Atomically init state, set mode, create the worktree, and advance to planning; rolls back on failure
+    Begin {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+        /// Pipeline mode: heavy, medium, or light
+        #[arg(long)]
+        mode: String,
+        /// Git ref to use as start point instead of origin/<default>
+        #[arg(long)]
+        base: Option<String>,
+    },
+    /// Parse/check/dispatch a heist's score.md (the Forger's work order)
+    Score {
+        #[command(subcommand)]
+        command: ScoreCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -149,8 +172,31 @@ enum ReviewCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum ScoreCommands {
+    /// Parse + cross-check score.md; prints ok/steps:/waves: on success, findings to stderr and exit 2 otherwise
+    Check {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
+    /// Like Check, then persists score_steps_total/score_waves_total into state.json and bumps updated
+    Record {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
+    /// Print one wave's steps verbatim: steps: K header then --- step N --- delimited raw blocks
+    Wave {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+        /// Wave number to print
+        n: u32,
+    },
+}
+
 pub fn run(cli: Cli) -> ExitCode {
+    let heist_dir_repo = FileHeistDirRepository;
     let state_repo = FileStateRepository;
+    let score_repo = FileScoreRepository;
     let git = RealGit;
     let fs = FilesystemWorktree;
     let clock = SystemClock;
@@ -159,7 +205,7 @@ pub fn run(cli: Cli) -> ExitCode {
     let repo_root = Path::new(".");
 
     match cli.command {
-        Commands::State { command } => run_state(command, &state_repo, &clock),
+        Commands::State { command } => run_state(command, &heist_dir_repo, &state_repo, &clock),
         Commands::Worktree { command } => {
             run_worktree(command, repo_root, &state_repo, &git, &fs, &clock)
         }
@@ -170,26 +216,41 @@ pub fn run(cli: Cli) -> ExitCode {
         Commands::Base { slug } => run_base(&slug, repo_root, &state_repo, &git),
         Commands::Sync { slug } => run_sync(&slug, &state_repo, &git),
         Commands::Doctor => run_doctor(&tool_probe),
+        Commands::Begin { slug, mode, base } => run_begin(
+            &slug,
+            &mode,
+            base.as_deref(),
+            repo_root,
+            &heist_dir_repo,
+            &state_repo,
+            &git,
+            &fs,
+            &clock,
+        ),
+        Commands::Score { command } => run_score(command, &state_repo, &score_repo, &clock),
     }
 }
 
 fn run_state(
     command: StateCommands,
+    heist_dir_repo: &dyn HeistDirRepository,
     repo: &dyn StateRepository,
-    clock: &dyn crate::ports::clock::Clock,
+    clock: &dyn Clock,
 ) -> ExitCode {
     match command {
-        StateCommands::Init { slug } => match app::state::init(repo, clock, &slug) {
-            Ok(()) => ExitCode::Success,
-            Err(app::state::InitError::InvalidSlug(e)) => {
-                present::error(e);
-                ExitCode::Precondition
+        StateCommands::Init { slug } => {
+            match app::state::init(heist_dir_repo, repo, clock, &slug) {
+                Ok(()) => ExitCode::Success,
+                Err(app::state::InitError::InvalidSlug(e)) => {
+                    present::error(e);
+                    ExitCode::Precondition
+                }
+                Err(app::state::InitError::Init(e)) => {
+                    present::state_init_failed(&slug, &e);
+                    ExitCode::from(&e)
+                }
             }
-            Err(app::state::InitError::Init(e)) => {
-                present::state_init_failed(&slug, &e);
-                ExitCode::from(&e)
-            }
-        },
+        }
         StateCommands::Get { slug, field } => match app::state::get(repo, &slug, &field) {
             Ok(value) => {
                 present::line(value);
@@ -207,18 +268,7 @@ fn run_state(
         StateCommands::Set { slug, field, value } => {
             match app::state::set(repo, clock, &slug, &field, &value) {
                 Ok(()) => ExitCode::Success,
-                Err(app::state::SetError::Field(e)) => {
-                    present::error(e);
-                    ExitCode::Precondition
-                }
-                Err(app::state::SetError::Load(e)) => {
-                    present::state_load_failed(&slug, &e);
-                    ExitCode::from(&e)
-                }
-                Err(app::state::SetError::Save(e)) => {
-                    present::state_save_failed(&slug, &e);
-                    ExitCode::from(&e)
-                }
+                Err(e) => set_error_exit(&slug, e),
             }
         }
         StateCommands::Incr { slug, field } => match app::state::incr(repo, clock, &slug, &field) {
@@ -258,9 +308,9 @@ fn run_worktree(
     command: WorktreeCommands,
     repo_root: &Path,
     state_repo: &dyn StateRepository,
-    git: &dyn crate::ports::git::GitRepository,
-    fs: &dyn crate::ports::worktree_fs::WorktreeFs,
-    clock: &dyn crate::ports::clock::Clock,
+    git: &dyn GitRepository,
+    fs: &dyn WorktreeFs,
+    clock: &dyn Clock,
 ) -> ExitCode {
     match command {
         WorktreeCommands::Add { slug, base } => {
@@ -277,37 +327,7 @@ fn run_worktree(
                     present::line(worktree_value);
                     ExitCode::Success
                 }
-                Err(app::worktree::AddError::NoState) => {
-                    present::no_state_for_add(&slug);
-                    ExitCode::Precondition
-                }
-                Err(app::worktree::AddError::Naming(e)) => {
-                    present::error(e);
-                    ExitCode::Precondition
-                }
-                Err(app::worktree::AddError::Fs(e)) => {
-                    present::error(e);
-                    ExitCode::Internal
-                }
-                Err(app::worktree::AddError::Git(e)) => {
-                    present::error(&e);
-                    ExitCode::from(&e)
-                }
-                Err(app::worktree::AddError::Load(e)) => {
-                    present::state_load_failed(&slug, &e);
-                    ExitCode::from(&e)
-                }
-                Err(app::worktree::AddError::Save(e)) => {
-                    present::state_save_failed(&slug, &e);
-                    ExitCode::from(&e)
-                }
-                Err(app::worktree::AddError::BaseImmutable {
-                    existing,
-                    requested,
-                }) => {
-                    present::base_immutable(&slug, existing.as_deref(), &requested);
-                    ExitCode::Precondition
-                }
+                Err(e) => add_error_exit(&slug, e),
             }
         }
         WorktreeCommands::Remove { slug } => {
@@ -415,7 +435,7 @@ fn run_review(
     command: ReviewCommands,
     repo_root: &Path,
     state_repo: &dyn StateRepository,
-    git: &dyn crate::ports::git::GitRepository,
+    git: &dyn GitRepository,
 ) -> ExitCode {
     match command {
         ReviewCommands::Select { slug } => {
@@ -493,7 +513,7 @@ fn run_base(
     slug: &str,
     repo_root: &Path,
     state_repo: &dyn StateRepository,
-    git: &dyn crate::ports::git::GitRepository,
+    git: &dyn GitRepository,
 ) -> ExitCode {
     let main_branch = git.default_branch(repo_root);
 
@@ -548,11 +568,7 @@ fn run_base(
     }
 }
 
-fn run_sync(
-    slug: &str,
-    state_repo: &dyn StateRepository,
-    git: &dyn crate::ports::git::GitRepository,
-) -> ExitCode {
+fn run_sync(slug: &str, state_repo: &dyn StateRepository, git: &dyn GitRepository) -> ExitCode {
     match app::sync::sync(state_repo, git, slug) {
         Ok(action) => {
             present::sync_action(&action);
@@ -615,10 +631,214 @@ fn run_sync(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn run_begin(
+    slug: &str,
+    mode: &str,
+    base: Option<&str>,
+    repo_root: &Path,
+    heist_dir_repo: &dyn HeistDirRepository,
+    state_repo: &dyn StateRepository,
+    git: &dyn GitRepository,
+    fs: &dyn WorktreeFs,
+    clock: &dyn Clock,
+) -> ExitCode {
+    match app::begin::begin(
+        repo_root,
+        heist_dir_repo,
+        state_repo,
+        git,
+        fs,
+        clock,
+        slug,
+        mode,
+        base,
+    ) {
+        Ok(worktree_value) => {
+            present::line(worktree_value);
+            ExitCode::Success
+        }
+        Err(app::begin::BeginError::InvalidSlug(e)) => {
+            present::error(e);
+            ExitCode::Precondition
+        }
+        Err(app::begin::BeginError::Collision(artifact)) => {
+            present::slug_collision(slug, &artifact.describe(slug));
+            ExitCode::Precondition
+        }
+        Err(app::begin::BeginError::Probe(e)) => {
+            let exit_code = ExitCode::from(&e);
+            present::error(e);
+            exit_code
+        }
+        Err(app::begin::BeginError::Init(e)) => {
+            present::state_init_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+        Err(app::begin::BeginError::State {
+            error,
+            rollback_errors,
+        }) => {
+            present::rollback_diagnostics(&rollback_errors);
+            set_error_exit(slug, error)
+        }
+        Err(app::begin::BeginError::Worktree {
+            error,
+            rollback_errors,
+        }) => {
+            present::rollback_diagnostics(&rollback_errors);
+            add_error_exit(slug, error)
+        }
+    }
+}
+
+/// Shared `SetError` -> presented message / exit code mapping, used by both
+/// the standalone `state set` command and `begin`'s mode/stage-set steps.
+fn set_error_exit(slug: &str, error: app::state::SetError) -> ExitCode {
+    match error {
+        app::state::SetError::Field(e) => {
+            present::error(e);
+            ExitCode::Precondition
+        }
+        app::state::SetError::Load(e) => {
+            present::state_load_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+        app::state::SetError::Save(e) => {
+            present::state_save_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+    }
+}
+
+/// Shared `AddError` -> presented message / exit code mapping, used by both
+/// the standalone `worktree add` command and `begin`'s worktree-add step.
+fn add_error_exit(slug: &str, error: app::worktree::AddError) -> ExitCode {
+    match error {
+        app::worktree::AddError::NoState => {
+            present::no_state_for_add(slug);
+            ExitCode::Precondition
+        }
+        app::worktree::AddError::Naming(e) => {
+            present::error(e);
+            ExitCode::Precondition
+        }
+        app::worktree::AddError::Fs(e) => {
+            present::error(e);
+            ExitCode::Internal
+        }
+        app::worktree::AddError::Git(e) => {
+            present::error(&e);
+            ExitCode::from(&e)
+        }
+        app::worktree::AddError::Load(e) => {
+            present::state_load_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+        app::worktree::AddError::Save(e) => {
+            present::state_save_failed(slug, &e);
+            ExitCode::from(&e)
+        }
+        app::worktree::AddError::BaseImmutable {
+            existing,
+            requested,
+        } => {
+            present::base_immutable(slug, existing.as_deref(), &requested);
+            ExitCode::Precondition
+        }
+    }
+}
+
+fn run_score(
+    command: ScoreCommands,
+    state_repo: &dyn StateRepository,
+    score_repo: &dyn ScoreRepository,
+    clock: &dyn crate::ports::clock::Clock,
+) -> ExitCode {
+    match command {
+        ScoreCommands::Check { slug } => match app::score::check(state_repo, score_repo, &slug) {
+            Ok(outcome) => {
+                present::score_check_ok(outcome.steps, outcome.waves);
+                ExitCode::Success
+            }
+            Err(app::score::CheckError::NoState) => {
+                present::no_state_for_score(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::CheckError::NoScore) => {
+                present::no_score_for_slug(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::CheckError::Io(e)) => {
+                present::score_io_failed(&slug, &e);
+                ExitCode::Internal
+            }
+            Err(app::score::CheckError::Findings(findings)) => {
+                present::score_findings(&findings);
+                ExitCode::Precondition
+            }
+        },
+        ScoreCommands::Record { slug } => match app::score::record(state_repo, score_repo, clock, &slug) {
+            Ok(outcome) => {
+                present::score_record_ok(outcome.steps, outcome.waves);
+                ExitCode::Success
+            }
+            Err(app::score::RecordError::NoState) => {
+                present::no_state_for_score(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::RecordError::NoScore) => {
+                present::no_score_for_slug(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::RecordError::Io(e)) => {
+                present::score_io_failed(&slug, &e);
+                ExitCode::Internal
+            }
+            Err(app::score::RecordError::Findings(findings)) => {
+                present::score_findings(&findings);
+                ExitCode::Precondition
+            }
+            Err(app::score::RecordError::Save(e)) => {
+                present::state_save_failed(&slug, &e);
+                ExitCode::from(&e)
+            }
+        },
+        ScoreCommands::Wave { slug, n } => match app::score::wave(state_repo, score_repo, &slug, n) {
+            Ok(blocks) => {
+                present::score_wave_blocks(&blocks);
+                ExitCode::Success
+            }
+            Err(app::score::WaveError::NoState) => {
+                present::no_state_for_score(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::WaveError::NoScore) => {
+                present::no_score_for_slug(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::WaveError::Io(e)) => {
+                present::score_io_failed(&slug, &e);
+                ExitCode::Internal
+            }
+            Err(app::score::WaveError::Findings(findings)) => {
+                present::score_findings(&findings);
+                ExitCode::Precondition
+            }
+            Err(app::score::WaveError::NoSuchWave(n)) => {
+                present::score_no_such_wave(&slug, n);
+                ExitCode::Precondition
+            }
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::testing::{FakeGit, FakeWorktreeFs, FixedClock, InMemoryStateRepository};
+    use crate::adapters::testing::{
+        FakeGit, FakeWorktreeFs, FixedClock, InMemoryHeistDirRepository, InMemoryStateRepository,
+    };
     use crate::domain::state::{Stage, State};
     use crate::domain::value::{DateValue, NonBlankValue, ScoreWave};
     use crate::ports::git::{GitError, PrState};
@@ -634,9 +854,11 @@ mod tests {
 
     #[test]
     fn state_init_succeeds_for_new_slug() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let code = run_state(
             StateCommands::Init { slug: "foo".into() },
+            &heist_dir_repo,
             &repo,
             &fixed_clock(),
         );
@@ -649,10 +871,12 @@ mod tests {
 
     #[test]
     fn state_init_rejects_existing_slug() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new().with_dir("foo");
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let code = run_state(
             StateCommands::Init { slug: "foo".into() },
+            &heist_dir_repo,
             &repo,
             &fixed_clock(),
         );
@@ -661,6 +885,7 @@ mod tests {
 
     #[test]
     fn state_set_on_missing_slug_is_precondition() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let code = run_state(
             StateCommands::Set {
@@ -668,6 +893,7 @@ mod tests {
                 field: "stage".into(),
                 value: "done".into(),
             },
+            &heist_dir_repo,
             &repo,
             &fixed_clock(),
         );
@@ -676,6 +902,7 @@ mod tests {
 
     #[test]
     fn state_set_persists_valid_field() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let code = run_state(
@@ -684,6 +911,7 @@ mod tests {
                 field: "score_wave".into(),
                 value: "4".into(),
             },
+            &heist_dir_repo,
             &repo,
             &fixed_clock(),
         );
@@ -696,6 +924,7 @@ mod tests {
 
     #[test]
     fn state_set_invalid_numeric_is_precondition_and_leaves_state() {
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
         let code = run_state(
@@ -704,6 +933,7 @@ mod tests {
                 field: "score_wave".into(),
                 value: "not-a-number".into(),
             },
+            &heist_dir_repo,
             &repo,
             &fixed_clock(),
         );
@@ -969,5 +1199,145 @@ mod tests {
         let code = run_sync("foo", &repo, &git);
 
         assert_eq!(code, ExitCode::AbandonedBase);
+    }
+
+    #[test]
+    fn begin_happy_path_returns_success_and_advances_to_planning() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new().with_default_branch("main");
+
+        let code = run_begin(
+            "foo",
+            "heavy",
+            None,
+            temp_dir.path(),
+            &heist_dir_repo,
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Success);
+        let state = repo.get("foo").expect("state should exist");
+        assert_eq!(state.stage, Stage::Planning);
+    }
+
+    #[test]
+    fn begin_collision_returns_precondition_exit_code() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
+        let git = FakeGit::new().with_default_branch("main");
+
+        let code = run_begin(
+            "foo",
+            "heavy",
+            None,
+            temp_dir.path(),
+            &heist_dir_repo,
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Precondition);
+    }
+
+    #[test]
+    fn score_check_reports_findings_as_precondition_exit_code() {
+        let malformed_score = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_score("foo", malformed_score);
+
+        let code = run_score(
+            ScoreCommands::Check { slug: "foo".into() },
+            &repo,
+            &repo,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Precondition);
+    }
+
+    #[test]
+    fn score_record_persists_totals_and_returns_success() {
+        let valid_score = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_score("foo", valid_score);
+
+        let code = run_score(
+            ScoreCommands::Record { slug: "foo".into() },
+            &repo,
+            &repo,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Success);
+        let saved = repo.get("foo").expect("state should exist");
+        assert_eq!(saved.score_steps_total.to_string(), "1");
+        assert_eq!(saved.score_waves_total.to_string(), "1");
+    }
+
+    #[test]
+    fn score_wave_prints_blocks_and_reports_no_such_wave() {
+        let valid_score = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_score("foo", valid_score);
+
+        let ok_code = run_score(
+            ScoreCommands::Wave {
+                slug: "foo".into(),
+                n: 1,
+            },
+            &repo,
+            &repo,
+            &fixed_clock(),
+        );
+        assert_eq!(ok_code, ExitCode::Success);
+
+        let missing_wave_code = run_score(
+            ScoreCommands::Wave {
+                slug: "foo".into(),
+                n: 2,
+            },
+            &repo,
+            &repo,
+            &fixed_clock(),
+        );
+        assert_eq!(missing_wave_code, ExitCode::Precondition);
     }
 }
