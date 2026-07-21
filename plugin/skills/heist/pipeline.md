@@ -66,8 +66,6 @@ Heavy only. medium/light skip this (stage is already `human_review`).
 
 ### 4. Human review (crit)
 
-`crit` was already verified at preflight (`heist doctor`).
-
 Use `crit` to review `<worktree-path>/.heist/<slug>/blueprint.md`. If the human leaves comments, relay them to the Mastermind, ask it to apply them, answer each comment with what the Mastermind decided. Repeat until the human leaves no comments — that's approval.
 
 - heavy/medium: continue to `pipeline-standard.md`.

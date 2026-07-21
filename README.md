@@ -62,7 +62,6 @@ Every heist runs in one of three modes, chosen up front (or you're asked if none
 
 | Heist term | Real concept |
 |---|---|
-| Slugger | Names the job: picks the short slug it's tracked under |
 | Mastermind | Plans the job: make sure the blueprint is established, either interviewing you or using the information you give it |
 | Fence | Fences the plan before you fence the goods: reads the blueprint and tries to poke holes in it |
 | Forger | Forges the paperwork: turns the approved blueprint into the score, step by step |

@@ -1,13 +1,18 @@
+use crate::domain::tool::Tool;
 use crate::ports::tool_probe::ToolProbe;
 
 pub struct RealToolProbe;
 
 impl ToolProbe for RealToolProbe {
-    fn is_available(&self, tool: &str) -> bool {
-        std::env::var_os("PATH")
-            .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(tool).is_file()))
-            .unwrap_or(false)
+    fn is_available(&self, tool: Tool) -> bool {
+        found_on_path(tool.binary_name())
     }
+}
+
+fn found_on_path(binary_name: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(binary_name).is_file()))
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -29,12 +34,11 @@ mod tests {
         let original_path = std::env::var_os("PATH");
 
         std::env::set_var("PATH", &dir);
-        let probe = RealToolProbe;
-        let found = probe.is_available("my-fake-tool");
-        let missing = probe.is_available("definitely-not-a-real-tool");
+        let found = found_on_path("my-fake-tool");
+        let missing = found_on_path("definitely-not-a-real-tool");
 
         std::env::remove_var("PATH");
-        let found_without_path = probe.is_available("my-fake-tool");
+        let found_without_path = found_on_path("my-fake-tool");
 
         if let Some(path) = original_path {
             std::env::set_var("PATH", path);

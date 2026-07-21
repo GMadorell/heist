@@ -1,5 +1,6 @@
 use crate::domain::error::StateError;
 use crate::domain::state::State;
+use crate::domain::tool::Tool;
 use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
@@ -47,7 +48,7 @@ impl WorktreeFs for FakeWorktreeFs {
 /// In-memory tool probe for unit tests: reports a tool available only if
 /// explicitly registered via `with_available`.
 pub struct FakeToolProbe {
-    available: std::collections::HashSet<String>,
+    available: HashSet<Tool>,
 }
 
 impl Default for FakeToolProbe {
@@ -59,19 +60,19 @@ impl Default for FakeToolProbe {
 impl FakeToolProbe {
     pub fn new() -> Self {
         FakeToolProbe {
-            available: std::collections::HashSet::new(),
+            available: HashSet::new(),
         }
     }
 
-    pub fn with_available(mut self, tool: &str) -> Self {
-        self.available.insert(tool.to_string());
+    pub fn with_available(mut self, tool: Tool) -> Self {
+        self.available.insert(tool);
         self
     }
 }
 
 impl ToolProbe for FakeToolProbe {
-    fn is_available(&self, tool: &str) -> bool {
-        self.available.contains(tool)
+    fn is_available(&self, tool: Tool) -> bool {
+        self.available.contains(&tool)
     }
 }
 

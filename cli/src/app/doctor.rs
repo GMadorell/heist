@@ -1,15 +1,14 @@
+use crate::domain::tool::Tool;
 use crate::ports::tool_probe::ToolProbe;
-
-const TOOLS: [&str; 3] = ["git", "gh", "crit"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ToolStatus {
-    pub tool: &'static str,
+    pub tool: Tool,
     pub available: bool,
 }
 
 pub fn doctor(probe: &dyn ToolProbe) -> Vec<ToolStatus> {
-    TOOLS
+    Tool::ALL
         .iter()
         .map(|&tool| ToolStatus {
             tool,
@@ -22,26 +21,27 @@ pub fn doctor(probe: &dyn ToolProbe) -> Vec<ToolStatus> {
 mod tests {
     use super::{doctor, ToolStatus};
     use crate::adapters::testing::FakeToolProbe;
+    use crate::domain::tool::Tool;
 
     #[test]
     fn doctor_reports_each_tool_in_order() {
         let probe = FakeToolProbe::new()
-            .with_available("git")
-            .with_available("crit");
+            .with_available(Tool::Git)
+            .with_available(Tool::Crit);
         let result = doctor(&probe);
         assert_eq!(
             result,
             vec![
                 ToolStatus {
-                    tool: "git",
+                    tool: Tool::Git,
                     available: true
                 },
                 ToolStatus {
-                    tool: "gh",
+                    tool: Tool::Gh,
                     available: false
                 },
                 ToolStatus {
-                    tool: "crit",
+                    tool: Tool::Crit,
                     available: true
                 },
             ]
