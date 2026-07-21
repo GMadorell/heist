@@ -1,12 +1,12 @@
 use crate::domain::error::ValueError;
-use crate::domain::value::{NonBlankValue, SlugValue};
+use crate::domain::value::{BranchValue, SlugValue};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeistWorktree {
     pub slug: SlugValue,
     pub path: PathBuf,
-    pub branch: NonBlankValue,
+    pub branch: BranchValue,
 }
 
 impl HeistWorktree {
@@ -40,8 +40,8 @@ pub fn worktree_path(repo_root: &Path, slug: &str) -> PathBuf {
     repo_root.join(".worktrees").join(slug)
 }
 
-pub fn branch_name(slug: &str) -> Result<NonBlankValue, ValueError> {
-    NonBlankValue::parse("branch", &format!("heist/{}", slug))
+pub fn branch_name(slug: &str) -> Result<BranchValue, ValueError> {
+    BranchValue::try_from_raw("branch", &format!("heist/{}", slug))
 }
 
 #[cfg(test)]
