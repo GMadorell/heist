@@ -249,3 +249,45 @@ pub fn slug_collision(slug: &str, artifact: &str) {
         slug, slug, slug
     );
 }
+
+pub fn score_check_ok(steps: usize, waves: usize) {
+    println!("ok");
+    println!("steps: {}", steps);
+    println!("waves: {}", waves);
+}
+
+pub fn score_record_ok(steps: usize, waves: usize) {
+    println!("recorded");
+    println!("steps: {}", steps);
+    println!("waves: {}", waves);
+}
+
+pub fn score_findings(findings: &[crate::domain::score::Finding]) {
+    for finding in findings {
+        eprintln!("{}", finding);
+    }
+}
+
+pub fn no_state_for_score(slug: &str) {
+    eprintln!("no state found for slug {}; run `state init` first", slug);
+}
+
+pub fn no_score_for_slug(slug: &str) {
+    eprintln!("no score.md found for slug {}; run the Forger first", slug);
+}
+
+pub fn score_io_failed(slug: &str, e: impl Display) {
+    eprintln!("failed to read score.md for slug {}: {}", slug, e);
+}
+
+pub fn score_no_such_wave(slug: &str, n: u32) {
+    eprintln!("no wave {} found in score.md for slug {}", n, slug);
+}
+
+pub fn score_wave_blocks(blocks: &[(u32, String)]) {
+    println!("steps: {}", blocks.len());
+    for (number, raw) in blocks {
+        println!("--- step {} ---", number);
+        println!("{}", raw);
+    }
+}

@@ -2,6 +2,7 @@ pub mod exit_code;
 mod present;
 
 use crate::adapters::file_heist_dir_repository::FileHeistDirRepository;
+use crate::adapters::file_score_repository::FileScoreRepository;
 use crate::adapters::file_state_repository::FileStateRepository;
 use crate::adapters::filesystem_worktree::FilesystemWorktree;
 use crate::adapters::real_git::RealGit;
@@ -11,6 +12,7 @@ use crate::app;
 use crate::ports::clock::Clock;
 use crate::ports::git::GitRepository;
 use crate::ports::heist_dir_repository::HeistDirRepository;
+use crate::ports::score_repository::ScoreRepository;
 use crate::ports::state_repository::StateRepository;
 use crate::ports::worktree_fs::WorktreeFs;
 use clap::{Parser, Subcommand};
@@ -80,6 +82,11 @@ enum Commands {
         /// Git ref to use as start point instead of origin/<default>
         #[arg(long)]
         base: Option<String>,
+    },
+    /// Parse/check/dispatch a heist's score.md (the Forger's work order)
+    Score {
+        #[command(subcommand)]
+        command: ScoreCommands,
     },
 }
 
@@ -163,9 +170,31 @@ enum ReviewCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum ScoreCommands {
+    /// Parse + cross-check score.md; prints ok/steps:/waves: on success, findings to stderr and exit 2 otherwise
+    Check {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
+    /// Like Check, then persists score_steps_total/score_waves_total into state.json and bumps updated
+    Record {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+    },
+    /// Print one wave's steps verbatim: steps: K header then --- step N --- delimited raw blocks
+    Wave {
+        /// Heist slug (directory name under .heist/)
+        slug: String,
+        /// Wave number to print
+        n: u32,
+    },
+}
+
 pub fn run(cli: Cli) -> ExitCode {
     let heist_dir_repo = FileHeistDirRepository;
     let state_repo = FileStateRepository;
+    let score_repo = FileScoreRepository;
     let git = RealGit;
     let fs = FilesystemWorktree;
     let clock = SystemClock;
@@ -194,6 +223,7 @@ pub fn run(cli: Cli) -> ExitCode {
             &fs,
             &clock,
         ),
+        Commands::Score { command } => run_score(command, &state_repo, &score_repo, &clock),
     }
 }
 
@@ -705,6 +735,90 @@ fn add_error_exit(slug: &str, error: app::worktree::AddError) -> ExitCode {
     }
 }
 
+fn run_score(
+    command: ScoreCommands,
+    state_repo: &dyn StateRepository,
+    score_repo: &dyn ScoreRepository,
+    clock: &dyn crate::ports::clock::Clock,
+) -> ExitCode {
+    match command {
+        ScoreCommands::Check { slug } => match app::score::check(state_repo, score_repo, &slug) {
+            Ok(outcome) => {
+                present::score_check_ok(outcome.steps, outcome.waves);
+                ExitCode::Success
+            }
+            Err(app::score::CheckError::NoState) => {
+                present::no_state_for_score(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::CheckError::NoScore) => {
+                present::no_score_for_slug(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::CheckError::Io(e)) => {
+                present::score_io_failed(&slug, &e);
+                ExitCode::Internal
+            }
+            Err(app::score::CheckError::Findings(findings)) => {
+                present::score_findings(&findings);
+                ExitCode::Precondition
+            }
+        },
+        ScoreCommands::Record { slug } => match app::score::record(state_repo, score_repo, clock, &slug) {
+            Ok(outcome) => {
+                present::score_record_ok(outcome.steps, outcome.waves);
+                ExitCode::Success
+            }
+            Err(app::score::RecordError::NoState) => {
+                present::no_state_for_score(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::RecordError::NoScore) => {
+                present::no_score_for_slug(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::RecordError::Io(e)) => {
+                present::score_io_failed(&slug, &e);
+                ExitCode::Internal
+            }
+            Err(app::score::RecordError::Findings(findings)) => {
+                present::score_findings(&findings);
+                ExitCode::Precondition
+            }
+            Err(app::score::RecordError::Save(e)) => {
+                present::state_save_failed(&slug, &e);
+                ExitCode::from(&e)
+            }
+        },
+        ScoreCommands::Wave { slug, n } => match app::score::wave(state_repo, score_repo, &slug, n) {
+            Ok(blocks) => {
+                present::score_wave_blocks(&blocks);
+                ExitCode::Success
+            }
+            Err(app::score::WaveError::NoState) => {
+                present::no_state_for_score(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::WaveError::NoScore) => {
+                present::no_score_for_slug(&slug);
+                ExitCode::Precondition
+            }
+            Err(app::score::WaveError::Io(e)) => {
+                present::score_io_failed(&slug, &e);
+                ExitCode::Internal
+            }
+            Err(app::score::WaveError::Findings(findings)) => {
+                present::score_findings(&findings);
+                ExitCode::Precondition
+            }
+            Err(app::score::WaveError::NoSuchWave(n)) => {
+                present::score_no_such_wave(&slug, n);
+                ExitCode::Precondition
+            }
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1118,5 +1232,98 @@ mod tests {
         );
 
         assert_eq!(code, ExitCode::Precondition);
+    }
+
+    #[test]
+    fn score_check_reports_findings_as_precondition_exit_code() {
+        let malformed_score = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_score("foo", malformed_score);
+
+        let code = run_score(
+            ScoreCommands::Check { slug: "foo".into() },
+            &repo,
+            &repo,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Precondition);
+    }
+
+    #[test]
+    fn score_record_persists_totals_and_returns_success() {
+        let valid_score = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_score("foo", valid_score);
+
+        let code = run_score(
+            ScoreCommands::Record { slug: "foo".into() },
+            &repo,
+            &repo,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Success);
+        let saved = repo.get("foo").expect("state should exist");
+        assert_eq!(saved.score_steps_total.to_string(), "1");
+        assert_eq!(saved.score_waves_total.to_string(), "1");
+    }
+
+    #[test]
+    fn score_wave_prints_blocks_and_reports_no_such_wave() {
+        let valid_score = "\
+## Wave 1
+
+### Step 1: add widget
+- **Wave**: 1
+- **Files**: /tmp/a.rs
+- **Change**: add widget.
+- **Verify**: cargo build
+- Depends on: none
+";
+        let repo = InMemoryStateRepository::new()
+            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_score("foo", valid_score);
+
+        let ok_code = run_score(
+            ScoreCommands::Wave {
+                slug: "foo".into(),
+                n: 1,
+            },
+            &repo,
+            &repo,
+            &fixed_clock(),
+        );
+        assert_eq!(ok_code, ExitCode::Success);
+
+        let missing_wave_code = run_score(
+            ScoreCommands::Wave {
+                slug: "foo".into(),
+                n: 2,
+            },
+            &repo,
+            &repo,
+            &fixed_clock(),
+        );
+        assert_eq!(missing_wave_code, ExitCode::Precondition);
     }
 }

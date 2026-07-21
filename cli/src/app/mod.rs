@@ -3,6 +3,7 @@ pub mod begin;
 pub mod list;
 pub mod resume;
 pub mod review;
+pub mod score;
 pub mod state;
 pub mod sync;
 pub mod validation;

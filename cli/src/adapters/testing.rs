@@ -4,6 +4,7 @@ use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
 use crate::ports::heist_dir_repository::HeistDirRepository;
+use crate::ports::score_repository::ScoreRepository;
 use crate::ports::state_repository::StateRepository;
 use crate::ports::validation_source::ValidationSource;
 use crate::ports::worktree_fs::WorktreeFs;
@@ -46,6 +47,8 @@ pub struct InMemoryStateRepository {
     states: std::cell::RefCell<std::collections::HashMap<String, State>>,
     /// Slug -> error to return from `load`
     load_errors: std::cell::RefCell<std::collections::HashMap<String, StateError>>,
+    scores: std::cell::RefCell<std::collections::HashMap<String, String>>,
+    score_errors: std::cell::RefCell<std::collections::HashMap<String, String>>,
 }
 
 impl Default for InMemoryStateRepository {
@@ -59,6 +62,8 @@ impl InMemoryStateRepository {
         InMemoryStateRepository {
             states: std::cell::RefCell::new(std::collections::HashMap::new()),
             load_errors: std::cell::RefCell::new(std::collections::HashMap::new()),
+            scores: std::cell::RefCell::new(std::collections::HashMap::new()),
+            score_errors: std::cell::RefCell::new(std::collections::HashMap::new()),
         }
     }
 
@@ -72,6 +77,20 @@ impl InMemoryStateRepository {
         self.load_errors
             .borrow_mut()
             .insert(slug.to_string(), error);
+        self
+    }
+
+    pub fn with_score(self, slug: &str, content: &str) -> Self {
+        self.scores
+            .borrow_mut()
+            .insert(slug.to_string(), content.to_string());
+        self
+    }
+
+    pub fn with_score_io_error(self, slug: &str, message: &str) -> Self {
+        self.score_errors
+            .borrow_mut()
+            .insert(slug.to_string(), message.to_string());
         self
     }
 
@@ -155,6 +174,15 @@ impl HeistDirRepository for InMemoryHeistDirRepository {
     fn remove(&self, slug: &str) -> Result<(), StateError> {
         self.dirs.borrow_mut().remove(slug);
         Ok(())
+    }
+}
+
+impl ScoreRepository for InMemoryStateRepository {
+    fn load_score(&self, slug: &str) -> Result<Option<String>, std::io::Error> {
+        if let Some(message) = self.score_errors.borrow().get(slug) {
+            return Err(std::io::Error::other(message.clone()));
+        }
+        Ok(self.scores.borrow().get(slug).cloned())
     }
 }
 
