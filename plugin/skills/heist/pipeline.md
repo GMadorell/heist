@@ -31,7 +31,7 @@ Run `heist validation check <repo-root-absolute-path>`.
 
 #### 2a. No plan detected: relay loop with the Mastermind
 
-1. Spawn `heist:mastermind` (foreground) with: raw description, slug, worktree absolute path, explicit `cd <worktree-path>` instruction.
+1. Spawn `heist:mastermind` (`run_in_background: false`) with: raw description, slug, worktree absolute path, explicit `cd <worktree-path>` instruction.
 2. Relay loop — each Mastermind reply is a structured question, `SPLIT_PROPOSED`, or `INTERVIEW_COMPLETE`.
    - Every structured question gets an `AskUserQuestion` call. Never answer on the human's behalf.
    - Structured question has `QUESTION:`, `OPTIONS:`, `RECOMMENDATION:` lines. Map to `AskUserQuestion`: `question` = QUESTION text; `header` = short invented label; `options` = OPTIONS reordered with the recommended one first, `(Recommended)` appended to its label. Relay the human's answer verbatim via `SendMessage`, wait for the next reply. Loop.
@@ -47,7 +47,7 @@ Resuming the Mastermind after turn 1: `SendMessage` to the still-alive subagent,
 
 #### 2b. Plan detected: one-shot import with the Mastermind
 
-1. Spawn `heist:mastermind` (foreground) in import mode with: the absolute path(s) of every source-set file, the prose (if any), the slug, the worktree absolute path, an explicit `cd <worktree-path>` instruction, and an explicit instruction to use its import mode.
+1. Spawn `heist:mastermind` (`run_in_background: false`) in import mode with: the absolute path(s) of every source-set file, the prose (if any), the slug, the worktree absolute path, an explicit `cd <worktree-path>` instruction, and an explicit instruction to use its import mode.
 2. The Mastermind replies once with `INTERVIEW_COMPLETE` — it has written `.heist/<slug>/blueprint.md`. Run `heist state set <slug> stage fence_review` (heavy) or `stage human_review` (medium/light). Show the human the summary (including any gaps or stale/false plan assertions the Mastermind flagged) and the blueprint path. Keep the Mastermind subagent alive.
 3. heavy: continue to fence review below. medium/light: continue to human review below (stage already set).
 
@@ -57,7 +57,7 @@ Session restart while `stage` is `planning` for a plan-based heist: the plan fil
 
 Heavy only. medium/light skip this (stage is already `human_review`).
 
-1. Spawn `heist:fence` (foreground, one-shot) with the worktree absolute path and a `cd` instruction. Read its findings.
+1. Spawn `heist:fence` (`run_in_background: false`, one-shot) with the worktree absolute path and a `cd` instruction. Read its findings.
 2. No findings above low, or Fence says the blueprint holds: run `heist state set <slug> stage human_review`. Tell the human it passed clean. Continue to human review.
 3. Findings exist: relay them to the Mastermind, ask it to revise `blueprint.md`. Run `heist state incr <slug> fence_rounds`.
 4. Mastermind revises, replies with a summary and any finding it disagreed with.
