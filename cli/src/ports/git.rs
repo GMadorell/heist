@@ -42,7 +42,9 @@ pub trait GitRepository {
 
     fn delete_branch(&self, repo_root: &Path, branch: &str) -> Result<(), GitError>;
 
-    fn worktree_exists(&self, repo_root: &Path, slug: &str) -> bool;
+    fn worktree_exists(&self, repo_root: &Path, slug: &str) -> Result<bool, GitError>;
+
+    fn branch_exists(&self, repo_root: &Path, branch: &str) -> Result<bool, GitError>;
 
     fn add_worktree(
         &self,

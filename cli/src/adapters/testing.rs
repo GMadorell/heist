@@ -3,6 +3,7 @@ use crate::domain::state::State;
 use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
+use crate::ports::heist_dir_repository::HeistDirRepository;
 use crate::ports::score_repository::ScoreRepository;
 use crate::ports::state_repository::StateRepository;
 use crate::ports::validation_source::ValidationSource;
@@ -103,15 +104,6 @@ impl StateRepository for InMemoryStateRepository {
         self.states.borrow().contains_key(slug) || self.load_errors.borrow().contains_key(slug)
     }
 
-    fn init(&self, slug: &str, state: &State) -> Result<(), StateError> {
-        let mut states = self.states.borrow_mut();
-        if states.contains_key(slug) {
-            return Err(StateError::AlreadyExists);
-        }
-        states.insert(slug.to_string(), state.clone());
-        Ok(())
-    }
-
     fn load(&self, slug: &str) -> Result<State, StateError> {
         if let Some(error) = self.load_errors.borrow_mut().remove(slug) {
             return Err(error);
@@ -151,11 +143,55 @@ impl ScoreRepository for InMemoryStateRepository {
     }
 }
 
+pub struct InMemoryHeistDirRepository {
+    dirs: std::cell::RefCell<std::collections::HashSet<String>>,
+}
+
+impl Default for InMemoryHeistDirRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl InMemoryHeistDirRepository {
+    pub fn new() -> Self {
+        InMemoryHeistDirRepository {
+            dirs: std::cell::RefCell::new(std::collections::HashSet::new()),
+        }
+    }
+
+    pub fn with_dir(self, slug: &str) -> Self {
+        self.dirs.borrow_mut().insert(slug.to_string());
+        self
+    }
+
+    pub fn exists(&self, slug: &str) -> bool {
+        self.dirs.borrow().contains(slug)
+    }
+}
+
+impl HeistDirRepository for InMemoryHeistDirRepository {
+    fn create(&self, slug: &str) -> Result<(), StateError> {
+        let mut dirs = self.dirs.borrow_mut();
+        if dirs.contains(slug) {
+            return Err(StateError::AlreadyExists);
+        }
+        dirs.insert(slug.to_string());
+        Ok(())
+    }
+
+    fn remove(&self, slug: &str) -> Result<(), StateError> {
+        self.dirs.borrow_mut().remove(slug);
+        Ok(())
+    }
+}
+
 /// In-memory git for unit tests
 pub struct FakeGit {
     default_branch: String,
     merged_branches: std::collections::HashSet<String>,
     worktrees: std::cell::RefCell<std::collections::HashSet<String>>,
+    branches: RefCell<HashSet<String>>,
     worktree_infos: Vec<WorktreeInfo>,
     add_error: Option<GitError>,
     remove_error: Option<GitError>,
@@ -198,6 +234,7 @@ impl FakeGit {
             default_branch: "main".to_string(),
             merged_branches: std::collections::HashSet::new(),
             worktrees: std::cell::RefCell::new(std::collections::HashSet::new()),
+            branches: RefCell::new(HashSet::new()),
             worktree_infos: Vec::new(),
             add_error: None,
             remove_error: None,
@@ -234,6 +271,11 @@ impl FakeGit {
 
     pub fn with_merged_branch(mut self, branch: &str) -> Self {
         self.merged_branches.insert(branch.to_string());
+        self
+    }
+
+    pub fn with_branch(self, branch: &str) -> Self {
+        self.branches.borrow_mut().insert(branch.to_string());
         self
     }
 
@@ -380,6 +422,10 @@ impl GitRepository for FakeGit {
         self.default_branch.clone()
     }
 
+    fn branch_exists(&self, _repo_root: &Path, branch: &str) -> Result<bool, GitError> {
+        Ok(self.branches.borrow().contains(branch))
+    }
+
     fn current_branch(&self, _repo_root: &Path) -> Result<Option<String>, GitError> {
         Ok(self.current_branch.clone())
     }
@@ -419,8 +465,8 @@ impl GitRepository for FakeGit {
         })
     }
 
-    fn worktree_exists(&self, _repo_root: &Path, slug: &str) -> bool {
-        self.worktrees.borrow().contains(slug)
+    fn worktree_exists(&self, _repo_root: &Path, slug: &str) -> Result<bool, GitError> {
+        Ok(self.worktrees.borrow().contains(slug))
     }
 
     fn add_worktree(
@@ -439,6 +485,7 @@ impl GitRepository for FakeGit {
         // Register by the branch's slug suffix (`heist/<slug>` -> `<slug>`).
         let slug = branch.rsplit('/').next().unwrap_or(branch);
         self.worktrees.borrow_mut().insert(slug.to_string());
+        self.branches.borrow_mut().insert(branch.to_string());
         Ok(())
     }
 
