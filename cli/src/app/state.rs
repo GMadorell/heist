@@ -1,4 +1,4 @@
-use crate::domain::error::{ValueError, StateError};
+use crate::domain::error::{StateError, ValueError};
 use crate::domain::state::State;
 use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
@@ -71,7 +71,11 @@ updated: string";
 
 pub fn schema() -> Result<String, SchemaError> {
     let example_date = DateValue::parse("created", "2026-01-01").expect("constant date is valid");
-    let example = State::new(&SlugValue::parse("example").expect("constant slug is valid"), example_date).map_err(SchemaError::InvalidExample)?;
+    let example = State::new(
+        &SlugValue::parse("example").expect("constant slug is valid"),
+        example_date,
+    )
+    .map_err(SchemaError::InvalidExample)?;
     let json = serde_json::to_string_pretty(&example).map_err(SchemaError::Serialize)?;
     Ok(format!("{}\n\n{}", FIELD_LIST, json))
 }

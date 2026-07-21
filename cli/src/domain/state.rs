@@ -265,7 +265,11 @@ mod tests {
     #[test]
     fn new_state_has_expected_defaults() {
         let today = DateValue::parse("today", "2026-01-01").expect("valid date");
-        let state = State::new(&SlugValue::parse("my-slug").expect("valid slug"), today.clone()).expect("valid slug");
+        let state = State::new(
+            &SlugValue::parse("my-slug").expect("valid slug"),
+            today.clone(),
+        )
+        .expect("valid slug");
         let json = serde_json::to_value(&state).expect("failed to serialize");
 
         assert_eq!(
@@ -291,7 +295,8 @@ mod tests {
     #[test]
     fn new_state_accepts_pre_validated_slug_value() {
         let today = DateValue::parse("today", "2026-01-01").expect("valid date");
-        let state = State::new(&SlugValue::parse("my-slug").expect("valid slug"), today).expect("valid slug");
+        let state = State::new(&SlugValue::parse("my-slug").expect("valid slug"), today)
+            .expect("valid slug");
         assert_eq!(state.slug.to_string(), "my-slug");
     }
 

@@ -150,7 +150,11 @@ impl StateRepository for InMemoryStateRepository {
             .ok_or(StateError::Missing)
     }
 
-    fn save(&self, slug: &crate::domain::value::SlugValue, state: &State) -> Result<(), StateError> {
+    fn save(
+        &self,
+        slug: &crate::domain::value::SlugValue,
+        state: &State,
+    ) -> Result<(), StateError> {
         self.states
             .borrow_mut()
             .insert(slug.as_ref().to_string(), state.clone());
@@ -170,7 +174,10 @@ impl StateRepository for InMemoryStateRepository {
 }
 
 impl ScoreRepository for InMemoryStateRepository {
-    fn load_score(&self, slug: &crate::domain::value::SlugValue) -> Result<Option<String>, std::io::Error> {
+    fn load_score(
+        &self,
+        slug: &crate::domain::value::SlugValue,
+    ) -> Result<Option<String>, std::io::Error> {
         let key = slug.as_ref();
         if let Some(message) = self.score_errors.borrow().get(key) {
             return Err(std::io::Error::other(message.clone()));
@@ -459,7 +466,11 @@ impl GitRepository for FakeGit {
         self.default_branch.clone()
     }
 
-    fn branch_exists(&self, _repo_root: &Path, branch: &crate::domain::value::BranchValue) -> Result<bool, GitError> {
+    fn branch_exists(
+        &self,
+        _repo_root: &Path,
+        branch: &crate::domain::value::BranchValue,
+    ) -> Result<bool, GitError> {
         Ok(self.branches.borrow().contains(branch.as_ref()))
     }
 
@@ -503,7 +514,11 @@ impl GitRepository for FakeGit {
         })
     }
 
-    fn worktree_exists(&self, _repo_root: &Path, slug: &crate::domain::value::SlugValue) -> Result<bool, GitError> {
+    fn worktree_exists(
+        &self,
+        _repo_root: &Path,
+        slug: &crate::domain::value::SlugValue,
+    ) -> Result<bool, GitError> {
         Ok(self.worktrees.borrow().contains(slug.as_ref()))
     }
 
@@ -538,7 +553,11 @@ impl GitRepository for FakeGit {
         Ok(())
     }
 
-    fn delete_branch(&self, _repo_root: &Path, branch: &crate::domain::value::BranchValue) -> Result<(), GitError> {
+    fn delete_branch(
+        &self,
+        _repo_root: &Path,
+        branch: &crate::domain::value::BranchValue,
+    ) -> Result<(), GitError> {
         self.deleted_branch_names
             .borrow_mut()
             .push(branch.as_ref().to_string());

@@ -27,7 +27,8 @@ fn create_creates_slug_dir() {
 fn create_rejects_already_initialised_slug() {
     let _cwd = TempCwd::new();
     let repo = FileHeistDirRepository;
-    repo.create(&slug("foo")).expect("first create should succeed");
+    repo.create(&slug("foo"))
+        .expect("first create should succeed");
 
     assert!(matches!(
         repo.create(&slug("foo")),

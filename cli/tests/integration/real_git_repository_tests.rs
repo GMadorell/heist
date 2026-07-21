@@ -244,14 +244,25 @@ fn worktree_exists_reflects_added_worktrees() {
     init_repo_with_commit(temp_dir.path());
     let worktree_path = temp_dir.path().join("worktrees").join("foo");
 
-    assert!(!RealGit.worktree_exists(temp_dir.path(), &slug("foo")).unwrap());
+    assert!(!RealGit
+        .worktree_exists(temp_dir.path(), &slug("foo"))
+        .unwrap());
 
     RealGit
-        .add_worktree(temp_dir.path(), &worktree_path, &branch("heist/foo"), &ref_value("main"))
+        .add_worktree(
+            temp_dir.path(),
+            &worktree_path,
+            &branch("heist/foo"),
+            &ref_value("main"),
+        )
         .expect("add should succeed");
 
-    assert!(RealGit.worktree_exists(temp_dir.path(), &slug("foo")).unwrap());
-    assert!(!RealGit.worktree_exists(temp_dir.path(), &slug("bar")).unwrap());
+    assert!(RealGit
+        .worktree_exists(temp_dir.path(), &slug("foo"))
+        .unwrap());
+    assert!(!RealGit
+        .worktree_exists(temp_dir.path(), &slug("bar"))
+        .unwrap());
 }
 
 #[test]
@@ -262,7 +273,12 @@ fn add_worktree_fails_when_path_already_exists() {
     fs::create_dir_all(&worktree_path).expect("failed to create directory");
     fs::write(worktree_path.join("occupied"), "x").expect("failed to write file");
 
-    let result = RealGit.add_worktree(temp_dir.path(), &worktree_path, &branch("heist/foo"), &ref_value("main"));
+    let result = RealGit.add_worktree(
+        temp_dir.path(),
+        &worktree_path,
+        &branch("heist/foo"),
+        &ref_value("main"),
+    );
 
     match result {
         Err(GitError::WorktreeAdd { subtype, .. }) => assert_eq!(subtype, "already-exists"),
@@ -276,14 +292,21 @@ fn remove_worktree_removes_added_worktree() {
     init_repo_with_commit(temp_dir.path());
     let worktree_path = temp_dir.path().join("worktrees").join("foo");
     RealGit
-        .add_worktree(temp_dir.path(), &worktree_path, &branch("heist/foo"), &ref_value("main"))
+        .add_worktree(
+            temp_dir.path(),
+            &worktree_path,
+            &branch("heist/foo"),
+            &ref_value("main"),
+        )
         .expect("add should succeed");
 
     RealGit
         .remove_worktree(temp_dir.path(), &worktree_path)
         .expect("remove should succeed");
 
-    assert!(!RealGit.worktree_exists(temp_dir.path(), &slug("foo")).unwrap());
+    assert!(!RealGit
+        .worktree_exists(temp_dir.path(), &slug("foo"))
+        .unwrap());
 }
 
 #[test]
@@ -302,7 +325,12 @@ fn list_worktrees_reports_path_and_branch() {
     init_repo_with_commit(temp_dir.path());
     let worktree_path = temp_dir.path().join("worktrees").join("foo");
     RealGit
-        .add_worktree(temp_dir.path(), &worktree_path, &branch("heist/foo"), &ref_value("main"))
+        .add_worktree(
+            temp_dir.path(),
+            &worktree_path,
+            &branch("heist/foo"),
+            &ref_value("main"),
+        )
         .expect("add should succeed");
 
     let infos = RealGit
@@ -359,7 +387,8 @@ fn changed_paths_errors_on_unresolvable_base() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     init_repo_with_commit(temp_dir.path());
 
-    let result = RealGit.changed_paths(temp_dir.path(), "no-such-remote-branch", &ref_value("HEAD"));
+    let result =
+        RealGit.changed_paths(temp_dir.path(), "no-such-remote-branch", &ref_value("HEAD"));
     assert!(result.is_err());
 }
 
@@ -548,8 +577,12 @@ fn branch_exists_true_for_existing_branch_false_otherwise() {
     init_repo_with_commit(repo_root);
     run_git(repo_root, &["branch", "heist/foo"]);
 
-    assert!(RealGit.branch_exists(repo_root, &branch("heist/foo")).unwrap());
-    assert!(!RealGit.branch_exists(repo_root, &branch("heist/does-not-exist")).unwrap());
+    assert!(RealGit
+        .branch_exists(repo_root, &branch("heist/foo"))
+        .unwrap());
+    assert!(!RealGit
+        .branch_exists(repo_root, &branch("heist/does-not-exist"))
+        .unwrap());
 }
 
 /// Builds a scenario where a direct three-way `git merge` (not a rebase)

@@ -36,16 +36,15 @@ pub fn resolve(
     let Some(base_value) = state.base else {
         return Ok(BaseResolution::Null);
     };
-    let base_ref = RefValue::try_from_raw(base_value.as_ref())
-        .map_err(ResolveError::InvalidStoredBase)?;
+    let base_ref =
+        RefValue::try_from_raw(base_value.as_ref()).map_err(ResolveError::InvalidStoredBase)?;
     let main_branch = git.default_branch(repo_root);
 
     let ref_exists = git.resolve_ref(repo_root, &base_ref).is_ok();
 
     if ref_exists {
-        let origin_main =
-            RefValue::try_from_raw(&format!("origin/{}", main_branch))
-                .map_err(ResolveError::InvalidStoredBase)?;
+        let origin_main = RefValue::try_from_raw(&format!("origin/{}", main_branch))
+            .map_err(ResolveError::InvalidStoredBase)?;
         let ancestry = git.is_ancestor(repo_root, &base_ref, &origin_main);
         if matches!(ancestry, Ok(true)) {
             return Ok(BaseResolution::Expired {
@@ -126,7 +125,12 @@ mod tests {
             )
             .with_pr_state("heist/piece-01", PrState::Merged);
 
-        let result = resolve(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug"));
+        let result = resolve(
+            Path::new("."),
+            &repo,
+            &git,
+            &SlugValue::parse("foo").expect("valid slug"),
+        );
 
         assert!(matches!(result, Ok(BaseResolution::Expired { .. })));
         assert_eq!(git.is_ancestor_call_count(), 0);
@@ -138,7 +142,12 @@ mod tests {
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new();
 
-        let result = resolve(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug"));
+        let result = resolve(
+            Path::new("."),
+            &repo,
+            &git,
+            &SlugValue::parse("foo").expect("valid slug"),
+        );
 
         assert!(matches!(result, Ok(BaseResolution::Null)));
     }
@@ -153,7 +162,12 @@ mod tests {
             .with_default_branch("main")
             .with_ancestor("heist/piece-01", "origin/main");
 
-        let result = resolve(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug"));
+        let result = resolve(
+            Path::new("."),
+            &repo,
+            &git,
+            &SlugValue::parse("foo").expect("valid slug"),
+        );
 
         assert!(matches!(result, Ok(BaseResolution::Expired { .. })));
     }
@@ -166,7 +180,12 @@ mod tests {
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new().with_pr_state("heist/piece-01", PrState::Merged);
 
-        let result = resolve(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug"));
+        let result = resolve(
+            Path::new("."),
+            &repo,
+            &git,
+            &SlugValue::parse("foo").expect("valid slug"),
+        );
 
         assert!(matches!(result, Ok(BaseResolution::Expired { .. })));
     }
@@ -179,7 +198,12 @@ mod tests {
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new().with_pr_state("heist/piece-01", PrState::ClosedUnmerged);
 
-        let result = resolve(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug"));
+        let result = resolve(
+            Path::new("."),
+            &repo,
+            &git,
+            &SlugValue::parse("foo").expect("valid slug"),
+        );
 
         assert!(matches!(result, Ok(BaseResolution::Abandoned { .. })));
     }
@@ -192,7 +216,12 @@ mod tests {
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new().with_pr_state("heist/piece-01", PrState::Open);
 
-        let result = resolve(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug"));
+        let result = resolve(
+            Path::new("."),
+            &repo,
+            &git,
+            &SlugValue::parse("foo").expect("valid slug"),
+        );
 
         assert!(matches!(result, Ok(BaseResolution::Live { .. })));
     }
@@ -212,7 +241,12 @@ mod tests {
             )
             .with_pr_state("heist/piece-01", PrState::Open);
 
-        let result = resolve(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug"));
+        let result = resolve(
+            Path::new("."),
+            &repo,
+            &git,
+            &SlugValue::parse("foo").expect("valid slug"),
+        );
 
         assert!(matches!(
             result,
@@ -236,7 +270,12 @@ mod tests {
             },
         );
 
-        let result = resolve(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug"));
+        let result = resolve(
+            Path::new("."),
+            &repo,
+            &git,
+            &SlugValue::parse("foo").expect("valid slug"),
+        );
 
         assert!(matches!(result, Err(ResolveError::RefMissingNoPr { .. })));
     }
@@ -255,7 +294,12 @@ mod tests {
             },
         );
 
-        let result = resolve(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug"));
+        let result = resolve(
+            Path::new("."),
+            &repo,
+            &git,
+            &SlugValue::parse("foo").expect("valid slug"),
+        );
 
         match result {
             Err(ResolveError::VerificationFailed { base_ref, message }) => {
@@ -291,7 +335,12 @@ mod tests {
                 },
             );
 
-        let result = resolve(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug"));
+        let result = resolve(
+            Path::new("."),
+            &repo,
+            &git,
+            &SlugValue::parse("foo").expect("valid slug"),
+        );
 
         assert!(matches!(result, Err(ResolveError::Ambiguous { .. })));
     }

@@ -70,12 +70,14 @@ pub fn perform(
     match resolution {
         BaseResolution::Null => {
             let onto_str = format!("origin/{}", main_branch);
-            let onto_ref = RefValue::try_from_raw(&onto_str).map_err(SyncError::InvalidComposedRef)?;
+            let onto_ref =
+                RefValue::try_from_raw(&onto_str).map_err(SyncError::InvalidComposedRef)?;
             git.rebase(repo_root, &onto_ref).map_err(SyncError::Git)?;
             Ok(SyncAction::RebasedOntoMain { onto: onto_str })
         }
         BaseResolution::Live { base_ref } => {
-            let base_ref_value = RefValue::try_from_raw(base_ref.as_ref()).map_err(SyncError::InvalidComposedRef)?;
+            let base_ref_value =
+                RefValue::try_from_raw(base_ref.as_ref()).map_err(SyncError::InvalidComposedRef)?;
             git.merge(repo_root, &base_ref_value)
                 .map_err(SyncError::Git)?;
             Ok(SyncAction::MergedBase {
@@ -84,7 +86,8 @@ pub fn perform(
         }
         BaseResolution::Expired { .. } => {
             let onto_str = format!("origin/{}", main_branch);
-            let onto_ref = RefValue::try_from_raw(&onto_str).map_err(SyncError::InvalidComposedRef)?;
+            let onto_ref =
+                RefValue::try_from_raw(&onto_str).map_err(SyncError::InvalidComposedRef)?;
             git.merge(repo_root, &onto_ref).map_err(SyncError::Git)?;
             Ok(SyncAction::MergedMainBaseMerged { onto: onto_str })
         }

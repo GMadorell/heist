@@ -5,7 +5,7 @@ use crate::app::sync::SyncAction;
 use crate::app::worktree::CleanupOutcome;
 use crate::domain::review::Lane;
 use crate::domain::score::Finding;
-use crate::domain::state::{State, route};
+use crate::domain::state::{route, State};
 use crate::ports::git::GitError;
 use std::fmt::Display;
 
@@ -45,11 +45,17 @@ pub fn rollback_diagnostics(errors: &[RollbackFailure]) {
     for e in errors {
         match e {
             RollbackFailure::WorktreeProbe(e) => {
-                eprintln!("  - could not verify whether the worktree still exists: {}", e)
+                eprintln!(
+                    "  - could not verify whether the worktree still exists: {}",
+                    e
+                )
             }
             RollbackFailure::WorktreeRemove(e) => eprintln!("  - failed to remove worktree: {}", e),
             RollbackFailure::BranchProbe(e) => {
-                eprintln!("  - could not verify whether the branch still exists: {}", e)
+                eprintln!(
+                    "  - could not verify whether the branch still exists: {}",
+                    e
+                )
             }
             RollbackFailure::BranchDelete(e) => eprintln!("  - failed to delete branch: {}", e),
             RollbackFailure::HeistDirRemove(e) => {

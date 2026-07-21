@@ -283,7 +283,7 @@ fn run_state(
                     ExitCode::Precondition
                 }
             }
-        },
+        }
         StateCommands::Set { slug, field, value } => {
             let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
                 Ok(v) => v,
@@ -320,7 +320,7 @@ fn run_state(
                     ExitCode::from(&e)
                 }
             }
-        },
+        }
         StateCommands::Schema => match app::state::schema() {
             Ok(output) => {
                 present::line(output);
@@ -356,7 +356,11 @@ fn run_worktree(
                     return ExitCode::Precondition;
                 }
             };
-            let base_ref = match base.as_ref().map(|b| crate::domain::value::RefValue::try_from(b.to_string())).transpose() {
+            let base_ref = match base
+                .as_ref()
+                .map(|b| crate::domain::value::RefValue::try_from(b.to_string()))
+                .transpose()
+            {
                 Ok(v) => v,
                 Err(_) => {
                     present::error(crate::domain::error::ValueError::InvalidRef {
@@ -451,10 +455,7 @@ fn run_worktree(
     }
 }
 
-fn run_validation(
-    command: ValidationCommands,
-    src: &dyn ValidationSource,
-) -> ExitCode {
+fn run_validation(command: ValidationCommands, src: &dyn ValidationSource) -> ExitCode {
     match command {
         ValidationCommands::Resolve { paths } => {
             if paths.is_empty() {
@@ -760,7 +761,10 @@ fn run_begin(
             return ExitCode::Precondition;
         }
     };
-    let base_ref = match base.map(|b| crate::domain::value::RefValue::try_from(b.to_string())).transpose() {
+    let base_ref = match base
+        .map(|b| crate::domain::value::RefValue::try_from(b.to_string()))
+        .transpose()
+    {
         Ok(v) => v,
         Err(_) => {
             present::error(crate::domain::error::ValueError::InvalidRef {
@@ -917,7 +921,7 @@ fn run_score(
                     ExitCode::Precondition
                 }
             }
-        },
+        }
         ScoreCommands::Record { slug } => {
             let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
                 Ok(v) => v,
@@ -952,7 +956,7 @@ fn run_score(
                     ExitCode::from(&e)
                 }
             }
-        },
+        }
         ScoreCommands::Wave { slug, n } => {
             let slug_value = match crate::domain::value::SlugValue::parse(&slug) {
                 Ok(v) => v,
@@ -988,7 +992,7 @@ fn run_score(
                     ExitCode::Precondition
                 }
             }
-        },
+        }
     }
 }
 
@@ -1031,8 +1035,11 @@ mod tests {
     #[test]
     fn state_init_rejects_existing_slug() {
         let heist_dir_repo = InMemoryHeistDirRepository::new().with_dir("foo");
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                .expect("valid slug"),
+        );
         let code = run_state(
             StateCommands::Init { slug: "foo".into() },
             &heist_dir_repo,
@@ -1062,8 +1069,11 @@ mod tests {
     #[test]
     fn state_set_persists_valid_field() {
         let heist_dir_repo = InMemoryHeistDirRepository::new();
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                .expect("valid slug"),
+        );
         let code = run_state(
             StateCommands::Set {
                 slug: "foo".into(),
@@ -1084,8 +1094,11 @@ mod tests {
     #[test]
     fn state_set_invalid_numeric_is_precondition_and_leaves_state() {
         let heist_dir_repo = InMemoryHeistDirRepository::new();
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                .expect("valid slug"),
+        );
         let code = run_state(
             StateCommands::Set {
                 slug: "foo".into(),
@@ -1125,10 +1138,39 @@ mod tests {
     }
 
     #[test]
+    fn worktree_add_rejects_invalid_base_ref_at_boundary() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                .expect("valid slug"),
+        );
+        let git = FakeGit::new();
+
+        let code = run_worktree(
+            WorktreeCommands::Add {
+                slug: "foo".into(),
+                base: Some("bad\tref".into()),
+            },
+            temp_dir.path(),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Precondition);
+        assert!(repo.get("foo").unwrap().worktree.is_none());
+    }
+
+    #[test]
     fn worktree_add_fails_when_origin_unreachable() {
         let temp_dir = TempDir::new().expect("failed to create temp directory");
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                .expect("valid slug"),
+        );
         let git = FakeGit::new().failing_add(GitError::WorktreeAdd {
             subtype: "origin-unreachable".into(),
             message: "cannot find remote ref".into(),
@@ -1170,8 +1212,11 @@ mod tests {
 
     #[test]
     fn worktree_remove_refuses_when_branch_not_merged() {
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                .expect("valid slug"),
+        );
         // No merged branch configured, so heist/foo is treated as unmerged.
         let git = FakeGit::new().with_default_branch("main");
 
@@ -1194,8 +1239,11 @@ mod tests {
 
     #[test]
     fn worktree_remove_surfaces_worktree_removal_failure() {
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                .expect("valid slug"),
+        );
         let git = FakeGit::new()
             .with_merged_branch("heist/foo")
             .failing_remove(GitError::WorktreeRemove {
@@ -1221,8 +1269,11 @@ mod tests {
 
     #[test]
     fn worktree_remove_surfaces_branch_deletion_failure() {
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                .expect("valid slug"),
+        );
         let git = FakeGit::new()
             .with_merged_branch("heist/foo")
             .failing_delete(GitError::BranchDelete {
@@ -1247,8 +1298,11 @@ mod tests {
 
     #[test]
     fn worktree_remove_marks_done_when_merged() {
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                .expect("valid slug"),
+        );
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_merged_branch("heist/foo");
@@ -1332,7 +1386,8 @@ mod tests {
 
     #[test]
     fn base_command_reports_abandoned_as_precondition_exit_code() {
-        let mut state = State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug");
+        let mut state = State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+            .expect("valid slug");
         state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
@@ -1345,7 +1400,8 @@ mod tests {
 
     #[test]
     fn sync_command_refuses_abandoned_base_with_abandoned_exit_code() {
-        let mut state = State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug");
+        let mut state = State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+            .expect("valid slug");
         state.worktree = Some(NonBlankValue::parse("worktree", "/tmp/wt").expect("valid worktree"));
         state.branch = Some(NonBlankValue::parse("branch", "heist/foo").expect("valid branch"));
         state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
@@ -1388,8 +1444,11 @@ mod tests {
     fn begin_collision_returns_precondition_exit_code() {
         let temp_dir = TempDir::new().expect("failed to create temp directory");
         let heist_dir_repo = InMemoryHeistDirRepository::new();
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                .expect("valid slug"),
+        );
         let git = FakeGit::new().with_default_branch("main");
 
         let code = run_begin(
@@ -1408,6 +1467,52 @@ mod tests {
     }
 
     #[test]
+    fn begin_rejects_invalid_slug_at_boundary_before_touching_state_or_git() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new().with_default_branch("main");
+
+        let code = run_begin(
+            "Not A Slug",
+            "heavy",
+            None,
+            temp_dir.path(),
+            &heist_dir_repo,
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Precondition);
+        assert!(!heist_dir_repo.exists("Not A Slug"));
+    }
+
+    #[test]
+    fn begin_rejects_invalid_mode_at_boundary_before_touching_state_or_git() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new().with_default_branch("main");
+
+        let code = run_begin(
+            "foo",
+            "bogus-mode",
+            None,
+            temp_dir.path(),
+            &heist_dir_repo,
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Precondition);
+        assert!(!repo.exists(&SlugValue::parse("foo").expect("valid slug")));
+    }
+
+    #[test]
     fn score_check_reports_findings_as_precondition_exit_code() {
         let malformed_score = "\
 ## Wave 1
@@ -1419,7 +1524,11 @@ mod tests {
 - Depends on: none
 ";
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"))
+            .with_state(
+                "foo",
+                State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                    .expect("valid slug"),
+            )
             .with_score("foo", malformed_score);
 
         let code = run_score(
@@ -1445,7 +1554,11 @@ mod tests {
 - Depends on: none
 ";
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"))
+            .with_state(
+                "foo",
+                State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                    .expect("valid slug"),
+            )
             .with_score("foo", valid_score);
 
         let code = run_score(
@@ -1474,7 +1587,11 @@ mod tests {
 - Depends on: none
 ";
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"))
+            .with_state(
+                "foo",
+                State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
+                    .expect("valid slug"),
+            )
             .with_score("foo", valid_score);
 
         let ok_code = run_score(

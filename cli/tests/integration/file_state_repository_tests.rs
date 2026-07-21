@@ -36,7 +36,8 @@ fn save_writes_state_file_visible_to_exists_and_load() {
         .create(&slug("foo"))
         .expect("create slug dir");
 
-    repo.save(&slug("foo"), &state).expect("save should succeed");
+    repo.save(&slug("foo"), &state)
+        .expect("save should succeed");
 
     assert!(repo.exists(&slug("foo")));
     assert!(state_file_path("foo").exists());
@@ -76,7 +77,8 @@ fn save_then_load_roundtrips() {
         .create(&slug("foo"))
         .expect("create slug dir");
 
-    repo.save(&slug("foo"), &state).expect("save should succeed");
+    repo.save(&slug("foo"), &state)
+        .expect("save should succeed");
 
     assert_eq!(
         repo.load(&slug("foo"))

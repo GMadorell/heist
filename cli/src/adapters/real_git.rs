@@ -102,7 +102,11 @@ impl GitRepository for RealGit {
         }
     }
 
-    fn delete_branch(&self, repo_root: &Path, branch: &crate::domain::value::BranchValue) -> Result<(), GitError> {
+    fn delete_branch(
+        &self,
+        repo_root: &Path,
+        branch: &crate::domain::value::BranchValue,
+    ) -> Result<(), GitError> {
         let branch_str = branch.as_ref();
         let output = std::process::Command::new("git")
             .current_dir(repo_root)
@@ -120,16 +124,26 @@ impl GitRepository for RealGit {
         })
     }
 
-    fn branch_exists(&self, repo_root: &Path, branch: &crate::domain::value::BranchValue) -> Result<bool, GitError> {
+    fn branch_exists(
+        &self,
+        repo_root: &Path,
+        branch: &crate::domain::value::BranchValue,
+    ) -> Result<bool, GitError> {
         let repo = git2::Repository::open(repo_root).map_err(|e| GitError::CommandFailed {
             command: "git2::Repository::open".to_string(),
             message: e.message().to_string(),
         })?;
-        let found = repo.find_branch(branch.as_ref(), git2::BranchType::Local).is_ok();
+        let found = repo
+            .find_branch(branch.as_ref(), git2::BranchType::Local)
+            .is_ok();
         Ok(found)
     }
 
-    fn worktree_exists(&self, repo_root: &Path, slug: &crate::domain::value::SlugValue) -> Result<bool, GitError> {
+    fn worktree_exists(
+        &self,
+        repo_root: &Path,
+        slug: &crate::domain::value::SlugValue,
+    ) -> Result<bool, GitError> {
         let repo = git2::Repository::open(repo_root).map_err(|e| GitError::CommandFailed {
             command: "git2::Repository::open".to_string(),
             message: e.message().to_string(),
@@ -139,7 +153,11 @@ impl GitRepository for RealGit {
             message: e.message().to_string(),
         })?;
         // iter() yields Result<Option<&str>, _>; flatten twice to reach &str.
-        Ok(worktrees.iter().flatten().flatten().any(|name| name == slug.as_ref()))
+        Ok(worktrees
+            .iter()
+            .flatten()
+            .flatten()
+            .any(|name| name == slug.as_ref()))
     }
 
     fn add_worktree(
@@ -218,7 +236,11 @@ impl GitRepository for RealGit {
         })
     }
 
-    fn resolve_ref(&self, repo_root: &Path, ref_spec: &crate::domain::value::RefValue) -> Result<(), GitError> {
+    fn resolve_ref(
+        &self,
+        repo_root: &Path,
+        ref_spec: &crate::domain::value::RefValue,
+    ) -> Result<(), GitError> {
         let ref_spec_str = ref_spec.as_ref();
         let resolve = || -> Result<(), git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
@@ -346,7 +368,11 @@ impl GitRepository for RealGit {
         })
     }
 
-    fn pr_state(&self, repo_root: &Path, branch: &crate::domain::value::RefValue) -> Result<PrState, GitError> {
+    fn pr_state(
+        &self,
+        repo_root: &Path,
+        branch: &crate::domain::value::RefValue,
+    ) -> Result<PrState, GitError> {
         let branch_str = branch.as_ref();
         let output = std::process::Command::new("gh")
             .current_dir(repo_root)
@@ -417,7 +443,11 @@ impl GitRepository for RealGit {
             .unwrap_or(PrState::None))
     }
 
-    fn rebase(&self, repo_root: &Path, onto: &crate::domain::value::RefValue) -> Result<(), GitError> {
+    fn rebase(
+        &self,
+        repo_root: &Path,
+        onto: &crate::domain::value::RefValue,
+    ) -> Result<(), GitError> {
         if rebase_in_progress(repo_root) {
             return continue_rebase(repo_root);
         }
@@ -440,7 +470,11 @@ impl GitRepository for RealGit {
         })
     }
 
-    fn merge(&self, repo_root: &Path, other_ref: &crate::domain::value::RefValue) -> Result<(), GitError> {
+    fn merge(
+        &self,
+        repo_root: &Path,
+        other_ref: &crate::domain::value::RefValue,
+    ) -> Result<(), GitError> {
         if merge_in_progress(repo_root) {
             return continue_merge(repo_root);
         }

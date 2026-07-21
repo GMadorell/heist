@@ -1,6 +1,6 @@
-use crate::domain::error::{ValueError, StateError};
+use crate::domain::error::{StateError, ValueError};
 use crate::domain::state::Stage;
-use crate::domain::value::{NonBlankValue, SlugValue, RefValue};
+use crate::domain::value::{NonBlankValue, RefValue, SlugValue};
 use crate::domain::worktree;
 use crate::domain::worktree::HeistWorktree;
 use crate::ports::clock::Clock;
@@ -56,7 +56,9 @@ pub fn add(
         }
     };
 
-    let worktree_exists = git.worktree_exists(repo_root, slug).map_err(AddError::Git)?;
+    let worktree_exists = git
+        .worktree_exists(repo_root, slug)
+        .map_err(AddError::Git)?;
 
     // A `--base` only takes effect when the worktree (and its branch) is
     // created. Passing one for an existing worktree that was built from a

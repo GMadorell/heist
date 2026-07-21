@@ -238,7 +238,7 @@ mod tests {
         assert!(state.branch.is_some());
     }
 
-#[test]
+    #[test]
     fn begin_rejects_precheck_collision_for_existing_state_worktree_or_branch() {
         let foo = SlugValue::parse("foo").expect("valid slug");
         let repo_with_state = InMemoryStateRepository::new().with_state(

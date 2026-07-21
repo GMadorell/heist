@@ -41,11 +41,23 @@ pub trait GitRepository {
         into: &str,
     ) -> Result<MergeCheck, GitError>;
 
-    fn delete_branch(&self, repo_root: &Path, branch: &crate::domain::value::BranchValue) -> Result<(), GitError>;
+    fn delete_branch(
+        &self,
+        repo_root: &Path,
+        branch: &crate::domain::value::BranchValue,
+    ) -> Result<(), GitError>;
 
-    fn worktree_exists(&self, repo_root: &Path, slug: &crate::domain::value::SlugValue) -> Result<bool, GitError>;
+    fn worktree_exists(
+        &self,
+        repo_root: &Path,
+        slug: &crate::domain::value::SlugValue,
+    ) -> Result<bool, GitError>;
 
-    fn branch_exists(&self, repo_root: &Path, branch: &crate::domain::value::BranchValue) -> Result<bool, GitError>;
+    fn branch_exists(
+        &self,
+        repo_root: &Path,
+        branch: &crate::domain::value::BranchValue,
+    ) -> Result<bool, GitError>;
 
     fn add_worktree(
         &self,
@@ -66,7 +78,11 @@ pub trait GitRepository {
 
     /// Resolves `ref_spec` verbatim (no `origin/` prefixing, unlike `remote_default_resolves`),
     /// existence-only check, no ancestry verification.
-    fn resolve_ref(&self, repo_root: &Path, ref_spec: &crate::domain::value::RefValue) -> Result<(), GitError>;
+    fn resolve_ref(
+        &self,
+        repo_root: &Path,
+        ref_spec: &crate::domain::value::RefValue,
+    ) -> Result<(), GitError>;
 
     /// base_branch: git-owned/git-sourced output, not a VO
     fn changed_paths(
@@ -92,11 +108,23 @@ pub trait GitRepository {
         descendant_ref: &crate::domain::value::RefValue,
     ) -> Result<bool, GitError>;
 
-    fn pr_state(&self, repo_root: &Path, branch: &crate::domain::value::RefValue) -> Result<PrState, GitError>;
+    fn pr_state(
+        &self,
+        repo_root: &Path,
+        branch: &crate::domain::value::RefValue,
+    ) -> Result<PrState, GitError>;
 
-    fn rebase(&self, repo_root: &Path, onto: &crate::domain::value::RefValue) -> Result<(), GitError>;
+    fn rebase(
+        &self,
+        repo_root: &Path,
+        onto: &crate::domain::value::RefValue,
+    ) -> Result<(), GitError>;
 
-    fn merge(&self, repo_root: &Path, other_ref: &crate::domain::value::RefValue) -> Result<(), GitError>;
+    fn merge(
+        &self,
+        repo_root: &Path,
+        other_ref: &crate::domain::value::RefValue,
+    ) -> Result<(), GitError>;
 }
 
 #[derive(Debug, Clone)]
