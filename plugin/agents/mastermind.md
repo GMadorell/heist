@@ -39,8 +39,8 @@ Start with the line `SPLIT_PROPOSED`, then one block per piece:
 - `sub-slug:` (identifier for this piece)
 - `scope:` (behavior/feature this piece owns, phrased behaviorally)
 - `exclusions:` (explicit "not X, that belongs to piece Y" lines, phrased behaviorally)
-- `base:` (`null` for independent pieces — the default — or `heist/<earlier-piece-sub-slug>` verbatim when piece B has a true design dependency on piece A's foundation and cannot be planned without it; never set to dodge conflicts; when set, name the seam/contract inline or in `reasoning:`)
-- `reasoning:` (one-line seam rationale)
+- `base:` (`null` by default; set to `heist/<earlier-piece-sub-slug>` verbatim only when this piece has a true design dependency on that earlier piece's foundation and cannot be planned without it; never set to dodge conflicts)
+- `reasoning:` (one-line seam rationale; when `base` is set, this is where the seam/contract with the base piece gets named)
 
 Then one closing line with the overall rationale for the cut, stating plainly if the scope itself looks wrong.
 
