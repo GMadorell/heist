@@ -82,6 +82,41 @@ impl BranchValue {
 }
 
 #[nutype(
+    validate(predicate = RefValue::is_valid_ref),
+    new_unchecked,
+    derive(Debug, Clone, PartialEq, Eq, AsRef, Serialize, Deserialize, Display, TryFrom)
+)]
+pub struct RefValue(String);
+
+impl RefValue {
+    pub fn try_from_raw(value: &str) -> Result<Self, ValueError> {
+        Self::try_new(value.to_string()).map_err(|_| ValueError::InvalidRef {
+            value: value.to_string(),
+            reason: "non-blank, no whitespace or control chars".to_string(),
+        })
+    }
+
+    fn is_valid_ref(s: &str) -> bool {
+        if s.trim().is_empty() {
+            return false;
+        }
+        if s.chars().any(|c| c.is_whitespace() || c.is_control()) {
+            return false;
+        }
+        true
+    }
+}
+
+impl From<BranchValue> for RefValue {
+    fn from(b: BranchValue) -> Self {
+        // Safety: BranchValue's validation predicate is strictly stronger than
+        // RefValue's, so any valid BranchValue is guaranteed to satisfy RefValue's
+        // (weaker) predicate without re-running it.
+        unsafe { RefValue::new_unchecked(b.into_inner()) }
+    }
+}
+
+#[nutype(
     validate(predicate = DateValue::is_valid_date),
     derive(Debug, Clone, PartialEq, Eq, AsRef, Serialize, Deserialize, Display)
 )]
@@ -323,5 +358,61 @@ mod tests {
     fn branch_value_rejects_whitespace() {
         let result = BranchValue::try_from_raw("branch", "foo bar");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn ref_value_permissive_accepts_head_tilde_three() {
+        let result = RefValue::try_from("HEAD~3".to_string());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ref_value_permissive_accepts_caret_commit_syntax() {
+        let result = RefValue::try_from("abc123^".to_string());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ref_value_permissive_accepts_tag_caret_brace() {
+        let result = RefValue::try_from("v1.0.0^{commit}".to_string());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ref_value_permissive_accepts_origin_main() {
+        let result = RefValue::try_from("origin/main".to_string());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ref_value_permissive_accepts_bare_head() {
+        let result = RefValue::try_from("HEAD".to_string());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ref_value_rejects_blank() {
+        assert!(RefValue::try_from("".to_string()).is_err());
+        assert!(RefValue::try_from("   ".to_string()).is_err());
+    }
+
+    #[test]
+    fn ref_value_rejects_embedded_whitespace() {
+        let result = RefValue::try_from("foo bar".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn ref_value_rejects_control_char() {
+        let result = RefValue::try_from("foo\u{0007}bar".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_converts_to_ref_value_infallibly() {
+        let branch = BranchValue::try_from_raw("branch", "heist/foo").unwrap();
+        let ref_from_branch = RefValue::from(branch);
+        let ref_direct = RefValue::try_from("heist/foo".to_string()).unwrap();
+        assert_eq!(ref_from_branch, ref_direct);
     }
 }
