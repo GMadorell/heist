@@ -244,14 +244,12 @@ mod tests {
             .with_state("foo", State::new(slug, fixed_date()).expect("valid slug"))
             .with_score("foo", TWO_WAVE_SCORE);
 
-        let blocks = wave(&repo, &repo, slug, ScoreWave::new(1))
-            .expect("wave 1 should exist");
+        let blocks = wave(&repo, &repo, slug, ScoreWave::new(1)).expect("wave 1 should exist");
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].0, 1);
         assert!(blocks[0].1.starts_with("### Step 1: add widget"));
 
-        let err = wave(&repo, &repo, slug, ScoreWave::new(3))
-            .expect_err("wave 3 should not exist");
+        let err = wave(&repo, &repo, slug, ScoreWave::new(3)).expect_err("wave 3 should not exist");
         match err {
             WaveError::NoSuchWave(3) => {}
             _ => panic!("expected WaveError::NoSuchWave(3)"),
@@ -265,8 +263,7 @@ mod tests {
             .with_state("foo", State::new(slug, fixed_date()).expect("valid slug"))
             .with_score("foo", TWO_WAVE_SCORE);
 
-        let blocks = wave(&repo, &repo, slug, ScoreWave::new(1))
-            .expect("wave 1 should exist");
+        let blocks = wave(&repo, &repo, slug, ScoreWave::new(1)).expect("wave 1 should exist");
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].0, 1);
     }
