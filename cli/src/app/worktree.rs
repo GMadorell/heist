@@ -1,6 +1,6 @@
 use crate::domain::error::{ValueError, StateError};
 use crate::domain::state::Stage;
-use crate::domain::value::{NonBlankValue, SlugValue};
+use crate::domain::value::{NonBlankValue, SlugValue, BranchValue, RefValue};
 use crate::domain::worktree;
 use crate::domain::worktree::HeistWorktree;
 use crate::ports::clock::Clock;
@@ -12,6 +12,7 @@ use std::path::Path;
 pub enum AddError {
     NoState,
     Naming(ValueError),
+    InvalidComposedRef(ValueError),
     Fs(std::io::Error),
     Git(GitError),
     Load(StateError),
@@ -30,7 +31,7 @@ pub fn add(
     fs: &dyn WorktreeFs,
     clock: &dyn Clock,
     slug: &str,
-    base: Option<&str>,
+    base: Option<&RefValue>,
 ) -> Result<NonBlankValue, AddError> {
     if !state_repo.exists(slug) {
         return Err(AddError::NoState);
@@ -47,9 +48,13 @@ pub fn add(
     let worktree_path = worktree::worktree_path(repo_root, slug);
     let branch = worktree::branch_name(slug).map_err(AddError::Naming)?;
 
-    let start_point = base
-        .map(str::to_string)
-        .unwrap_or_else(|| format!("origin/{}", main_branch));
+    let start_point = match base {
+        Some(b) => b.clone(),
+        None => {
+            let composed = format!("origin/{}", main_branch);
+            RefValue::try_from_raw(&composed).map_err(AddError::InvalidComposedRef)?
+        }
+    };
 
     let worktree_exists = git.worktree_exists(repo_root, slug).map_err(AddError::Git)?;
 
@@ -64,15 +69,15 @@ pub fn add(
                 .map_err(AddError::Load)?
                 .base
                 .map(|b| b.as_ref().to_string());
-            if existing.as_deref() != Some(requested) {
+            if existing.as_deref() != Some(requested.as_ref()) {
                 return Err(AddError::BaseImmutable {
                     existing,
-                    requested: requested.to_string(),
+                    requested: requested.as_ref().to_string(),
                 });
             }
         }
     } else {
-        git.add_worktree(repo_root, &worktree_path, branch.as_ref(), &start_point)
+        git.add_worktree(repo_root, &worktree_path, &branch, &start_point)
             .map_err(AddError::Git)?;
     }
 
@@ -85,9 +90,9 @@ pub fn add(
 
     let mut state = state_repo.load(slug).map_err(AddError::Load)?;
     state.worktree = Some(worktree_value.clone());
-    state.branch = Some(branch);
+    state.branch = Some(NonBlankValue::parse("branch", branch.as_ref()).map_err(AddError::Naming)?);
     if let Some(b) = base {
-        state.base = Some(NonBlankValue::parse("base", b).map_err(AddError::Naming)?);
+        state.base = Some(NonBlankValue::parse("base", b.as_ref()).map_err(AddError::Naming)?);
     }
     state.updated = clock.today();
     state_repo.save(slug, &state).map_err(AddError::Save)?;
@@ -122,7 +127,7 @@ pub fn remove(
     let main_branch = git.default_branch(repo_root);
     let branch = worktree::branch_name(slug).map_err(RemoveError::Naming)?;
 
-    match git.is_branch_merged(repo_root, branch.as_ref(), &main_branch) {
+    match git.is_branch_merged(repo_root, &branch, &main_branch) {
         Ok(MergeCheck::Merged) => {}
         Ok(MergeCheck::NotMerged { verification_error }) => {
             return Err(RemoveError::NotMerged {
@@ -137,7 +142,7 @@ pub fn remove(
     let worktree_path = worktree::worktree_path(repo_root, slug);
     git.remove_worktree(repo_root, &worktree_path)
         .map_err(RemoveError::Git)?;
-    git.delete_branch(repo_root, branch.as_ref())
+    git.delete_branch(repo_root, &branch)
         .map_err(RemoveError::Git)?;
 
     // Remote branch deletion is intentionally out of scope: rely
@@ -205,7 +210,7 @@ pub fn cleanup(
             continue;
         };
 
-        match git.is_branch_merged(repo_root, hw.branch.as_ref(), &main_branch) {
+        match git.is_branch_merged(repo_root, &hw.branch, &main_branch) {
             Ok(MergeCheck::Merged) => {}
             Ok(MergeCheck::NotMerged { verification_error }) => {
                 outcomes.push(CleanupOutcome::Skipped {
@@ -236,7 +241,7 @@ pub fn cleanup(
             continue;
         }
 
-        if let Err(e) = git.delete_branch(repo_root, hw.branch.as_ref()) {
+        if let Err(e) = git.delete_branch(repo_root, &hw.branch) {
             outcomes.push(CleanupOutcome::Failed {
                 slug: hw.slug,
                 reason: format!(
@@ -707,6 +712,7 @@ mod tests {
                 },
             );
 
+        let base = RefValue::try_from("heist/piece-01".to_string()).unwrap();
         let result = add(
             Path::new("."),
             &repo,
@@ -714,7 +720,7 @@ mod tests {
             &FakeWorktreeFs,
             &fixed_clock(),
             "foo",
-            Some("heist/piece-01"),
+            Some(&base),
         );
 
         assert!(matches!(result, Err(AddError::Git(_))));
@@ -737,6 +743,7 @@ mod tests {
         );
         let git = FakeGit::new().with_default_branch("main");
 
+        let base = RefValue::try_from("heist/piece-01".to_string()).unwrap();
         let result = add(
             Path::new("."),
             &repo,
@@ -744,7 +751,7 @@ mod tests {
             &FakeWorktreeFs,
             &fixed_clock(),
             "foo",
-            Some("heist/piece-01"),
+            Some(&base),
         );
 
         assert!(result.is_ok());
@@ -803,6 +810,7 @@ mod tests {
             .with_default_branch("main")
             .with_existing_worktree("foo");
 
+        let base = RefValue::try_from("heist/piece-02".to_string()).unwrap();
         let result = add(
             Path::new("."),
             &repo,
@@ -810,7 +818,7 @@ mod tests {
             &FakeWorktreeFs,
             &fixed_clock(),
             "foo",
-            Some("heist/piece-02"),
+            Some(&base),
         );
 
         assert!(matches!(result, Err(AddError::BaseImmutable { .. })));
@@ -835,6 +843,7 @@ mod tests {
             .with_default_branch("main")
             .with_existing_worktree("foo");
 
+        let base = RefValue::try_from("heist/piece-01".to_string()).unwrap();
         let result = add(
             Path::new("."),
             &repo,
@@ -842,7 +851,7 @@ mod tests {
             &FakeWorktreeFs,
             &fixed_clock(),
             "foo",
-            Some("heist/piece-01"),
+            Some(&base),
         );
 
         assert!(result.is_ok());

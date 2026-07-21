@@ -1,5 +1,5 @@
-use crate::domain::error::StateError;
-use crate::domain::value::NonBlankValue;
+use crate::domain::error::{StateError, ValueError};
+use crate::domain::value::{NonBlankValue, RefValue};
 use crate::ports::git::{GitRepository, PrState};
 use crate::ports::state_repository::StateRepository;
 use std::path::Path;
@@ -14,6 +14,7 @@ pub enum BaseResolution {
 pub enum ResolveError {
     NoState,
     Load(StateError),
+    InvalidStoredBase(ValueError),
     RefMissingWithOpenPr { base_ref: String },
     RefMissingNoPr { base_ref: String },
     Ambiguous { base_ref: String },
@@ -35,13 +36,17 @@ pub fn resolve(
     let Some(base_value) = state.base else {
         return Ok(BaseResolution::Null);
     };
-    let base_ref = base_value.as_ref();
+    let base_ref = RefValue::try_from_raw(base_value.as_ref())
+        .map_err(ResolveError::InvalidStoredBase)?;
     let main_branch = git.default_branch(repo_root);
 
-    let ref_exists = git.resolve_ref(repo_root, base_ref).is_ok();
+    let ref_exists = git.resolve_ref(repo_root, &base_ref).is_ok();
 
     if ref_exists {
-        let ancestry = git.is_ancestor(repo_root, base_ref, &format!("origin/{}", main_branch));
+        let origin_main =
+            RefValue::try_from_raw(&format!("origin/{}", main_branch))
+                .map_err(ResolveError::InvalidStoredBase)?;
+        let ancestry = git.is_ancestor(repo_root, &base_ref, &origin_main);
         if matches!(ancestry, Ok(true)) {
             return Ok(BaseResolution::Expired {
                 base_ref: base_value,
@@ -49,7 +54,7 @@ pub fn resolve(
         }
     }
 
-    match git.pr_state(repo_root, base_ref) {
+    match git.pr_state(repo_root, &base_ref) {
         Ok(PrState::Merged) => Ok(BaseResolution::Expired {
             base_ref: base_value,
         }),
