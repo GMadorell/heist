@@ -631,6 +631,10 @@ fn run_sync(slug: &str, state_repo: &dyn StateRepository, git: &dyn GitRepositor
             present::base_verification_failed(&base_ref, &message);
             ExitCode::Git
         }
+        Err(app::sync::SyncError::InvalidComposedRef(e)) => {
+            present::error(&e);
+            ExitCode::Internal
+        }
     }
 }
 

@@ -20,17 +20,15 @@ pub fn select(
     repo_root: &Path,
     state_repo: &dyn StateRepository,
     git: &dyn GitRepository,
-    slug: &str,
+    slug: &SlugValue,
 ) -> Result<Vec<Lane>, SelectError> {
-    let slug_value = SlugValue::parse(slug).map_err(SelectError::InvalidSlug)?;
-
-    if !state_repo.exists(&slug_value) {
+    if !state_repo.exists(slug) {
         return Err(SelectError::NoState);
     }
-    let state = state_repo.load(&slug_value).map_err(SelectError::Load)?;
+    let state = state_repo.load(slug).map_err(SelectError::Load)?;
     let _branch_recorded = state.branch.ok_or(SelectError::NoBranch)?;
 
-    let branch = crate::domain::worktree::branch_name(&slug_value)
+    let branch = crate::domain::worktree::branch_name(slug)
         .map_err(SelectError::InvalidSlug)?;
 
     let main_branch = git.default_branch(repo_root);
@@ -74,42 +72,42 @@ mod tests {
         let git = FakeGit::new();
 
         let err =
-            select(Path::new("."), &repo, &git, "foo").expect_err("should fail without state");
+            select(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug")).expect_err("should fail without state");
         assert!(matches!(err, SelectError::NoState));
     }
 
     #[test]
     fn state_without_branch_is_no_branch_error() {
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
+            .with_state("foo", State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug"));
         let git = FakeGit::new();
 
         let err =
-            select(Path::new("."), &repo, &git, "foo").expect_err("should fail without branch");
+            select(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug")).expect_err("should fail without branch");
         assert!(matches!(err, SelectError::NoBranch));
     }
 
     #[test]
     fn no_changed_files_selects_intent_only() {
-        let mut state = State::new("foo", fixed_date()).expect("valid slug");
+        let mut state = State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug");
         state.branch = Some(NonBlankValue::parse("branch", "heist/foo").expect("valid branch"));
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new().with_default_branch("main");
 
-        let lanes = select(Path::new("."), &repo, &git, "foo").expect("select should succeed");
+        let lanes = select(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug")).expect("select should succeed");
         assert_eq!(lanes, vec![Lane::Intent]);
     }
 
     #[test]
     fn rust_file_change_selects_all_gated_lanes() {
-        let mut state = State::new("foo", fixed_date()).expect("valid slug");
+        let mut state = State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug");
         state.branch = Some(NonBlankValue::parse("branch", "heist/foo").expect("valid branch"));
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_changed_paths(&["src/lib.rs"]);
 
-        let lanes = select(Path::new("."), &repo, &git, "foo").expect("select should succeed");
+        let lanes = select(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug")).expect("select should succeed");
         assert_eq!(
             lanes,
             vec![
@@ -129,7 +127,7 @@ mod tests {
         let git = FakeGit::new();
 
         let err =
-            select(Path::new("."), &repo, &git, "foo").expect_err("should fail to load state");
+            select(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug")).expect_err("should fail to load state");
         assert!(matches!(err, SelectError::Load(StateError::Unparseable(_))));
     }
 
@@ -139,7 +137,7 @@ mod tests {
 
     #[test]
     fn unresolvable_remote_default_is_no_remote_default_error() {
-        let mut state = State::new("foo", fixed_date()).expect("valid slug");
+        let mut state = State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug");
         state.branch = Some(NonBlankValue::parse("branch", "heist/foo").expect("valid branch"));
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new()
@@ -148,14 +146,14 @@ mod tests {
                 message: "no origin/main".into(),
             });
 
-        let err = select(Path::new("."), &repo, &git, "foo")
+        let err = select(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug"))
             .expect_err("should fail when origin/<default> doesn't resolve");
         assert!(matches!(err, SelectError::NoRemoteDefault(_)));
     }
 
     #[test]
     fn git_failure_propagates_as_git_error() {
-        let mut state = State::new("foo", fixed_date()).expect("valid slug");
+        let mut state = State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date()).expect("valid slug");
         state.branch = Some(NonBlankValue::parse("branch", "heist/foo").expect("valid branch"));
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new()
@@ -165,7 +163,7 @@ mod tests {
             });
 
         let err =
-            select(Path::new("."), &repo, &git, "foo").expect_err("should propagate git error");
+            select(Path::new("."), &repo, &git, &SlugValue::parse("foo").expect("valid slug")).expect_err("should propagate git error");
         assert!(matches!(err, SelectError::Git(_)));
     }
 }

@@ -1,6 +1,6 @@
 use crate::domain::error::{ValueError, StateError};
 use crate::domain::state::Stage;
-use crate::domain::value::{NonBlankValue, SlugValue, BranchValue, RefValue};
+use crate::domain::value::{NonBlankValue, SlugValue, RefValue};
 use crate::domain::worktree;
 use crate::domain::worktree::HeistWorktree;
 use crate::ports::clock::Clock;
@@ -30,7 +30,7 @@ pub fn add(
     git: &dyn GitRepository,
     fs: &dyn WorktreeFs,
     clock: &dyn Clock,
-    slug: &str,
+    slug: &crate::domain::value::SlugValue,
     base: Option<&RefValue>,
 ) -> Result<NonBlankValue, AddError> {
     if !state_repo.exists(slug) {
@@ -81,7 +81,7 @@ pub fn add(
             .map_err(AddError::Git)?;
     }
 
-    fs.link_heist_dir(repo_root, &worktree_path, slug)
+    fs.link_heist_dir(repo_root, &worktree_path, slug.as_ref())
         .map_err(AddError::Fs)?;
 
     let worktree_absolute = fs.canonicalize(&worktree_path).map_err(AddError::Fs)?;
@@ -118,7 +118,7 @@ pub fn remove(
     state_repo: &dyn StateRepository,
     git: &dyn GitRepository,
     clock: &dyn Clock,
-    slug: &str,
+    slug: &crate::domain::value::SlugValue,
 ) -> Result<(), RemoveError> {
     if !state_repo.exists(slug) {
         return Err(RemoveError::NoState);
@@ -252,12 +252,12 @@ pub fn cleanup(
             continue;
         }
 
-        if state_repo.exists(hw.slug.as_ref()) {
-            match state_repo.load(hw.slug.as_ref()) {
+        if state_repo.exists(&hw.slug) {
+            match state_repo.load(&hw.slug) {
                 Ok(mut state) => {
                     state.stage = Stage::Done;
                     state.updated = clock.today();
-                    if let Err(e) = state_repo.save(hw.slug.as_ref(), &state) {
+                    if let Err(e) = state_repo.save(&hw.slug, &state) {
                         outcomes.push(CleanupOutcome::Failed {
                             slug: hw.slug,
                             reason: e.to_string(),
@@ -518,7 +518,7 @@ mod tests {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
             State::new(
-                "foo",
+                &SlugValue::parse("foo").expect("valid slug"),
                 DateValue::parse("today", "2025-01-01").expect("valid date"),
             )
             .expect("valid slug"),
@@ -584,7 +584,7 @@ mod tests {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
             State::new(
-                "foo",
+                &SlugValue::parse("foo").expect("valid slug"),
                 DateValue::parse("today", "2025-01-01").expect("valid date"),
             )
             .expect("valid slug"),
@@ -624,7 +624,7 @@ mod tests {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
             State::new(
-                "foo",
+                &SlugValue::parse("foo").expect("valid slug"),
                 DateValue::parse("today", "2025-01-01").expect("valid date"),
             )
             .expect("valid slug"),
@@ -698,7 +698,7 @@ mod tests {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
             State::new(
-                "foo",
+                &SlugValue::parse("foo").expect("valid slug"),
                 DateValue::parse("today", "2025-01-01").expect("valid date"),
             )
             .expect("valid slug"),
@@ -719,7 +719,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
+            &SlugValue::parse("foo").expect("valid slug"),
             Some(&base),
         );
 
@@ -736,7 +736,7 @@ mod tests {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
             State::new(
-                "foo",
+                &SlugValue::parse("foo").expect("valid slug"),
                 DateValue::parse("today", "2025-01-01").expect("valid date"),
             )
             .expect("valid slug"),
@@ -750,7 +750,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
+            &SlugValue::parse("foo").expect("valid slug"),
             Some(&base),
         );
 
@@ -769,7 +769,7 @@ mod tests {
     #[test]
     fn add_without_base_preserves_previously_persisted_base() {
         let mut state = State::new(
-            "foo",
+            &SlugValue::parse("foo").expect("valid slug"),
             DateValue::parse("today", "2025-01-01").expect("valid date"),
         )
         .expect("valid slug");
@@ -783,7 +783,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
+            &SlugValue::parse("foo").expect("valid slug"),
             None,
         );
 
@@ -799,7 +799,7 @@ mod tests {
     #[test]
     fn add_with_differing_base_on_existing_worktree_is_refused_and_state_unchanged() {
         let mut state = State::new(
-            "foo",
+            &SlugValue::parse("foo").expect("valid slug"),
             DateValue::parse("today", "2025-01-01").expect("valid date"),
         )
         .expect("valid slug");
@@ -817,7 +817,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
+            &SlugValue::parse("foo").expect("valid slug"),
             Some(&base),
         );
 
@@ -833,7 +833,7 @@ mod tests {
     #[test]
     fn add_with_same_base_on_existing_worktree_is_idempotent() {
         let mut state = State::new(
-            "foo",
+            &SlugValue::parse("foo").expect("valid slug"),
             DateValue::parse("today", "2025-01-01").expect("valid date"),
         )
         .expect("valid slug");
@@ -850,7 +850,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
+            &SlugValue::parse("foo").expect("valid slug"),
             Some(&base),
         );
 
@@ -862,7 +862,7 @@ mod tests {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
             State::new(
-                "foo",
+                &SlugValue::parse("foo").expect("valid slug"),
                 DateValue::parse("today", "2025-01-01").expect("valid date"),
             )
             .expect("valid slug"),
@@ -875,7 +875,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
+            &SlugValue::parse("foo").expect("valid slug"),
             None,
         );
 
