@@ -19,7 +19,7 @@ For each wave to dispatch, run `heist score wave <slug> <n>` instead of re-slici
 
 For each `## Wave N` in `.heist/<slug>/score.md`, in ascending order (starting from the resume point):
 
-1. Dispatch that wave's steps in batches of up to 4 parallel `heist:muscle` subagents in one turn — each a separate `Agent` tool call, all with `run_in_background: false`. Give each Muscle ONLY that one step's text plus the exact single-test command it needs from `heist validation resolve <absolute-path>` (Red-Green steps) or nothing extra (Change steps — the change description is enough). Do not give it the blueprint, other steps, or build/lint commands. Await all results, then dispatch the next batch of up to 4 remaining steps in the wave, until the wave is fully dispatched and drained.
+1. Dispatch that wave's steps in batches of up to 8 parallel `heist:muscle` subagents in one turn — each a separate `Agent` tool call, all with `run_in_background: false`. Give each Muscle ONLY that one step's text plus the exact single-test command it needs from `heist validation resolve <absolute-path>` (Red-Green steps) or nothing extra (Change steps — the change description is enough). Do not give it the blueprint, other steps, or build/lint commands. Await all results, then dispatch the next batch of up to 8 remaining steps in the wave, until the wave is fully dispatched and drained.
 2. Verify each step honestly, per its shape:
    - **Red-Green step**: run the test yourself against the current (post-change) code and confirm it passes. Don't trust Muscle's say-so. Trust Muscle's own transcript for the Red confirmation — it already ran that live, before making the change.
    - **Change step**: confirm the described change was made. There's no red phase and no build to check yet — that happens at the wave barrier below.
@@ -33,7 +33,7 @@ For each `## Wave N` in `.heist/<slug>/score.md`, in ascending order (starting f
 ## Constraints
 
 - Never commit a wave with a broken build.
-- Never dispatch more than 4 Muscle subagents concurrently.
+- Never dispatch more than 8 Muscle subagents concurrently.
 - Muscles run only their own step's test (or nothing, for Change steps) — never build or lint. You own build+lint, once per wave, at the barrier.
 - Don't batch multiple waves' steps into one dispatch turn — one wave drains fully (including barrier build/lint and commit) before the next wave's dispatch begins.
 
