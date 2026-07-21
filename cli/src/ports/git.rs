@@ -34,6 +34,7 @@ pub trait GitRepository {
     /// remote: git-owned/git-sourced output, not a VO
     fn fetch(&self, repo_root: &Path, remote: &str) -> Result<(), GitError>;
 
+    /// into: git-owned/git-sourced output, not a VO
     fn is_branch_merged(
         &self,
         repo_root: &Path,

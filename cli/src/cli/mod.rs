@@ -357,16 +357,13 @@ fn run_worktree(
                 }
             };
             let base_ref = match base
-                .as_ref()
-                .map(|b| crate::domain::value::RefValue::try_from(b.to_string()))
+                .as_deref()
+                .map(crate::domain::value::RefValue::try_from_raw)
                 .transpose()
             {
                 Ok(v) => v,
-                Err(_) => {
-                    present::error(crate::domain::error::ValueError::InvalidRef {
-                        value: base.unwrap().to_string(),
-                        reason: "non-blank, no whitespace or control chars".to_string(),
-                    });
+                Err(e) => {
+                    present::error(e);
                     return ExitCode::Precondition;
                 }
             };
@@ -762,15 +759,12 @@ fn run_begin(
         }
     };
     let base_ref = match base
-        .map(|b| crate::domain::value::RefValue::try_from(b.to_string()))
+        .map(crate::domain::value::RefValue::try_from_raw)
         .transpose()
     {
         Ok(v) => v,
-        Err(_) => {
-            present::error(crate::domain::error::ValueError::InvalidRef {
-                value: base.unwrap().to_string(),
-                reason: "non-blank, no whitespace or control chars".to_string(),
-            });
+        Err(e) => {
+            present::error(e);
             return ExitCode::Precondition;
         }
     };
