@@ -134,6 +134,15 @@ impl StateRepository for InMemoryStateRepository {
     }
 }
 
+impl ScoreRepository for InMemoryStateRepository {
+    fn load_score(&self, slug: &str) -> Result<Option<String>, std::io::Error> {
+        if let Some(message) = self.score_errors.borrow().get(slug) {
+            return Err(std::io::Error::other(message.clone()));
+        }
+        Ok(self.scores.borrow().get(slug).cloned())
+    }
+}
+
 pub struct InMemoryHeistDirRepository {
     dirs: std::cell::RefCell<std::collections::HashSet<String>>,
 }
@@ -174,15 +183,6 @@ impl HeistDirRepository for InMemoryHeistDirRepository {
     fn remove(&self, slug: &str) -> Result<(), StateError> {
         self.dirs.borrow_mut().remove(slug);
         Ok(())
-    }
-}
-
-impl ScoreRepository for InMemoryStateRepository {
-    fn load_score(&self, slug: &str) -> Result<Option<String>, std::io::Error> {
-        if let Some(message) = self.score_errors.borrow().get(slug) {
-            return Err(std::io::Error::other(message.clone()));
-        }
-        Ok(self.scores.borrow().get(slug).cloned())
     }
 }
 
