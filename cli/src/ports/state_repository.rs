@@ -3,12 +3,11 @@ use crate::domain::state::State;
 use crate::domain::value::SlugValue;
 
 pub trait StateRepository {
-    fn exists(&self, slug: &crate::domain::value::SlugValue) -> bool;
+    fn exists(&self, slug: &SlugValue) -> bool;
 
-    fn load(&self, slug: &crate::domain::value::SlugValue) -> Result<State, StateError>;
+    fn load(&self, slug: &SlugValue) -> Result<State, StateError>;
 
-    fn save(&self, slug: &crate::domain::value::SlugValue, state: &State)
-        -> Result<(), StateError>;
+    fn save(&self, slug: &SlugValue, state: &State) -> Result<(), StateError>;
 
     fn list_slugs(&self) -> Result<Vec<SlugValue>, StateError>;
 }
