@@ -1,4 +1,4 @@
-use crate::domain::value::{BranchValue, RefValue, SlugValue};
+use crate::domain::value::{BranchValue, NonBlankValue, RefValue, SlugValue};
 use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
 use std::path::{Path, PathBuf};
 
@@ -45,10 +45,10 @@ impl GitRepository for RealGit {
         Ok(head.shorthand().ok().map(str::to_string))
     }
 
-    fn fetch(&self, repo_root: &Path, remote: &str) -> Result<(), GitError> {
+    fn fetch(&self, repo_root: &Path, remote: &NonBlankValue) -> Result<(), GitError> {
         let output = std::process::Command::new("git")
             .current_dir(repo_root)
-            .args(["fetch", remote])
+            .args(["fetch", remote.as_ref()])
             .output()
             .map_err(|e| GitError::CommandFailed {
                 command: "git fetch".to_string(),
@@ -69,13 +69,15 @@ impl GitRepository for RealGit {
         &self,
         repo_root: &Path,
         branch: &BranchValue,
-        into: &str,
+        into: &RefValue,
     ) -> Result<MergeCheck, GitError> {
         let branch_str = branch.as_ref();
         let merged = || -> Result<bool, git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
             let branch_oid = repo.revparse_single(branch_str)?.id();
-            let main_oid = repo.revparse_single(&format!("origin/{}", into))?.id();
+            let main_oid = repo
+                .revparse_single(&format!("origin/{}", into.as_ref()))?
+                .id();
 
             if branch_oid == main_oid {
                 return Ok(true);

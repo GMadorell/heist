@@ -1,7 +1,7 @@
 use crate::domain::error::StateError;
 use crate::domain::state::State;
 use crate::domain::tool::Tool;
-use crate::domain::value::{BranchValue, DateValue, RefValue, SlugValue};
+use crate::domain::value::{BranchValue, DateValue, NonBlankValue, RefValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
 use crate::ports::heist_dir_repository::HeistDirRepository;
@@ -467,8 +467,10 @@ impl GitRepository for FakeGit {
         Ok(self.current_branch.clone())
     }
 
-    fn fetch(&self, _repo_root: &Path, remote: &str) -> Result<(), GitError> {
-        self.fetch_calls.borrow_mut().push(remote.to_string());
+    fn fetch(&self, _repo_root: &Path, remote: &NonBlankValue) -> Result<(), GitError> {
+        self.fetch_calls
+            .borrow_mut()
+            .push(remote.as_ref().to_string());
         self.call_log.borrow_mut().push("fetch".to_string());
         if let Some(err) = &self.fetch_error {
             return Err(err.clone());
@@ -480,7 +482,7 @@ impl GitRepository for FakeGit {
         &self,
         _repo_root: &Path,
         branch: &BranchValue,
-        _into: &str,
+        _into: &RefValue,
     ) -> Result<MergeCheck, GitError> {
         let branch_str = branch.as_ref();
         if let Some((failing_branch, err)) = &self.merge_check_error_for {

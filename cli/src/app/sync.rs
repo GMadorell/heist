@@ -1,6 +1,6 @@
 use crate::app::base::{self, BaseResolution, ResolveError};
 use crate::domain::error::ValueError;
-use crate::domain::value::{RefValue, SlugValue};
+use crate::domain::value::{NonBlankValue, RefValue, SlugValue};
 use crate::ports::git::{GitError, GitRepository};
 use crate::ports::state_repository::StateRepository;
 use std::path::Path;
@@ -52,7 +52,9 @@ pub fn sync(
 
     // Every downstream decision assumes fresh `origin/*` refs, so a failed
     // fetch is a hard stop.
-    git.fetch(worktree_path, "origin")
+    let origin =
+        NonBlankValue::parse("remote", "origin").expect("\"origin\" is a valid remote name");
+    git.fetch(worktree_path, &origin)
         .map_err(SyncError::FetchFailed)?;
 
     let resolution =

@@ -1,4 +1,4 @@
-use crate::domain::value::{BranchValue, RefValue, SlugValue};
+use crate::domain::value::{BranchValue, NonBlankValue, RefValue, SlugValue};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -32,15 +32,13 @@ pub trait GitRepository {
 
     fn current_branch(&self, repo_root: &Path) -> Result<Option<String>, GitError>;
 
-    /// remote: git-owned/git-sourced output, not a VO
-    fn fetch(&self, repo_root: &Path, remote: &str) -> Result<(), GitError>;
+    fn fetch(&self, repo_root: &Path, remote: &NonBlankValue) -> Result<(), GitError>;
 
-    /// into: git-owned/git-sourced output, not a VO
     fn is_branch_merged(
         &self,
         repo_root: &Path,
         branch: &BranchValue,
-        into: &str,
+        into: &RefValue,
     ) -> Result<MergeCheck, GitError>;
 
     fn delete_branch(&self, repo_root: &Path, branch: &BranchValue) -> Result<(), GitError>;

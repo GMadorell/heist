@@ -128,8 +128,9 @@ pub fn remove(
 
     let main_branch = git.default_branch(repo_root);
     let branch = worktree::branch_name(slug).map_err(RemoveError::Naming)?;
+    let main_branch_ref = RefValue::try_from_raw(&main_branch).map_err(RemoveError::Naming)?;
 
-    match git.is_branch_merged(repo_root, &branch, &main_branch) {
+    match git.is_branch_merged(repo_root, &branch, &main_branch_ref) {
         Ok(MergeCheck::Merged) => {}
         Ok(MergeCheck::NotMerged { verification_error }) => {
             return Err(RemoveError::NotMerged {
@@ -185,6 +186,7 @@ impl CleanupOutcome {
 pub enum CleanupError {
     Fs(std::io::Error),
     Git(GitError),
+    Naming(ValueError),
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -201,6 +203,7 @@ pub fn cleanup(
 
     git.remote_default_resolves(repo_root, &main_branch)
         .map_err(CleanupError::Git)?;
+    let main_branch_ref = RefValue::try_from_raw(&main_branch).map_err(CleanupError::Naming)?;
 
     let infos = git.list_worktrees(repo_root).map_err(CleanupError::Git)?;
 
@@ -212,7 +215,7 @@ pub fn cleanup(
             continue;
         };
 
-        match git.is_branch_merged(repo_root, &hw.branch, &main_branch) {
+        match git.is_branch_merged(repo_root, &hw.branch, &main_branch_ref) {
             Ok(MergeCheck::Merged) => {}
             Ok(MergeCheck::NotMerged { verification_error }) => {
                 outcomes.push(CleanupOutcome::Skipped {

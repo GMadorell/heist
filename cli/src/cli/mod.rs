@@ -427,6 +427,10 @@ fn run_worktree(
                     present::error(&e);
                     ExitCode::from(&e)
                 }
+                Err(app::worktree::CleanupError::Naming(e)) => {
+                    present::error(e);
+                    ExitCode::Precondition
+                }
             }
         }
     }

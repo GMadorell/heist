@@ -120,7 +120,7 @@ fn reports_branch_merged_when_equal_to_origin_main() {
 
     assert_eq!(
         RealGit
-            .is_branch_merged(repo_dir.path(), &branch("feature"), "main")
+            .is_branch_merged(repo_dir.path(), &branch("feature"), &ref_value("main"))
             .expect("merge check should succeed"),
         MergeCheck::Merged
     );
@@ -156,7 +156,7 @@ fn reports_branch_merged_when_ancestor_of_origin_main() {
 
     assert_eq!(
         RealGit
-            .is_branch_merged(repo_dir.path(), &branch("feature"), "main")
+            .is_branch_merged(repo_dir.path(), &branch("feature"), &ref_value("main"))
             .expect("merge check should succeed"),
         MergeCheck::Merged
     );
@@ -188,7 +188,7 @@ fn reports_branch_unmerged_when_not_ancestor_of_origin_main() {
 
     assert!(matches!(
         RealGit
-            .is_branch_merged(repo_dir.path(), &branch("feature"), "main")
+            .is_branch_merged(repo_dir.path(), &branch("feature"), &ref_value("main"))
             .expect("merge check should succeed"),
         MergeCheck::NotMerged { .. }
     ));
@@ -199,7 +199,11 @@ fn is_branch_merged_errors_on_bad_ref() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     init_repo_with_commit(temp_dir.path());
 
-    let result = RealGit.is_branch_merged(temp_dir.path(), &branch("no-such-branch"), "main");
+    let result = RealGit.is_branch_merged(
+        temp_dir.path(),
+        &branch("no-such-branch"),
+        &ref_value("main"),
+    );
     assert!(result.is_err());
 }
 
