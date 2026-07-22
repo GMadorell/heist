@@ -236,16 +236,6 @@ pub fn run(cli: Cli) -> ExitCode {
     }
 }
 
-/// Parse a raw slug string at the CLI boundary, presenting the error and
-/// returning the precondition exit code on failure. Shared by every command
-/// that takes a slug argument.
-fn parse_slug_or_exit(slug: &str) -> Result<SlugValue, ExitCode> {
-    SlugValue::parse(slug).map_err(|e| {
-        present::error(e);
-        ExitCode::Precondition
-    })
-}
-
 fn run_state(
     command: StateCommands,
     heist_dir_repo: &dyn HeistDirRepository,
@@ -789,8 +779,14 @@ fn run_begin(
     }
 }
 
-/// Shared `SetError` -> presented message / exit code mapping, used by both
-/// the standalone `state set` command and `begin`'s mode/stage-set steps.
+fn parse_slug_or_exit(slug: &str) -> Result<SlugValue, ExitCode> {
+    SlugValue::parse(slug).map_err(|e| {
+        present::error(e);
+        ExitCode::Precondition
+    })
+}
+
+/// Shared with `begin`'s mode/stage-set steps.
 fn set_error_exit(slug: &str, error: app::state::SetError) -> ExitCode {
     match error {
         app::state::SetError::Field(e) => {
@@ -808,8 +804,7 @@ fn set_error_exit(slug: &str, error: app::state::SetError) -> ExitCode {
     }
 }
 
-/// Shared `AddError` -> presented message / exit code mapping, used by both
-/// the standalone `worktree add` command and `begin`'s worktree-add step.
+/// Shared with `begin`'s worktree-add step.
 fn add_error_exit(slug: &str, error: app::worktree::AddError) -> ExitCode {
     match error {
         app::worktree::AddError::NoState => {
