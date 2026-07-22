@@ -1,19 +1,16 @@
+use crate::common::valid::{self, slug};
 use crate::common::TempCwd;
 use heist_cli::adapters::file_heist_dir_repository::FileHeistDirRepository;
 use heist_cli::adapters::file_state_repository::FileStateRepository;
 use heist_cli::domain::error::StateError;
 use heist_cli::domain::state::State;
-use heist_cli::domain::value::{DateValue, ScoreWave, SlugValue};
+use heist_cli::domain::value::{DateValue, ScoreWave};
 use heist_cli::ports::heist_dir_repository::HeistDirRepository;
 use heist_cli::ports::state_repository::StateRepository;
 use std::path::PathBuf;
 
 fn fixed_date() -> DateValue {
-    DateValue::parse("today", "2026-01-01").expect("valid date")
-}
-
-fn slug(s: &str) -> SlugValue {
-    SlugValue::parse(s).expect("valid slug")
+    valid::date("2026-01-01")
 }
 
 fn state_file_path(slug: &str) -> PathBuf {

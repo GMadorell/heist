@@ -289,11 +289,11 @@ mod tests {
     use super::*;
     use crate::adapters::testing::{FakeGit, FakeWorktreeFs, FixedClock, InMemoryStateRepository};
     use crate::domain::state::State;
-    use crate::domain::value::DateValue;
+    use crate::domain::testing::valid;
     use std::path::Path;
 
     fn fixed_clock() -> FixedClock {
-        FixedClock(DateValue::parse("today", "2026-01-01").expect("valid date"))
+        FixedClock(valid::date("2026-01-01"))
     }
 
     #[test]
@@ -376,7 +376,7 @@ mod tests {
         assert_eq!(
             outcomes,
             vec![CleanupOutcome::Skipped {
-                slug: SlugValue::parse("foo").expect("valid slug"),
+                slug: valid::slug("foo"),
                 verification_error: None,
             }]
         );
@@ -405,7 +405,7 @@ mod tests {
         assert_eq!(
             outcomes,
             vec![CleanupOutcome::Skipped {
-                slug: SlugValue::parse("foo").expect("valid slug"),
+                slug: valid::slug("foo"),
                 verification_error: Some("gh: command not found".to_string()),
             }]
         );
@@ -443,9 +443,9 @@ mod tests {
         assert_eq!(
             outcomes,
             vec![
-                CleanupOutcome::Removed(SlugValue::parse("bar").expect("valid slug")),
+                CleanupOutcome::Removed(valid::slug("bar")),
                 CleanupOutcome::Failed {
-                    slug: SlugValue::parse("foo").expect("valid slug"),
+                    slug: valid::slug("foo"),
                     reason: "failed to check merged branches: bad ref".to_string(),
                 },
             ]
@@ -474,12 +474,7 @@ mod tests {
         )
         .expect("cleanup should succeed");
 
-        assert_eq!(
-            outcomes,
-            vec![CleanupOutcome::Removed(
-                SlugValue::parse("foo").expect("valid slug")
-            )]
-        );
+        assert_eq!(outcomes, vec![CleanupOutcome::Removed(valid::slug("foo"))]);
         assert_eq!(
             git.removed_worktree_paths(),
             vec![std::path::PathBuf::from("/repo/.worktrees/foo")]
@@ -507,9 +502,7 @@ mod tests {
 
         assert_eq!(
             outcomes,
-            vec![CleanupOutcome::WouldRemove(
-                SlugValue::parse("foo").expect("valid slug")
-            )]
+            vec![CleanupOutcome::WouldRemove(valid::slug("foo"))]
         );
         assert!(git.removed_worktree_paths().is_empty());
         assert!(git.deleted_branch_names().is_empty());
@@ -519,11 +512,7 @@ mod tests {
     fn cleanup_marks_existing_state_done() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(
-                &SlugValue::parse("foo").expect("valid slug"),
-                DateValue::parse("today", "2025-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_default_branch("main")
@@ -540,18 +529,10 @@ mod tests {
         )
         .expect("cleanup should succeed");
 
-        assert_eq!(
-            outcomes,
-            vec![CleanupOutcome::Removed(
-                SlugValue::parse("foo").expect("valid slug")
-            )]
-        );
+        assert_eq!(outcomes, vec![CleanupOutcome::Removed(valid::slug("foo"))]);
         let state = repo.get("foo").expect("state should still exist");
         assert_eq!(state.stage, Stage::Done);
-        assert_eq!(
-            state.updated,
-            DateValue::parse("today", "2026-01-01").expect("valid date")
-        );
+        assert_eq!(state.updated, valid::date("2026-01-01"));
     }
 
     #[test]
@@ -572,12 +553,7 @@ mod tests {
         )
         .expect("cleanup should succeed even without a state entry");
 
-        assert_eq!(
-            outcomes,
-            vec![CleanupOutcome::Removed(
-                SlugValue::parse("foo").expect("valid slug")
-            )]
-        );
+        assert_eq!(outcomes, vec![CleanupOutcome::Removed(valid::slug("foo"))]);
         assert_eq!(repo.get("foo"), None);
     }
 
@@ -585,11 +561,7 @@ mod tests {
     fn cleanup_reports_failed_when_remove_worktree_fails() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(
-                &SlugValue::parse("foo").expect("valid slug"),
-                DateValue::parse("today", "2025-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_default_branch("main")
@@ -625,11 +597,7 @@ mod tests {
     fn cleanup_reports_orphaned_branch_when_delete_fails() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(
-                &SlugValue::parse("foo").expect("valid slug"),
-                DateValue::parse("today", "2025-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_default_branch("main")
@@ -689,8 +657,8 @@ mod tests {
         assert_eq!(
             outcomes,
             vec![
-                CleanupOutcome::Removed(SlugValue::parse("alpha").expect("valid slug")),
-                CleanupOutcome::Removed(SlugValue::parse("zeta").expect("valid slug")),
+                CleanupOutcome::Removed(valid::slug("alpha")),
+                CleanupOutcome::Removed(valid::slug("zeta")),
             ]
         );
     }
@@ -699,11 +667,7 @@ mod tests {
     fn add_with_base_validates_ref_before_creating_worktree_or_state() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(
-                &SlugValue::parse("foo").expect("valid slug"),
-                DateValue::parse("today", "2025-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_default_branch("main")
@@ -721,7 +685,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            &SlugValue::parse("foo").expect("valid slug"),
+            &valid::slug("foo"),
             Some(&base),
         );
 
@@ -737,11 +701,7 @@ mod tests {
     fn add_with_base_uses_verbatim_ref_as_start_point_and_persists_base_field() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(
-                &SlugValue::parse("foo").expect("valid slug"),
-                DateValue::parse("today", "2025-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug"),
         );
         let git = FakeGit::new().with_default_branch("main");
 
@@ -752,7 +712,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            &SlugValue::parse("foo").expect("valid slug"),
+            &valid::slug("foo"),
             Some(&base),
         );
 
@@ -762,20 +722,14 @@ mod tests {
             vec!["heist/piece-01".to_string()]
         );
         let saved_state = repo.get("foo").expect("foo state should exist");
-        assert_eq!(
-            saved_state.base,
-            Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"))
-        );
+        assert_eq!(saved_state.base, Some(valid::base("heist/piece-01")));
     }
 
     #[test]
     fn add_without_base_preserves_previously_persisted_base() {
-        let mut state = State::new(
-            &SlugValue::parse("foo").expect("valid slug"),
-            DateValue::parse("today", "2025-01-01").expect("valid date"),
-        )
-        .expect("valid slug");
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state =
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug");
+        state.base = Some(valid::base("heist/piece-01"));
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new().with_default_branch("main");
 
@@ -785,7 +739,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            &SlugValue::parse("foo").expect("valid slug"),
+            &valid::slug("foo"),
             None,
         );
 
@@ -793,19 +747,16 @@ mod tests {
         let saved_state = repo.get("foo").expect("foo state should exist");
         assert_eq!(
             saved_state.base,
-            Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base")),
+            Some(valid::base("heist/piece-01")),
             "re-running `heist worktree add` without --base must not null an already-persisted base"
         );
     }
 
     #[test]
     fn add_with_differing_base_on_existing_worktree_is_refused_and_state_unchanged() {
-        let mut state = State::new(
-            &SlugValue::parse("foo").expect("valid slug"),
-            DateValue::parse("today", "2025-01-01").expect("valid date"),
-        )
-        .expect("valid slug");
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state =
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug");
+        state.base = Some(valid::base("heist/piece-01"));
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         // Worktree already exists, created from heist/piece-01.
         let git = FakeGit::new()
@@ -819,7 +770,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            &SlugValue::parse("foo").expect("valid slug"),
+            &valid::slug("foo"),
             Some(&base),
         );
 
@@ -827,19 +778,16 @@ mod tests {
         let saved_state = repo.get("foo").expect("foo state should exist");
         assert_eq!(
             saved_state.base,
-            Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base")),
+            Some(valid::base("heist/piece-01")),
             "a refused re-add must not rewrite the persisted base"
         );
     }
 
     #[test]
     fn add_with_same_base_on_existing_worktree_is_idempotent() {
-        let mut state = State::new(
-            &SlugValue::parse("foo").expect("valid slug"),
-            DateValue::parse("today", "2025-01-01").expect("valid date"),
-        )
-        .expect("valid slug");
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state =
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug");
+        state.base = Some(valid::base("heist/piece-01"));
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new()
             .with_default_branch("main")
@@ -852,7 +800,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            &SlugValue::parse("foo").expect("valid slug"),
+            &valid::slug("foo"),
             Some(&base),
         );
 
@@ -863,11 +811,7 @@ mod tests {
     fn add_without_base_uses_origin_default_start_point() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(
-                &SlugValue::parse("foo").expect("valid slug"),
-                DateValue::parse("today", "2025-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug"),
         );
         let git = FakeGit::new().with_default_branch("main");
 
@@ -877,7 +821,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            &SlugValue::parse("foo").expect("valid slug"),
+            &valid::slug("foo"),
             None,
         );
 

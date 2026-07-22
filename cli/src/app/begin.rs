@@ -203,12 +203,12 @@ mod tests {
         FakeGit, FakeWorktreeFs, FixedClock, InMemoryHeistDirRepository, InMemoryStateRepository,
     };
     use crate::domain::state::{Mode, Stage, State};
-    use crate::domain::value::DateValue;
+    use crate::domain::testing::valid;
     use crate::ports::worktree_fs::WorktreeFs;
     use std::path::{Path, PathBuf};
 
     fn fixed_clock() -> FixedClock {
-        FixedClock(DateValue::parse("today", "2026-01-01").expect("valid date"))
+        FixedClock(valid::date("2026-01-01"))
     }
 
     #[test]
@@ -216,7 +216,7 @@ mod tests {
         let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new().with_default_branch("main");
-        let slug = SlugValue::parse("my-slug").expect("valid slug");
+        let slug = valid::slug("my-slug");
 
         let result = begin(
             Path::new("."),
@@ -240,14 +240,10 @@ mod tests {
 
     #[test]
     fn begin_rejects_precheck_collision_for_existing_state_worktree_or_branch() {
-        let foo = SlugValue::parse("foo").expect("valid slug");
+        let foo = valid::slug("foo");
         let repo_with_state = InMemoryStateRepository::new().with_state(
             foo.as_ref(),
-            State::new(
-                &foo,
-                DateValue::parse("today", "2026-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&foo, valid::date("2026-01-01")).expect("valid slug"),
         );
         let heist_dir_repo = InMemoryHeistDirRepository::new();
         let git = FakeGit::new().with_default_branch("main");
@@ -268,7 +264,7 @@ mod tests {
         ));
 
         let repo_no_state = InMemoryStateRepository::new();
-        let bar = SlugValue::parse("bar").expect("valid slug");
+        let bar = valid::slug("bar");
         let git_worktree_collision = FakeGit::new()
             .with_default_branch("main")
             .with_existing_worktree(bar.as_ref());
@@ -288,7 +284,7 @@ mod tests {
             Err(BeginError::Collision(CollisionArtifact::Worktree))
         ));
 
-        let baz = SlugValue::parse("baz").expect("valid slug");
+        let baz = valid::slug("baz");
         let git_branch_collision = FakeGit::new()
             .with_default_branch("main")
             .with_branch("heist/baz");
@@ -349,7 +345,7 @@ mod tests {
             set_calls: std::cell::Cell::new(0),
         };
         let git = FakeGit::new().with_default_branch("main");
-        let foo = SlugValue::parse("foo").expect("valid slug");
+        let foo = valid::slug("foo");
 
         let result = begin(
             Path::new("."),
@@ -399,7 +395,7 @@ mod tests {
         let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new().with_default_branch("main");
-        let foo = SlugValue::parse("foo").expect("valid slug");
+        let foo = valid::slug("foo");
 
         let result = begin(
             Path::new("."),

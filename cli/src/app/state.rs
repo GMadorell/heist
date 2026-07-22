@@ -116,18 +116,19 @@ mod tests {
     use super::*;
     use crate::adapters::testing::{FixedClock, InMemoryStateRepository};
     use crate::domain::state::State;
+    use crate::domain::testing::valid;
     use crate::domain::value::ScoreWave;
 
     fn created_date() -> DateValue {
-        DateValue::parse("today", "2026-01-01").expect("valid date")
+        valid::date("2026-01-01")
     }
 
     fn today_date() -> DateValue {
-        DateValue::parse("today", "2026-01-02").expect("valid date")
+        valid::date("2026-01-02")
     }
 
     fn test_slug() -> SlugValue {
-        SlugValue::parse("foo").expect("valid slug")
+        valid::slug("foo")
     }
 
     #[test]

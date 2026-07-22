@@ -1,22 +1,10 @@
+use crate::common::valid::{branch, ref_value, slug};
 use heist_cli::adapters::real_git::RealGit;
-use heist_cli::domain::value::{BranchValue, RefValue, SlugValue};
 use heist_cli::ports::git::{GitError, GitRepository, MergeCheck};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
-
-fn branch(s: &str) -> BranchValue {
-    BranchValue::try_from_raw("branch", s).expect("valid branch")
-}
-
-fn ref_value(s: &str) -> RefValue {
-    RefValue::try_from_raw(s).expect("valid ref")
-}
-
-fn slug(s: &str) -> SlugValue {
-    SlugValue::parse(s).expect("valid slug")
-}
 
 fn run_git(dir: &Path, args: &[&str]) {
     let status = Command::new("git")

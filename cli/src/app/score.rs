@@ -142,6 +142,7 @@ mod tests {
     use super::*;
     use crate::adapters::testing::InMemoryStateRepository;
     use crate::domain::state::State;
+    use crate::domain::testing::valid;
     use crate::domain::value::DateValue;
 
     const VALID_SCORE: &str = "\
@@ -166,12 +167,12 @@ mod tests {
 ";
 
     fn fixed_date() -> DateValue {
-        DateValue::parse("today", "2026-01-01").expect("valid date")
+        valid::date("2026-01-01")
     }
 
     #[test]
     fn check_returns_steps_and_waves_for_a_valid_score() {
-        let slug = &SlugValue::parse("foo").expect("valid slug");
+        let slug = &valid::slug("foo");
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new(slug, fixed_date()).expect("valid slug"))
             .with_score("foo", VALID_SCORE);
@@ -183,7 +184,7 @@ mod tests {
 
     #[test]
     fn check_returns_findings_for_a_malformed_score() {
-        let slug = &SlugValue::parse("foo").expect("valid slug");
+        let slug = &valid::slug("foo");
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new(slug, fixed_date()).expect("valid slug"))
             .with_score("foo", MALFORMED_SCORE);
@@ -199,9 +200,9 @@ mod tests {
     fn record_persists_totals_and_bumps_updated() {
         use crate::adapters::testing::FixedClock;
 
-        let slug = &SlugValue::parse("foo").expect("valid slug");
+        let slug = &valid::slug("foo");
         let created = fixed_date();
-        let today = DateValue::parse("today", "2026-01-02").expect("valid date");
+        let today = valid::date("2026-01-02");
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new(slug, created).expect("valid slug"))
             .with_score("foo", VALID_SCORE);
@@ -239,7 +240,7 @@ mod tests {
 
     #[test]
     fn wave_returns_numbered_blocks_and_no_such_wave_error() {
-        let slug = &SlugValue::parse("foo").expect("valid slug");
+        let slug = &valid::slug("foo");
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new(slug, fixed_date()).expect("valid slug"))
             .with_score("foo", TWO_WAVE_SCORE);
@@ -258,7 +259,7 @@ mod tests {
 
     #[test]
     fn wave_accepts_score_wave_value_object() {
-        let slug = &SlugValue::parse("foo").expect("valid slug");
+        let slug = &valid::slug("foo");
         let repo = InMemoryStateRepository::new()
             .with_state("foo", State::new(slug, fixed_date()).expect("valid slug"))
             .with_score("foo", TWO_WAVE_SCORE);

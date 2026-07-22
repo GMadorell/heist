@@ -102,18 +102,18 @@ mod tests {
     use super::*;
     use crate::adapters::testing::{FakeGit, InMemoryStateRepository};
     use crate::domain::state::State;
-    use crate::domain::value::DateValue;
+    use crate::domain::testing::valid;
     use crate::ports::git::GitError;
 
     fn test_state(slug: &SlugValue) -> State {
-        let today = DateValue::parse("today", "2026-01-01").expect("valid date");
+        let today = valid::date("2026-01-01");
         State::new(slug, today).expect("valid slug")
     }
 
     #[test]
     fn resolve_skips_ancestry_check_when_ref_missing_and_asks_gh_directly() {
-        let mut state = test_state(&SlugValue::parse("foo").expect("valid slug"));
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = test_state(&valid::slug("foo"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new()
@@ -125,12 +125,7 @@ mod tests {
             )
             .with_pr_state("heist/piece-01", PrState::Merged);
 
-        let result = resolve(
-            Path::new("."),
-            &repo,
-            &git,
-            &SlugValue::parse("foo").expect("valid slug"),
-        );
+        let result = resolve(Path::new("."), &repo, &git, &valid::slug("foo"));
 
         assert!(matches!(result, Ok(BaseResolution::Expired { .. })));
         assert_eq!(git.is_ancestor_call_count(), 0);
@@ -138,98 +133,73 @@ mod tests {
 
     #[test]
     fn resolve_returns_null_when_state_base_is_none() {
-        let state = test_state(&SlugValue::parse("foo").expect("valid slug"));
+        let state = test_state(&valid::slug("foo"));
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new();
 
-        let result = resolve(
-            Path::new("."),
-            &repo,
-            &git,
-            &SlugValue::parse("foo").expect("valid slug"),
-        );
+        let result = resolve(Path::new("."), &repo, &git, &valid::slug("foo"));
 
         assert!(matches!(result, Ok(BaseResolution::Null)));
     }
 
     #[test]
     fn resolve_returns_expired_when_ref_resolves_and_is_ancestor_of_main() {
-        let mut state = test_state(&SlugValue::parse("foo").expect("valid slug"));
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = test_state(&valid::slug("foo"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_ancestor("heist/piece-01", "origin/main");
 
-        let result = resolve(
-            Path::new("."),
-            &repo,
-            &git,
-            &SlugValue::parse("foo").expect("valid slug"),
-        );
+        let result = resolve(Path::new("."), &repo, &git, &valid::slug("foo"));
 
         assert!(matches!(result, Ok(BaseResolution::Expired { .. })));
     }
 
     #[test]
     fn resolve_returns_expired_when_gh_reports_merged() {
-        let mut state = test_state(&SlugValue::parse("foo").expect("valid slug"));
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = test_state(&valid::slug("foo"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new().with_pr_state("heist/piece-01", PrState::Merged);
 
-        let result = resolve(
-            Path::new("."),
-            &repo,
-            &git,
-            &SlugValue::parse("foo").expect("valid slug"),
-        );
+        let result = resolve(Path::new("."), &repo, &git, &valid::slug("foo"));
 
         assert!(matches!(result, Ok(BaseResolution::Expired { .. })));
     }
 
     #[test]
     fn resolve_returns_abandoned_when_gh_reports_closed_unmerged() {
-        let mut state = test_state(&SlugValue::parse("foo").expect("valid slug"));
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = test_state(&valid::slug("foo"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new().with_pr_state("heist/piece-01", PrState::ClosedUnmerged);
 
-        let result = resolve(
-            Path::new("."),
-            &repo,
-            &git,
-            &SlugValue::parse("foo").expect("valid slug"),
-        );
+        let result = resolve(Path::new("."), &repo, &git, &valid::slug("foo"));
 
         assert!(matches!(result, Ok(BaseResolution::Abandoned { .. })));
     }
 
     #[test]
     fn resolve_returns_live_when_ref_resolves_and_gh_reports_open() {
-        let mut state = test_state(&SlugValue::parse("foo").expect("valid slug"));
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = test_state(&valid::slug("foo"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new().with_pr_state("heist/piece-01", PrState::Open);
 
-        let result = resolve(
-            Path::new("."),
-            &repo,
-            &git,
-            &SlugValue::parse("foo").expect("valid slug"),
-        );
+        let result = resolve(Path::new("."), &repo, &git, &valid::slug("foo"));
 
         assert!(matches!(result, Ok(BaseResolution::Live { .. })));
     }
 
     #[test]
     fn resolve_errors_ref_missing_with_open_pr() {
-        let mut state = test_state(&SlugValue::parse("foo").expect("valid slug"));
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = test_state(&valid::slug("foo"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new()
@@ -241,12 +211,7 @@ mod tests {
             )
             .with_pr_state("heist/piece-01", PrState::Open);
 
-        let result = resolve(
-            Path::new("."),
-            &repo,
-            &git,
-            &SlugValue::parse("foo").expect("valid slug"),
-        );
+        let result = resolve(Path::new("."), &repo, &git, &valid::slug("foo"));
 
         assert!(matches!(
             result,
@@ -256,8 +221,8 @@ mod tests {
 
     #[test]
     fn resolve_errors_ref_missing_no_pr_when_ref_gone_and_no_pr_exists() {
-        let mut state = test_state(&SlugValue::parse("foo").expect("valid slug"));
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = test_state(&valid::slug("foo"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         // Ref does not resolve, and no PR was ever found (FakeGit's default
@@ -270,20 +235,15 @@ mod tests {
             },
         );
 
-        let result = resolve(
-            Path::new("."),
-            &repo,
-            &git,
-            &SlugValue::parse("foo").expect("valid slug"),
-        );
+        let result = resolve(Path::new("."), &repo, &git, &valid::slug("foo"));
 
         assert!(matches!(result, Err(ResolveError::RefMissingNoPr { .. })));
     }
 
     #[test]
     fn resolve_errors_verification_failed_when_gh_fails_even_if_ref_exists() {
-        let mut state = test_state(&SlugValue::parse("foo").expect("valid slug"));
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = test_state(&valid::slug("foo"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new().failing_pr_state_for(
@@ -294,12 +254,7 @@ mod tests {
             },
         );
 
-        let result = resolve(
-            Path::new("."),
-            &repo,
-            &git,
-            &SlugValue::parse("foo").expect("valid slug"),
-        );
+        let result = resolve(Path::new("."), &repo, &git, &valid::slug("foo"));
 
         match result {
             Err(ResolveError::VerificationFailed { base_ref, message }) => {
@@ -316,8 +271,8 @@ mod tests {
 
     #[test]
     fn resolve_errors_ambiguous_when_ref_missing_and_gh_unavailable() {
-        let mut state = test_state(&SlugValue::parse("foo").expect("valid slug"));
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = test_state(&valid::slug("foo"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new()
@@ -335,12 +290,7 @@ mod tests {
                 },
             );
 
-        let result = resolve(
-            Path::new("."),
-            &repo,
-            &git,
-            &SlugValue::parse("foo").expect("valid slug"),
-        );
+        let result = resolve(Path::new("."), &repo, &git, &valid::slug("foo"));
 
         assert!(matches!(result, Err(ResolveError::Ambiguous { .. })));
     }

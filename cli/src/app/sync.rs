@@ -102,17 +102,16 @@ mod tests {
     use super::*;
     use crate::adapters::testing::{FakeGit, InMemoryStateRepository};
     use crate::domain::state::State;
-    use crate::domain::value::{DateValue, NonBlankValue};
+    use crate::domain::testing::valid;
     use crate::ports::git::PrState;
 
     /// A fully set-up heist state: worktree + branch recorded, so the sync
     /// guard passes. `base` is left for the caller to set.
     fn set_up_state(slug: &SlugValue) -> State {
-        let today = DateValue::parse("today", "2026-01-01").expect("valid date");
+        let today = valid::date("2026-01-01");
         let mut state = State::new(slug, today).expect("valid slug");
-        state.worktree = Some(NonBlankValue::parse("worktree", "/tmp/wt").expect("valid worktree"));
-        state.branch =
-            Some(NonBlankValue::parse("branch", &format!("heist/{}", slug)).expect("valid branch"));
+        state.worktree = Some(valid::worktree("/tmp/wt"));
+        state.branch = Some(valid::branch(&format!("heist/{}", slug)));
         state
     }
 
@@ -124,7 +123,7 @@ mod tests {
 
     #[test]
     fn sync_with_null_base_rebases_origin_default() {
-        let slug = SlugValue::parse("foo").expect("valid slug");
+        let slug = valid::slug("foo");
         let repo = InMemoryStateRepository::new().with_state("foo", set_up_state(&slug));
         let git = git_on_branch(&slug);
 
@@ -137,9 +136,9 @@ mod tests {
 
     #[test]
     fn sync_with_live_base_merges_base_ref_not_origin_default() {
-        let slug = SlugValue::parse("foo").expect("valid slug");
+        let slug = valid::slug("foo");
         let mut state = set_up_state(&slug);
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = git_on_branch(&slug).with_pr_state("heist/piece-01", PrState::Open);
@@ -153,9 +152,9 @@ mod tests {
 
     #[test]
     fn sync_with_expired_base_merges_origin_default() {
-        let slug = SlugValue::parse("foo").expect("valid slug");
+        let slug = valid::slug("foo");
         let mut state = set_up_state(&slug);
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = git_on_branch(&slug).with_pr_state("heist/piece-01", PrState::Merged);
@@ -169,9 +168,9 @@ mod tests {
 
     #[test]
     fn sync_with_abandoned_base_refuses_without_touching_git() {
-        let slug = SlugValue::parse("foo").expect("valid slug");
+        let slug = valid::slug("foo");
         let mut state = set_up_state(&slug);
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = git_on_branch(&slug).with_pr_state("heist/piece-01", PrState::ClosedUnmerged);
@@ -185,9 +184,9 @@ mod tests {
 
     #[test]
     fn sync_halts_without_touching_git_when_base_pr_state_unverifiable() {
-        let slug = SlugValue::parse("foo").expect("valid slug");
+        let slug = valid::slug("foo");
         let mut state = set_up_state(&slug);
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = git_on_branch(&slug).failing_pr_state_for(
@@ -210,7 +209,7 @@ mod tests {
 
     #[test]
     fn sync_refuses_when_worktree_on_wrong_branch() {
-        let slug = SlugValue::parse("foo").expect("valid slug");
+        let slug = valid::slug("foo");
         let repo = InMemoryStateRepository::new().with_state("foo", set_up_state(&slug));
         // Worktree reports being on `main`, not `heist/foo`.
         let git = FakeGit::new()
@@ -226,7 +225,7 @@ mod tests {
 
     #[test]
     fn sync_refuses_when_head_detached() {
-        let slug = SlugValue::parse("foo").expect("valid slug");
+        let slug = valid::slug("foo");
         let repo = InMemoryStateRepository::new().with_state("foo", set_up_state(&slug));
         // No current branch configured => detached HEAD.
         let git = FakeGit::new().with_default_branch("main");
@@ -245,8 +244,8 @@ mod tests {
 
     #[test]
     fn sync_without_worktree_is_not_set_up() {
-        let slug = SlugValue::parse("foo").expect("valid slug");
-        let today = DateValue::parse("today", "2026-01-01").expect("valid date");
+        let slug = valid::slug("foo");
+        let today = valid::date("2026-01-01");
         let state = State::new(&slug, today).expect("valid slug");
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = git_on_branch(&slug);
@@ -258,7 +257,7 @@ mod tests {
 
     #[test]
     fn sync_fetches_origin_before_any_rebase_or_merge() {
-        let slug = SlugValue::parse("foo").expect("valid slug");
+        let slug = valid::slug("foo");
         let repo = InMemoryStateRepository::new().with_state("foo", set_up_state(&slug));
         let git = git_on_branch(&slug);
 
@@ -278,7 +277,7 @@ mod tests {
 
     #[test]
     fn sync_fails_without_touching_git_when_fetch_fails() {
-        let slug = SlugValue::parse("foo").expect("valid slug");
+        let slug = valid::slug("foo");
         let repo = InMemoryStateRepository::new().with_state("foo", set_up_state(&slug));
         let git = git_on_branch(&slug).failing_fetch(GitError::CommandFailed {
             command: "git fetch".into(),
@@ -294,7 +293,7 @@ mod tests {
 
     #[test]
     fn sync_reports_action_taken() {
-        let slug = SlugValue::parse("foo").expect("valid slug");
+        let slug = valid::slug("foo");
         let repo = InMemoryStateRepository::new().with_state("foo", set_up_state(&slug));
         let git = git_on_branch(&slug);
 

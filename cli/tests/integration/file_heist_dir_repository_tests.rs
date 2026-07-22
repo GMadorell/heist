@@ -1,13 +1,9 @@
+use crate::common::valid::slug;
 use crate::common::TempCwd;
 use heist_cli::adapters::file_heist_dir_repository::FileHeistDirRepository;
 use heist_cli::domain::error::StateError;
-use heist_cli::domain::value::SlugValue;
 use heist_cli::ports::heist_dir_repository::HeistDirRepository;
 use std::path::PathBuf;
-
-fn slug(s: &str) -> SlugValue {
-    SlugValue::parse(s).expect("valid slug")
-}
 
 fn heist_dir_path(slug: &str) -> PathBuf {
     PathBuf::from(".heist").join(slug)

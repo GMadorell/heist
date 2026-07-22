@@ -960,12 +960,13 @@ mod tests {
         FakeGit, FakeWorktreeFs, FixedClock, InMemoryHeistDirRepository, InMemoryStateRepository,
     };
     use crate::domain::state::{Stage, State};
-    use crate::domain::value::{DateValue, NonBlankValue};
+    use crate::domain::testing::valid;
+    use crate::domain::value::DateValue;
     use crate::ports::git::{GitError, PrState};
     use tempfile::TempDir;
 
     fn fixed_date() -> DateValue {
-        DateValue::parse("today", "2026-01-01").expect("valid date")
+        valid::date("2026-01-01")
     }
 
     fn fixed_clock() -> FixedClock {
@@ -994,8 +995,7 @@ mod tests {
         let heist_dir_repo = InMemoryHeistDirRepository::new().with_dir("foo");
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                .expect("valid slug"),
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
         );
         let code = run_state(
             StateCommands::Init { slug: "foo".into() },
@@ -1028,8 +1028,7 @@ mod tests {
         let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                .expect("valid slug"),
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
         );
         let code = run_state(
             StateCommands::Set {
@@ -1053,8 +1052,7 @@ mod tests {
         let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                .expect("valid slug"),
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
         );
         let code = run_state(
             StateCommands::Set {
@@ -1099,8 +1097,7 @@ mod tests {
         let temp_dir = TempDir::new().expect("failed to create temp directory");
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                .expect("valid slug"),
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
         );
         let git = FakeGit::new();
 
@@ -1125,8 +1122,7 @@ mod tests {
         let temp_dir = TempDir::new().expect("failed to create temp directory");
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                .expect("valid slug"),
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
         );
         let git = FakeGit::new().failing_add(GitError::WorktreeAdd {
             subtype: "origin-unreachable".into(),
@@ -1171,8 +1167,7 @@ mod tests {
     fn worktree_remove_refuses_when_branch_not_merged() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                .expect("valid slug"),
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
         );
         // No merged branch configured, so heist/foo is treated as unmerged.
         let git = FakeGit::new().with_default_branch("main");
@@ -1198,8 +1193,7 @@ mod tests {
     fn worktree_remove_surfaces_worktree_removal_failure() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                .expect("valid slug"),
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_merged_branch("heist/foo")
@@ -1228,8 +1222,7 @@ mod tests {
     fn worktree_remove_surfaces_branch_deletion_failure() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                .expect("valid slug"),
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_merged_branch("heist/foo")
@@ -1257,8 +1250,7 @@ mod tests {
     fn worktree_remove_marks_done_when_merged() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                .expect("valid slug"),
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_default_branch("main")
@@ -1343,9 +1335,8 @@ mod tests {
 
     #[test]
     fn base_command_reports_abandoned_as_precondition_exit_code() {
-        let mut state = State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-            .expect("valid slug");
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = State::new(&valid::slug("foo"), fixed_date()).expect("valid slug");
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new().with_pr_state("heist/piece-01", PrState::ClosedUnmerged);
@@ -1357,11 +1348,10 @@ mod tests {
 
     #[test]
     fn sync_command_refuses_abandoned_base_with_abandoned_exit_code() {
-        let mut state = State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-            .expect("valid slug");
-        state.worktree = Some(NonBlankValue::parse("worktree", "/tmp/wt").expect("valid worktree"));
-        state.branch = Some(NonBlankValue::parse("branch", "heist/foo").expect("valid branch"));
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = State::new(&valid::slug("foo"), fixed_date()).expect("valid slug");
+        state.worktree = Some(valid::worktree("/tmp/wt"));
+        state.branch = Some(valid::branch("heist/foo"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new()
@@ -1403,8 +1393,7 @@ mod tests {
         let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                .expect("valid slug"),
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
         );
         let git = FakeGit::new().with_default_branch("main");
 
@@ -1466,7 +1455,7 @@ mod tests {
         );
 
         assert_eq!(code, ExitCode::Precondition);
-        assert!(!repo.exists(&SlugValue::parse("foo").expect("valid slug")));
+        assert!(!repo.exists(&valid::slug("foo")));
     }
 
     #[test]
@@ -1483,8 +1472,7 @@ mod tests {
         let repo = InMemoryStateRepository::new()
             .with_state(
                 "foo",
-                State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                    .expect("valid slug"),
+                State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
             )
             .with_score("foo", malformed_score);
 
@@ -1513,8 +1501,7 @@ mod tests {
         let repo = InMemoryStateRepository::new()
             .with_state(
                 "foo",
-                State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                    .expect("valid slug"),
+                State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
             )
             .with_score("foo", valid_score);
 
@@ -1546,8 +1533,7 @@ mod tests {
         let repo = InMemoryStateRepository::new()
             .with_state(
                 "foo",
-                State::new(&SlugValue::parse("foo").expect("valid slug"), fixed_date())
-                    .expect("valid slug"),
+                State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
             )
             .with_score("foo", valid_score);
 
