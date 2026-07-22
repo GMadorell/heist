@@ -200,10 +200,10 @@ pub fn cleanup(
 ) -> Result<Vec<CleanupOutcome>, CleanupError> {
     let canonical_repo_root = fs.canonicalize(repo_root).map_err(CleanupError::Fs)?;
     let main_branch = git.default_branch(repo_root);
-
-    git.remote_default_resolves(repo_root, &main_branch)
-        .map_err(CleanupError::Git)?;
     let main_branch_ref = RefValue::try_from_raw(&main_branch).map_err(CleanupError::Naming)?;
+
+    git.remote_default_resolves(repo_root, &main_branch_ref)
+        .map_err(CleanupError::Git)?;
 
     let infos = git.list_worktrees(repo_root).map_err(CleanupError::Git)?;
 

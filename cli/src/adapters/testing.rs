@@ -557,7 +557,7 @@ impl GitRepository for FakeGit {
     fn remote_default_resolves(
         &self,
         _repo_root: &Path,
-        _main_branch: &str,
+        _main_branch: &RefValue,
     ) -> Result<(), GitError> {
         if let Some(err) = &self.remote_default_resolve_error {
             return Err(err.clone());
@@ -577,7 +577,7 @@ impl GitRepository for FakeGit {
     fn changed_paths(
         &self,
         _repo_root: &Path,
-        _base_branch: &str,
+        _base_branch: &RefValue,
         _head_ref: &RefValue,
     ) -> Result<Vec<PathBuf>, GitError> {
         if let Some(err) = &self.changed_paths_error {

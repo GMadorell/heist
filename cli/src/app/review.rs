@@ -11,6 +11,7 @@ pub enum SelectError {
     NoState,
     NoBranch,
     InvalidStoredBranch(ValueError),
+    InvalidMainBranch(ValueError),
     Load(StateError),
     NoRemoteDefault(GitError),
     Git(GitError),
@@ -31,10 +32,12 @@ pub fn select(
         .map_err(SelectError::InvalidStoredBranch)?;
 
     let main_branch = git.default_branch(repo_root);
-    git.remote_default_resolves(repo_root, &main_branch)
+    let main_branch_ref =
+        RefValue::try_from_raw(&main_branch).map_err(SelectError::InvalidMainBranch)?;
+    git.remote_default_resolves(repo_root, &main_branch_ref)
         .map_err(SelectError::NoRemoteDefault)?;
     let paths = git
-        .changed_paths(repo_root, &main_branch, &branch)
+        .changed_paths(repo_root, &main_branch_ref, &branch)
         .map_err(SelectError::Git)?;
 
     let language_types: Vec<_> = paths

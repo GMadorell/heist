@@ -493,6 +493,10 @@ fn run_review(
                     present::error(e);
                     ExitCode::Precondition
                 }
+                Err(app::review::SelectError::InvalidMainBranch(e)) => {
+                    present::error(e);
+                    ExitCode::Precondition
+                }
                 Err(app::review::SelectError::NoState) => {
                     present::no_state_for_review(&slug);
                     ExitCode::Precondition

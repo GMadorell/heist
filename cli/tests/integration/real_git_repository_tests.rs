@@ -365,7 +365,7 @@ fn changed_paths_lists_files_changed_since_merge_base() {
     commit_file(repo_dir.path(), "README.md", "hello\nmore");
 
     let paths = RealGit
-        .changed_paths(repo_dir.path(), "main", &ref_value("feature"))
+        .changed_paths(repo_dir.path(), &ref_value("main"), &ref_value("feature"))
         .expect("changed_paths should succeed");
 
     assert_eq!(
@@ -379,8 +379,11 @@ fn changed_paths_errors_on_unresolvable_base() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     init_repo_with_commit(temp_dir.path());
 
-    let result =
-        RealGit.changed_paths(temp_dir.path(), "no-such-remote-branch", &ref_value("HEAD"));
+    let result = RealGit.changed_paths(
+        temp_dir.path(),
+        &ref_value("no-such-remote-branch"),
+        &ref_value("HEAD"),
+    );
     assert!(result.is_err());
 }
 
@@ -411,7 +414,7 @@ fn changed_paths_includes_deleted_files_via_old_file_path() {
     run_git(repo_dir.path(), &["commit", "-q", "-m", "remove doomed.rs"]);
 
     let paths = RealGit
-        .changed_paths(repo_dir.path(), "main", &ref_value("feature"))
+        .changed_paths(repo_dir.path(), &ref_value("main"), &ref_value("feature"))
         .expect("changed_paths should succeed");
 
     assert_eq!(paths, vec![PathBuf::from("doomed.rs")]);

@@ -61,18 +61,20 @@ pub trait GitRepository {
 
     /// Checks that `origin/<main_branch>` resolves to a commit, without
     /// requiring a local branch of the same name to exist.
-    /// main_branch: git-owned/git-sourced output, not a VO
-    fn remote_default_resolves(&self, repo_root: &Path, main_branch: &str) -> Result<(), GitError>;
+    fn remote_default_resolves(
+        &self,
+        repo_root: &Path,
+        main_branch: &RefValue,
+    ) -> Result<(), GitError>;
 
     /// Resolves `ref_spec` verbatim (no `origin/` prefixing, unlike `remote_default_resolves`),
     /// existence-only check, no ancestry verification.
     fn resolve_ref(&self, repo_root: &Path, ref_spec: &RefValue) -> Result<(), GitError>;
 
-    /// base_branch: git-owned/git-sourced output, not a VO
     fn changed_paths(
         &self,
         repo_root: &Path,
-        base_branch: &str,
+        base_branch: &RefValue,
         head_ref: &RefValue,
     ) -> Result<Vec<PathBuf>, GitError>;
 

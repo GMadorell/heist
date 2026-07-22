@@ -216,10 +216,14 @@ impl GitRepository for RealGit {
         })
     }
 
-    fn remote_default_resolves(&self, repo_root: &Path, main_branch: &str) -> Result<(), GitError> {
+    fn remote_default_resolves(
+        &self,
+        repo_root: &Path,
+        main_branch: &RefValue,
+    ) -> Result<(), GitError> {
         let resolve = || -> Result<(), git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
-            repo.revparse_single(&format!("origin/{}", main_branch))?;
+            repo.revparse_single(&format!("origin/{}", main_branch.as_ref()))?;
             Ok(())
         };
         resolve().map_err(|e| GitError::MergeCheck {
@@ -269,14 +273,14 @@ impl GitRepository for RealGit {
     fn changed_paths(
         &self,
         repo_root: &Path,
-        base_branch: &str,
+        base_branch: &RefValue,
         head_ref: &RefValue,
     ) -> Result<Vec<PathBuf>, GitError> {
         let head_ref_str = head_ref.as_ref();
         let diff_paths = || -> Result<Vec<PathBuf>, git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
             let base_oid = repo
-                .revparse_single(&format!("origin/{}", base_branch))?
+                .revparse_single(&format!("origin/{}", base_branch.as_ref()))?
                 .id();
             let head_oid = repo.revparse_single(head_ref_str)?.id();
             let merge_base_oid = repo.merge_base(base_oid, head_oid)?;
