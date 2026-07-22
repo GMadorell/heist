@@ -1,6 +1,6 @@
-use crate::domain::error::{FieldError, StateError};
+use crate::domain::error::{StateError, ValueError};
 use crate::domain::state::Stage;
-use crate::domain::value::{NonBlankValue, SlugValue};
+use crate::domain::value::{NonBlankValue, RefValue, SlugValue};
 use crate::domain::worktree;
 use crate::domain::worktree::HeistWorktree;
 use crate::ports::clock::Clock;
@@ -11,7 +11,8 @@ use std::path::Path;
 
 pub enum AddError {
     NoState,
-    Naming(FieldError),
+    Naming(ValueError),
+    InvalidComposedRef(ValueError),
     Fs(std::io::Error),
     Git(GitError),
     Load(StateError),
@@ -29,8 +30,8 @@ pub fn add(
     git: &dyn GitRepository,
     fs: &dyn WorktreeFs,
     clock: &dyn Clock,
-    slug: &str,
-    base: Option<&str>,
+    slug: &SlugValue,
+    base: Option<&RefValue>,
 ) -> Result<NonBlankValue, AddError> {
     if !state_repo.exists(slug) {
         return Err(AddError::NoState);
@@ -47,11 +48,17 @@ pub fn add(
     let worktree_path = worktree::worktree_path(repo_root, slug);
     let branch = worktree::branch_name(slug).map_err(AddError::Naming)?;
 
-    let start_point = base
-        .map(str::to_string)
-        .unwrap_or_else(|| format!("origin/{}", main_branch));
+    let start_point = match base {
+        Some(b) => b.clone(),
+        None => {
+            let composed = format!("origin/{}", main_branch);
+            RefValue::try_from_raw(&composed).map_err(AddError::InvalidComposedRef)?
+        }
+    };
 
-    let worktree_exists = git.worktree_exists(repo_root, slug).map_err(AddError::Git)?;
+    let worktree_exists = git
+        .worktree_exists(repo_root, slug)
+        .map_err(AddError::Git)?;
 
     // A `--base` only takes effect when the worktree (and its branch) is
     // created. Passing one for an existing worktree that was built from a
@@ -64,19 +71,19 @@ pub fn add(
                 .map_err(AddError::Load)?
                 .base
                 .map(|b| b.as_ref().to_string());
-            if existing.as_deref() != Some(requested) {
+            if existing.as_deref() != Some(requested.as_ref()) {
                 return Err(AddError::BaseImmutable {
                     existing,
-                    requested: requested.to_string(),
+                    requested: requested.as_ref().to_string(),
                 });
             }
         }
     } else {
-        git.add_worktree(repo_root, &worktree_path, branch.as_ref(), &start_point)
+        git.add_worktree(repo_root, &worktree_path, &branch, &start_point)
             .map_err(AddError::Git)?;
     }
 
-    fs.link_heist_dir(repo_root, &worktree_path, slug)
+    fs.link_heist_dir(repo_root, &worktree_path, slug.as_ref())
         .map_err(AddError::Fs)?;
 
     let worktree_absolute = fs.canonicalize(&worktree_path).map_err(AddError::Fs)?;
@@ -85,9 +92,9 @@ pub fn add(
 
     let mut state = state_repo.load(slug).map_err(AddError::Load)?;
     state.worktree = Some(worktree_value.clone());
-    state.branch = Some(branch);
+    state.branch = Some(NonBlankValue::parse("branch", branch.as_ref()).map_err(AddError::Naming)?);
     if let Some(b) = base {
-        state.base = Some(NonBlankValue::parse("base", b).map_err(AddError::Naming)?);
+        state.base = Some(NonBlankValue::parse("base", b.as_ref()).map_err(AddError::Naming)?);
     }
     state.updated = clock.today();
     state_repo.save(slug, &state).map_err(AddError::Save)?;
@@ -97,7 +104,7 @@ pub fn add(
 
 pub enum RemoveError {
     NoState,
-    Naming(FieldError),
+    Naming(ValueError),
     Git(GitError),
     NotMerged {
         branch: String,
@@ -113,7 +120,7 @@ pub fn remove(
     state_repo: &dyn StateRepository,
     git: &dyn GitRepository,
     clock: &dyn Clock,
-    slug: &str,
+    slug: &SlugValue,
 ) -> Result<(), RemoveError> {
     if !state_repo.exists(slug) {
         return Err(RemoveError::NoState);
@@ -121,8 +128,9 @@ pub fn remove(
 
     let main_branch = git.default_branch(repo_root);
     let branch = worktree::branch_name(slug).map_err(RemoveError::Naming)?;
+    let main_branch_ref = RefValue::try_from_raw(&main_branch).map_err(RemoveError::Naming)?;
 
-    match git.is_branch_merged(repo_root, branch.as_ref(), &main_branch) {
+    match git.is_branch_merged(repo_root, &branch, &main_branch_ref) {
         Ok(MergeCheck::Merged) => {}
         Ok(MergeCheck::NotMerged { verification_error }) => {
             return Err(RemoveError::NotMerged {
@@ -137,7 +145,7 @@ pub fn remove(
     let worktree_path = worktree::worktree_path(repo_root, slug);
     git.remove_worktree(repo_root, &worktree_path)
         .map_err(RemoveError::Git)?;
-    git.delete_branch(repo_root, branch.as_ref())
+    git.delete_branch(repo_root, &branch)
         .map_err(RemoveError::Git)?;
 
     // Remote branch deletion is intentionally out of scope: rely
@@ -178,6 +186,7 @@ impl CleanupOutcome {
 pub enum CleanupError {
     Fs(std::io::Error),
     Git(GitError),
+    Naming(ValueError),
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -191,8 +200,9 @@ pub fn cleanup(
 ) -> Result<Vec<CleanupOutcome>, CleanupError> {
     let canonical_repo_root = fs.canonicalize(repo_root).map_err(CleanupError::Fs)?;
     let main_branch = git.default_branch(repo_root);
+    let main_branch_ref = RefValue::try_from_raw(&main_branch).map_err(CleanupError::Naming)?;
 
-    git.remote_default_resolves(repo_root, &main_branch)
+    git.remote_default_resolves(repo_root, &main_branch_ref)
         .map_err(CleanupError::Git)?;
 
     let infos = git.list_worktrees(repo_root).map_err(CleanupError::Git)?;
@@ -205,7 +215,7 @@ pub fn cleanup(
             continue;
         };
 
-        match git.is_branch_merged(repo_root, hw.branch.as_ref(), &main_branch) {
+        match git.is_branch_merged(repo_root, &hw.branch, &main_branch_ref) {
             Ok(MergeCheck::Merged) => {}
             Ok(MergeCheck::NotMerged { verification_error }) => {
                 outcomes.push(CleanupOutcome::Skipped {
@@ -236,7 +246,7 @@ pub fn cleanup(
             continue;
         }
 
-        if let Err(e) = git.delete_branch(repo_root, hw.branch.as_ref()) {
+        if let Err(e) = git.delete_branch(repo_root, &hw.branch) {
             outcomes.push(CleanupOutcome::Failed {
                 slug: hw.slug,
                 reason: format!(
@@ -247,12 +257,12 @@ pub fn cleanup(
             continue;
         }
 
-        if state_repo.exists(hw.slug.as_ref()) {
-            match state_repo.load(hw.slug.as_ref()) {
+        if state_repo.exists(&hw.slug) {
+            match state_repo.load(&hw.slug) {
                 Ok(mut state) => {
                     state.stage = Stage::Done;
                     state.updated = clock.today();
-                    if let Err(e) = state_repo.save(hw.slug.as_ref(), &state) {
+                    if let Err(e) = state_repo.save(&hw.slug, &state) {
                         outcomes.push(CleanupOutcome::Failed {
                             slug: hw.slug,
                             reason: e.to_string(),
@@ -282,11 +292,11 @@ mod tests {
     use super::*;
     use crate::adapters::testing::{FakeGit, FakeWorktreeFs, FixedClock, InMemoryStateRepository};
     use crate::domain::state::State;
-    use crate::domain::value::DateValue;
+    use crate::domain::testing::valid;
     use std::path::Path;
 
     fn fixed_clock() -> FixedClock {
-        FixedClock(DateValue::parse("today", "2026-01-01").expect("valid date"))
+        FixedClock(valid::date("2026-01-01"))
     }
 
     #[test]
@@ -369,7 +379,7 @@ mod tests {
         assert_eq!(
             outcomes,
             vec![CleanupOutcome::Skipped {
-                slug: SlugValue::parse("foo").expect("valid slug"),
+                slug: valid::slug("foo"),
                 verification_error: None,
             }]
         );
@@ -398,7 +408,7 @@ mod tests {
         assert_eq!(
             outcomes,
             vec![CleanupOutcome::Skipped {
-                slug: SlugValue::parse("foo").expect("valid slug"),
+                slug: valid::slug("foo"),
                 verification_error: Some("gh: command not found".to_string()),
             }]
         );
@@ -436,9 +446,9 @@ mod tests {
         assert_eq!(
             outcomes,
             vec![
-                CleanupOutcome::Removed(SlugValue::parse("bar").expect("valid slug")),
+                CleanupOutcome::Removed(valid::slug("bar")),
                 CleanupOutcome::Failed {
-                    slug: SlugValue::parse("foo").expect("valid slug"),
+                    slug: valid::slug("foo"),
                     reason: "failed to check merged branches: bad ref".to_string(),
                 },
             ]
@@ -467,12 +477,7 @@ mod tests {
         )
         .expect("cleanup should succeed");
 
-        assert_eq!(
-            outcomes,
-            vec![CleanupOutcome::Removed(
-                SlugValue::parse("foo").expect("valid slug")
-            )]
-        );
+        assert_eq!(outcomes, vec![CleanupOutcome::Removed(valid::slug("foo"))]);
         assert_eq!(
             git.removed_worktree_paths(),
             vec![std::path::PathBuf::from("/repo/.worktrees/foo")]
@@ -500,9 +505,7 @@ mod tests {
 
         assert_eq!(
             outcomes,
-            vec![CleanupOutcome::WouldRemove(
-                SlugValue::parse("foo").expect("valid slug")
-            )]
+            vec![CleanupOutcome::WouldRemove(valid::slug("foo"))]
         );
         assert!(git.removed_worktree_paths().is_empty());
         assert!(git.deleted_branch_names().is_empty());
@@ -512,11 +515,7 @@ mod tests {
     fn cleanup_marks_existing_state_done() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(
-                "foo",
-                DateValue::parse("today", "2025-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_default_branch("main")
@@ -533,18 +532,10 @@ mod tests {
         )
         .expect("cleanup should succeed");
 
-        assert_eq!(
-            outcomes,
-            vec![CleanupOutcome::Removed(
-                SlugValue::parse("foo").expect("valid slug")
-            )]
-        );
+        assert_eq!(outcomes, vec![CleanupOutcome::Removed(valid::slug("foo"))]);
         let state = repo.get("foo").expect("state should still exist");
         assert_eq!(state.stage, Stage::Done);
-        assert_eq!(
-            state.updated,
-            DateValue::parse("today", "2026-01-01").expect("valid date")
-        );
+        assert_eq!(state.updated, valid::date("2026-01-01"));
     }
 
     #[test]
@@ -565,12 +556,7 @@ mod tests {
         )
         .expect("cleanup should succeed even without a state entry");
 
-        assert_eq!(
-            outcomes,
-            vec![CleanupOutcome::Removed(
-                SlugValue::parse("foo").expect("valid slug")
-            )]
-        );
+        assert_eq!(outcomes, vec![CleanupOutcome::Removed(valid::slug("foo"))]);
         assert_eq!(repo.get("foo"), None);
     }
 
@@ -578,11 +564,7 @@ mod tests {
     fn cleanup_reports_failed_when_remove_worktree_fails() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(
-                "foo",
-                DateValue::parse("today", "2025-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_default_branch("main")
@@ -618,11 +600,7 @@ mod tests {
     fn cleanup_reports_orphaned_branch_when_delete_fails() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(
-                "foo",
-                DateValue::parse("today", "2025-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_default_branch("main")
@@ -682,8 +660,8 @@ mod tests {
         assert_eq!(
             outcomes,
             vec![
-                CleanupOutcome::Removed(SlugValue::parse("alpha").expect("valid slug")),
-                CleanupOutcome::Removed(SlugValue::parse("zeta").expect("valid slug")),
+                CleanupOutcome::Removed(valid::slug("alpha")),
+                CleanupOutcome::Removed(valid::slug("zeta")),
             ]
         );
     }
@@ -692,11 +670,7 @@ mod tests {
     fn add_with_base_validates_ref_before_creating_worktree_or_state() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(
-                "foo",
-                DateValue::parse("today", "2025-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug"),
         );
         let git = FakeGit::new()
             .with_default_branch("main")
@@ -707,14 +681,15 @@ mod tests {
                 },
             );
 
+        let base = RefValue::try_from("heist/piece-01".to_string()).unwrap();
         let result = add(
             Path::new("."),
             &repo,
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
-            Some("heist/piece-01"),
+            &valid::slug("foo"),
+            Some(&base),
         );
 
         assert!(matches!(result, Err(AddError::Git(_))));
@@ -729,22 +704,19 @@ mod tests {
     fn add_with_base_uses_verbatim_ref_as_start_point_and_persists_base_field() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(
-                "foo",
-                DateValue::parse("today", "2025-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug"),
         );
         let git = FakeGit::new().with_default_branch("main");
 
+        let base = RefValue::try_from("heist/piece-01".to_string()).unwrap();
         let result = add(
             Path::new("."),
             &repo,
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
-            Some("heist/piece-01"),
+            &valid::slug("foo"),
+            Some(&base),
         );
 
         assert!(result.is_ok());
@@ -753,20 +725,14 @@ mod tests {
             vec!["heist/piece-01".to_string()]
         );
         let saved_state = repo.get("foo").expect("foo state should exist");
-        assert_eq!(
-            saved_state.base,
-            Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"))
-        );
+        assert_eq!(saved_state.base, Some(valid::base("heist/piece-01")));
     }
 
     #[test]
     fn add_without_base_preserves_previously_persisted_base() {
-        let mut state = State::new(
-            "foo",
-            DateValue::parse("today", "2025-01-01").expect("valid date"),
-        )
-        .expect("valid slug");
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state =
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug");
+        state.base = Some(valid::base("heist/piece-01"));
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new().with_default_branch("main");
 
@@ -776,7 +742,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
+            &valid::slug("foo"),
             None,
         );
 
@@ -784,65 +750,61 @@ mod tests {
         let saved_state = repo.get("foo").expect("foo state should exist");
         assert_eq!(
             saved_state.base,
-            Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base")),
+            Some(valid::base("heist/piece-01")),
             "re-running `heist worktree add` without --base must not null an already-persisted base"
         );
     }
 
     #[test]
     fn add_with_differing_base_on_existing_worktree_is_refused_and_state_unchanged() {
-        let mut state = State::new(
-            "foo",
-            DateValue::parse("today", "2025-01-01").expect("valid date"),
-        )
-        .expect("valid slug");
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state =
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug");
+        state.base = Some(valid::base("heist/piece-01"));
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         // Worktree already exists, created from heist/piece-01.
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_existing_worktree("foo");
 
+        let base = RefValue::try_from("heist/piece-02".to_string()).unwrap();
         let result = add(
             Path::new("."),
             &repo,
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
-            Some("heist/piece-02"),
+            &valid::slug("foo"),
+            Some(&base),
         );
 
         assert!(matches!(result, Err(AddError::BaseImmutable { .. })));
         let saved_state = repo.get("foo").expect("foo state should exist");
         assert_eq!(
             saved_state.base,
-            Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base")),
+            Some(valid::base("heist/piece-01")),
             "a refused re-add must not rewrite the persisted base"
         );
     }
 
     #[test]
     fn add_with_same_base_on_existing_worktree_is_idempotent() {
-        let mut state = State::new(
-            "foo",
-            DateValue::parse("today", "2025-01-01").expect("valid date"),
-        )
-        .expect("valid slug");
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state =
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug");
+        state.base = Some(valid::base("heist/piece-01"));
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_existing_worktree("foo");
 
+        let base = RefValue::try_from("heist/piece-01".to_string()).unwrap();
         let result = add(
             Path::new("."),
             &repo,
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
-            Some("heist/piece-01"),
+            &valid::slug("foo"),
+            Some(&base),
         );
 
         assert!(result.is_ok());
@@ -852,11 +814,7 @@ mod tests {
     fn add_without_base_uses_origin_default_start_point() {
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new(
-                "foo",
-                DateValue::parse("today", "2025-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            State::new(&valid::slug("foo"), valid::date("2025-01-01")).expect("valid slug"),
         );
         let git = FakeGit::new().with_default_branch("main");
 
@@ -866,7 +824,7 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
+            &valid::slug("foo"),
             None,
         );
 

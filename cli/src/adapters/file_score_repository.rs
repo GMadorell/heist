@@ -1,10 +1,11 @@
+use crate::domain::value::SlugValue;
 use crate::ports::score_repository::ScoreRepository;
 use std::path::{Path, PathBuf};
 
 pub struct FileScoreRepository;
 
 impl ScoreRepository for FileScoreRepository {
-    fn load_score(&self, slug: &str) -> Result<Option<String>, std::io::Error> {
+    fn load_score(&self, slug: &SlugValue) -> Result<Option<String>, std::io::Error> {
         let path = score_file_path(slug);
         if !path.exists() {
             return Ok(None);
@@ -13,6 +14,6 @@ impl ScoreRepository for FileScoreRepository {
     }
 }
 
-fn score_file_path(slug: &str) -> PathBuf {
-    Path::new(".heist").join(slug).join("score.md")
+fn score_file_path(slug: &SlugValue) -> PathBuf {
+    Path::new(".heist").join(slug.as_ref()).join("score.md")
 }

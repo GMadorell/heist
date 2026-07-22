@@ -1,6 +1,7 @@
 use crate::app;
-use crate::domain::error::{FieldError, StateError};
-use crate::domain::value::{NonBlankValue, SlugValue};
+use crate::domain::error::{StateError, ValueError};
+use crate::domain::state::Mode;
+use crate::domain::value::{BranchValue, NonBlankValue, RefValue, SlugValue};
 use crate::domain::worktree::{branch_name, worktree_path};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository};
@@ -34,7 +35,7 @@ pub enum RollbackFailure {
 }
 
 pub enum BeginError {
-    InvalidSlug(FieldError),
+    InvalidSlug(ValueError),
     Collision(CollisionArtifact),
     /// Inconclusive probe (not a confirmed absence), so never safe to proceed.
     Probe(GitError),
@@ -57,9 +58,9 @@ pub fn begin(
     git: &dyn GitRepository,
     fs: &dyn WorktreeFs,
     clock: &dyn Clock,
-    slug: &str,
-    mode: &str,
-    base: Option<&str>,
+    slug: &SlugValue,
+    mode: Mode,
+    base: Option<&RefValue>,
 ) -> Result<NonBlankValue, BeginError> {
     let branch = check_preconditions(repo_root, state_repo, git, slug)?;
 
@@ -81,16 +82,16 @@ pub fn begin(
         heist_dir_repo,
         git,
         slug,
-        branch.as_ref(),
+        &branch,
         "mode",
-        mode,
+        mode.as_str(),
     )?;
 
     let worktree_value = match app::worktree::add(repo_root, state_repo, git, fs, clock, slug, base)
     {
         Ok(v) => v,
         Err(error) => {
-            let rollback_errors = rollback(repo_root, heist_dir_repo, git, slug, branch.as_ref());
+            let rollback_errors = rollback(repo_root, heist_dir_repo, git, slug, &branch);
             return Err(BeginError::Worktree {
                 error,
                 rollback_errors,
@@ -105,7 +106,7 @@ pub fn begin(
         heist_dir_repo,
         git,
         slug,
-        branch.as_ref(),
+        &branch,
         "stage",
         "planning",
     )?;
@@ -117,10 +118,8 @@ fn check_preconditions(
     repo_root: &Path,
     state_repo: &dyn StateRepository,
     git: &dyn GitRepository,
-    slug: &str,
-) -> Result<NonBlankValue, BeginError> {
-    SlugValue::parse(slug).map_err(BeginError::InvalidSlug)?;
-
+    slug: &SlugValue,
+) -> Result<BranchValue, BeginError> {
     if state_repo.exists(slug) {
         return Err(BeginError::Collision(CollisionArtifact::State));
     }
@@ -132,7 +131,7 @@ fn check_preconditions(
     }
     let branch = branch_name(slug).map_err(BeginError::InvalidSlug)?;
     if git
-        .branch_exists(repo_root, branch.as_ref())
+        .branch_exists(repo_root, &branch)
         .map_err(BeginError::Probe)?
     {
         return Err(BeginError::Collision(CollisionArtifact::Branch));
@@ -147,8 +146,8 @@ fn set_field_or_rollback(
     repo_root: &Path,
     heist_dir_repo: &dyn HeistDirRepository,
     git: &dyn GitRepository,
-    slug: &str,
-    branch: &str,
+    slug: &SlugValue,
+    branch: &BranchValue,
     field: &str,
     value: &str,
 ) -> Result<(), BeginError> {
@@ -167,8 +166,8 @@ fn rollback(
     repo_root: &Path,
     heist_dir_repo: &dyn HeistDirRepository,
     git: &dyn GitRepository,
-    slug: &str,
-    branch: &str,
+    slug: &SlugValue,
+    branch: &BranchValue,
 ) -> Vec<RollbackFailure> {
     let mut errors = Vec::new();
 
@@ -204,12 +203,12 @@ mod tests {
         FakeGit, FakeWorktreeFs, FixedClock, InMemoryHeistDirRepository, InMemoryStateRepository,
     };
     use crate::domain::state::{Mode, Stage, State};
-    use crate::domain::value::DateValue;
+    use crate::domain::testing::valid;
     use crate::ports::worktree_fs::WorktreeFs;
     use std::path::{Path, PathBuf};
 
     fn fixed_clock() -> FixedClock {
-        FixedClock(DateValue::parse("today", "2026-01-01").expect("valid date"))
+        FixedClock(valid::date("2026-01-01"))
     }
 
     #[test]
@@ -217,6 +216,7 @@ mod tests {
         let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new().with_default_branch("main");
+        let slug = valid::slug("my-slug");
 
         let result = begin(
             Path::new("."),
@@ -225,13 +225,13 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "my-slug",
-            "medium",
+            &slug,
+            Mode::Medium,
             None,
         );
 
         assert!(result.is_ok(), "begin should succeed");
-        let state = repo.get("my-slug").expect("state should exist");
+        let state = repo.get(slug.as_ref()).expect("state should exist");
         assert_eq!(state.mode, Mode::Medium);
         assert_eq!(state.stage, Stage::Planning);
         assert!(state.worktree.is_some());
@@ -239,37 +239,11 @@ mod tests {
     }
 
     #[test]
-    fn begin_rejects_malformed_slug_before_any_mutation() {
-        let heist_dir_repo = InMemoryHeistDirRepository::new();
-        let repo = InMemoryStateRepository::new();
-        let git = FakeGit::new().with_default_branch("main");
-
-        let result = begin(
-            Path::new("."),
-            &heist_dir_repo,
-            &repo,
-            &git,
-            &FakeWorktreeFs,
-            &fixed_clock(),
-            "Not A Slug",
-            "heavy",
-            None,
-        );
-
-        assert!(matches!(result, Err(BeginError::InvalidSlug(_))));
-        assert!(!repo.exists("Not A Slug"));
-        assert!(!heist_dir_repo.exists("Not A Slug"));
-    }
-
-    #[test]
     fn begin_rejects_precheck_collision_for_existing_state_worktree_or_branch() {
+        let foo = valid::slug("foo");
         let repo_with_state = InMemoryStateRepository::new().with_state(
-            "foo",
-            State::new(
-                "foo",
-                DateValue::parse("today", "2026-01-01").expect("valid date"),
-            )
-            .expect("valid slug"),
+            foo.as_ref(),
+            State::new(&foo, valid::date("2026-01-01")).expect("valid slug"),
         );
         let heist_dir_repo = InMemoryHeistDirRepository::new();
         let git = FakeGit::new().with_default_branch("main");
@@ -280,8 +254,8 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
-            "heavy",
+            &foo,
+            Mode::Heavy,
             None,
         );
         assert!(matches!(
@@ -290,9 +264,10 @@ mod tests {
         ));
 
         let repo_no_state = InMemoryStateRepository::new();
+        let bar = valid::slug("bar");
         let git_worktree_collision = FakeGit::new()
             .with_default_branch("main")
-            .with_existing_worktree("bar");
+            .with_existing_worktree(bar.as_ref());
         let result = begin(
             Path::new("."),
             &heist_dir_repo,
@@ -300,8 +275,8 @@ mod tests {
             &git_worktree_collision,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "bar",
-            "heavy",
+            &bar,
+            Mode::Heavy,
             None,
         );
         assert!(matches!(
@@ -309,6 +284,7 @@ mod tests {
             Err(BeginError::Collision(CollisionArtifact::Worktree))
         ));
 
+        let baz = valid::slug("baz");
         let git_branch_collision = FakeGit::new()
             .with_default_branch("main")
             .with_branch("heist/baz");
@@ -319,44 +295,14 @@ mod tests {
             &git_branch_collision,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "baz",
-            "heavy",
+            &baz,
+            Mode::Heavy,
             None,
         );
         assert!(matches!(
             result,
             Err(BeginError::Collision(CollisionArtifact::Branch))
         ));
-    }
-
-    #[test]
-    fn begin_rolls_back_state_dir_when_mode_set_fails_before_worktree_creation() {
-        let heist_dir_repo = InMemoryHeistDirRepository::new();
-        let repo = InMemoryStateRepository::new();
-        let git = FakeGit::new().with_default_branch("main");
-
-        let result = begin(
-            Path::new("."),
-            &heist_dir_repo,
-            &repo,
-            &git,
-            &FakeWorktreeFs,
-            &fixed_clock(),
-            "foo",
-            "bogus-mode",
-            None,
-        );
-
-        assert!(matches!(result, Err(BeginError::State { .. })));
-        assert!(
-            !heist_dir_repo.exists("foo"),
-            "heist dir should be rolled back"
-        );
-        assert!(
-            git.removed_worktree_paths().is_empty(),
-            "nothing was created yet, rollback must not attempt worktree removal"
-        );
-        assert!(git.deleted_branch_names().is_empty());
     }
 
     #[test]
@@ -367,13 +313,13 @@ mod tests {
         }
 
         impl StateRepository for FailAfterModeStateRepository {
-            fn exists(&self, slug: &str) -> bool {
+            fn exists(&self, slug: &SlugValue) -> bool {
                 self.inner.exists(slug)
             }
-            fn load(&self, slug: &str) -> Result<State, StateError> {
+            fn load(&self, slug: &SlugValue) -> Result<State, StateError> {
                 self.inner.load(slug)
             }
-            fn save(&self, slug: &str, state: &State) -> Result<(), StateError> {
+            fn save(&self, slug: &SlugValue, state: &State) -> Result<(), StateError> {
                 let call = self.set_calls.get();
                 self.set_calls.set(call + 1);
                 // Saves happen in order: 0 = init's own save, 1 = the "mode"
@@ -399,6 +345,7 @@ mod tests {
             set_calls: std::cell::Cell::new(0),
         };
         let git = FakeGit::new().with_default_branch("main");
+        let foo = valid::slug("foo");
 
         let result = begin(
             Path::new("."),
@@ -407,14 +354,14 @@ mod tests {
             &git,
             &FakeWorktreeFs,
             &fixed_clock(),
-            "foo",
-            "heavy",
+            &foo,
+            Mode::Heavy,
             None,
         );
 
         assert!(matches!(result, Err(BeginError::State { .. })));
         assert!(
-            !heist_dir_repo.exists("foo"),
+            !heist_dir_repo.exists(foo.as_ref()),
             "heist dir should be rolled back"
         );
         assert_eq!(
@@ -448,6 +395,7 @@ mod tests {
         let heist_dir_repo = InMemoryHeistDirRepository::new();
         let repo = InMemoryStateRepository::new();
         let git = FakeGit::new().with_default_branch("main");
+        let foo = valid::slug("foo");
 
         let result = begin(
             Path::new("."),
@@ -456,8 +404,8 @@ mod tests {
             &git,
             &FailingLinkFs,
             &fixed_clock(),
-            "foo",
-            "heavy",
+            &foo,
+            Mode::Heavy,
             None,
         );
 
@@ -465,7 +413,7 @@ mod tests {
         assert_eq!(git.removed_worktree_paths().len(), 1);
         assert_eq!(git.deleted_branch_names(), vec!["heist/foo".to_string()]);
         assert!(
-            !heist_dir_repo.exists("foo"),
+            !heist_dir_repo.exists(foo.as_ref()),
             "heist dir should be rolled back"
         );
     }

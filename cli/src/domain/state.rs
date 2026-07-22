@@ -1,4 +1,4 @@
-use crate::domain::error::FieldError;
+use crate::domain::error::ValueError;
 use crate::domain::value::{
     DateValue, FenceRounds, NonBlankValue, SchemaVersion, ScoreStepsTotal, ScoreWave,
     ScoreWavesTotal, SlugValue,
@@ -23,10 +23,10 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(slug: &str, today: DateValue) -> Result<Self, FieldError> {
+    pub fn new(slug: &SlugValue, today: DateValue) -> Result<Self, ValueError> {
         Ok(State {
             schema_version: SchemaVersion::CURRENT,
-            slug: SlugValue::parse(slug)?,
+            slug: slug.clone(),
             stage: Stage::Casing,
             mode: Mode::default(),
             worktree: None,
@@ -41,7 +41,7 @@ impl State {
         })
     }
 
-    pub fn get_field(&self, cli_field: &str) -> Result<String, FieldError> {
+    pub fn get_field(&self, cli_field: &str) -> Result<String, ValueError> {
         let value = match cli_field {
             "schema_version" => self.schema_version.to_string(),
             "slug" => self.slug.to_string(),
@@ -68,12 +68,12 @@ impl State {
             "fence_rounds" => self.fence_rounds.to_string(),
             "created" => self.created.to_string(),
             "updated" => self.updated.to_string(),
-            _ => return Err(FieldError::Unknown(cli_field.to_string())),
+            _ => return Err(ValueError::Unknown(cli_field.to_string())),
         };
         Ok(value)
     }
 
-    pub fn set_field(&mut self, cli_field: &str, value: &str) -> Result<(), FieldError> {
+    pub fn set_field(&mut self, cli_field: &str, value: &str) -> Result<(), ValueError> {
         match cli_field {
             "schema_version" => self.schema_version = SchemaVersion::parse(value)?,
             "slug" => self.slug = SlugValue::parse(value)?,
@@ -92,7 +92,7 @@ impl State {
             "fence_rounds" => self.fence_rounds = FenceRounds::parse(cli_field, value)?,
             "created" => self.created = DateValue::parse(cli_field, value)?,
             "updated" => self.updated = DateValue::parse(cli_field, value)?,
-            _ => return Err(FieldError::Unknown(cli_field.to_string())),
+            _ => return Err(ValueError::Unknown(cli_field.to_string())),
         }
         Ok(())
     }
@@ -125,7 +125,7 @@ impl Stage {
         }
     }
 
-    pub fn parse(value: &str) -> Result<Stage, FieldError> {
+    pub fn parse(value: &str) -> Result<Stage, ValueError> {
         let stage = match value {
             "casing" => Stage::Casing,
             "planning" => Stage::Planning,
@@ -135,7 +135,7 @@ impl Stage {
             "implementing" => Stage::Implementing,
             "cleaning" => Stage::Cleaning,
             "done" => Stage::Done,
-            _ => return Err(FieldError::InvalidStage(value.to_string())),
+            _ => return Err(ValueError::InvalidStage(value.to_string())),
         };
         Ok(stage)
     }
@@ -162,12 +162,12 @@ impl Mode {
         }
     }
 
-    pub fn parse(value: &str) -> Result<Mode, FieldError> {
+    pub fn parse(value: &str) -> Result<Mode, ValueError> {
         match value {
             "heavy" => Ok(Mode::Heavy),
             "medium" => Ok(Mode::Medium),
             "light" => Ok(Mode::Light),
-            _ => Err(FieldError::InvalidValue {
+            _ => Err(ValueError::InvalidValue {
                 field: "mode".to_string(),
                 value: value.to_string(),
                 expected: "one of: heavy, medium, light".to_string(),
@@ -260,12 +260,13 @@ pub fn route(stage: Stage, mode: Mode) -> Option<Routing> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::testing::valid;
     use serde_json::json;
 
     #[test]
     fn new_state_has_expected_defaults() {
-        let today = DateValue::parse("today", "2026-01-01").expect("valid date");
-        let state = State::new("my-slug", today.clone()).expect("valid slug");
+        let today = valid::date("2026-01-01");
+        let state = State::new(&valid::slug("my-slug"), today.clone()).expect("valid slug");
         let json = serde_json::to_value(&state).expect("failed to serialize");
 
         assert_eq!(
@@ -286,6 +287,13 @@ mod tests {
                 "updated": today.to_string(),
             })
         );
+    }
+
+    #[test]
+    fn new_state_accepts_pre_validated_slug_value() {
+        let today = valid::date("2026-01-01");
+        let state = State::new(&valid::slug("my-slug"), today).expect("valid slug");
+        assert_eq!(state.slug.to_string(), "my-slug");
     }
 
     #[test]
@@ -326,11 +334,11 @@ mod tests {
     fn mode_parse_rejects_unknown_value() {
         let err = Mode::parse("bogus").expect_err("should reject unknown mode");
         match err {
-            FieldError::InvalidValue { field, value, .. } => {
+            ValueError::InvalidValue { field, value, .. } => {
                 assert_eq!(field, "mode");
                 assert_eq!(value, "bogus");
             }
-            _ => panic!("expected FieldError::InvalidValue, got a different variant"),
+            _ => panic!("expected ValueError::InvalidValue, got a different variant"),
         }
     }
 

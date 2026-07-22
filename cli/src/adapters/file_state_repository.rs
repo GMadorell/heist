@@ -8,15 +8,15 @@ use std::path::{Path, PathBuf};
 pub struct FileStateRepository;
 
 impl StateRepository for FileStateRepository {
-    fn exists(&self, slug: &str) -> bool {
+    fn exists(&self, slug: &SlugValue) -> bool {
         state_file_path(slug).exists()
     }
 
-    fn load(&self, slug: &str) -> Result<State, StateError> {
+    fn load(&self, slug: &SlugValue) -> Result<State, StateError> {
         load_state_file(&state_file_path(slug))
     }
 
-    fn save(&self, slug: &str, state: &State) -> Result<(), StateError> {
+    fn save(&self, slug: &SlugValue, state: &State) -> Result<(), StateError> {
         save_state_file(state, &state_file_path(slug))
     }
 
@@ -33,13 +33,12 @@ impl StateRepository for FileStateRepository {
                 continue;
             }
             let dir_name = entry.file_name().to_string_lossy().into_owned();
-            if !state_file_path(&dir_name).exists() {
-                continue;
-            }
             // A directory name that isn't a valid slug can't have been created
             // by `state init`, so it isn't a heist: skip it rather than error.
             if let Ok(slug) = SlugValue::parse(&dir_name) {
-                slugs.push(slug);
+                if state_file_path(&slug).exists() {
+                    slugs.push(slug);
+                }
             }
         }
         slugs.sort_by(|a, b| a.as_ref().cmp(b.as_ref()));
@@ -47,7 +46,7 @@ impl StateRepository for FileStateRepository {
     }
 }
 
-fn state_file_path(slug: &str) -> PathBuf {
+fn state_file_path(slug: &SlugValue) -> PathBuf {
     heist_dir_path(slug).join("state.json")
 }
 

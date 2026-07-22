@@ -1,6 +1,33 @@
 use std::sync::Mutex;
 use tempfile::TempDir;
 
+/// Parse-or-panic constructors for value objects in test fixtures, where the
+/// input is a hardcoded literal known to be valid and a parse failure means
+/// the test itself is broken.
+///
+/// Integration tests link the lib built without `cfg(test)`, so they can't
+/// reach `heist_cli::domain::testing::valid` (the unit-test equivalent) and
+/// need their own copy.
+pub mod valid {
+    use heist_cli::domain::value::{BranchValue, DateValue, RefValue, SlugValue};
+
+    pub fn slug(s: &str) -> SlugValue {
+        SlugValue::parse(s).expect("valid slug")
+    }
+
+    pub fn date(s: &str) -> DateValue {
+        DateValue::parse("date", s).expect("valid date")
+    }
+
+    pub fn branch(s: &str) -> BranchValue {
+        BranchValue::try_from_raw("branch", s).expect("valid branch")
+    }
+
+    pub fn ref_value(s: &str) -> RefValue {
+        RefValue::try_from_raw(s).expect("valid ref")
+    }
+}
+
 // The process cwd is a single global resource, shared by every test in this
 // binary. Any test file that chdirs must serialize through this one lock, or
 // two files' TempCwd guards can race and step on each other's tempdir.

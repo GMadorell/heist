@@ -1,7 +1,7 @@
 use crate::domain::error::StateError;
 use crate::domain::state::State;
 use crate::domain::tool::Tool;
-use crate::domain::value::{DateValue, SlugValue};
+use crate::domain::value::{BranchValue, DateValue, NonBlankValue, RefValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
 use crate::ports::heist_dir_repository::HeistDirRepository;
@@ -133,25 +133,27 @@ impl InMemoryStateRepository {
 }
 
 impl StateRepository for InMemoryStateRepository {
-    fn exists(&self, slug: &str) -> bool {
-        self.states.borrow().contains_key(slug) || self.load_errors.borrow().contains_key(slug)
+    fn exists(&self, slug: &SlugValue) -> bool {
+        let key = slug.as_ref();
+        self.states.borrow().contains_key(key) || self.load_errors.borrow().contains_key(key)
     }
 
-    fn load(&self, slug: &str) -> Result<State, StateError> {
-        if let Some(error) = self.load_errors.borrow_mut().remove(slug) {
+    fn load(&self, slug: &SlugValue) -> Result<State, StateError> {
+        let key = slug.as_ref();
+        if let Some(error) = self.load_errors.borrow_mut().remove(key) {
             return Err(error);
         }
         self.states
             .borrow()
-            .get(slug)
+            .get(key)
             .cloned()
             .ok_or(StateError::Missing)
     }
 
-    fn save(&self, slug: &str, state: &State) -> Result<(), StateError> {
+    fn save(&self, slug: &SlugValue, state: &State) -> Result<(), StateError> {
         self.states
             .borrow_mut()
-            .insert(slug.to_string(), state.clone());
+            .insert(slug.as_ref().to_string(), state.clone());
         Ok(())
     }
 
@@ -168,11 +170,12 @@ impl StateRepository for InMemoryStateRepository {
 }
 
 impl ScoreRepository for InMemoryStateRepository {
-    fn load_score(&self, slug: &str) -> Result<Option<String>, std::io::Error> {
-        if let Some(message) = self.score_errors.borrow().get(slug) {
+    fn load_score(&self, slug: &SlugValue) -> Result<Option<String>, std::io::Error> {
+        let key = slug.as_ref();
+        if let Some(message) = self.score_errors.borrow().get(key) {
             return Err(std::io::Error::other(message.clone()));
         }
-        Ok(self.scores.borrow().get(slug).cloned())
+        Ok(self.scores.borrow().get(key).cloned())
     }
 }
 
@@ -204,17 +207,18 @@ impl InMemoryHeistDirRepository {
 }
 
 impl HeistDirRepository for InMemoryHeistDirRepository {
-    fn create(&self, slug: &str) -> Result<(), StateError> {
+    fn create(&self, slug: &SlugValue) -> Result<(), StateError> {
+        let key = slug.as_ref();
         let mut dirs = self.dirs.borrow_mut();
-        if dirs.contains(slug) {
+        if dirs.contains(key) {
             return Err(StateError::AlreadyExists);
         }
-        dirs.insert(slug.to_string());
+        dirs.insert(key.to_string());
         Ok(())
     }
 
-    fn remove(&self, slug: &str) -> Result<(), StateError> {
-        self.dirs.borrow_mut().remove(slug);
+    fn remove(&self, slug: &SlugValue) -> Result<(), StateError> {
+        self.dirs.borrow_mut().remove(slug.as_ref());
         Ok(())
     }
 }
@@ -455,16 +459,18 @@ impl GitRepository for FakeGit {
         self.default_branch.clone()
     }
 
-    fn branch_exists(&self, _repo_root: &Path, branch: &str) -> Result<bool, GitError> {
-        Ok(self.branches.borrow().contains(branch))
+    fn branch_exists(&self, _repo_root: &Path, branch: &BranchValue) -> Result<bool, GitError> {
+        Ok(self.branches.borrow().contains(branch.as_ref()))
     }
 
     fn current_branch(&self, _repo_root: &Path) -> Result<Option<String>, GitError> {
         Ok(self.current_branch.clone())
     }
 
-    fn fetch(&self, _repo_root: &Path, remote: &str) -> Result<(), GitError> {
-        self.fetch_calls.borrow_mut().push(remote.to_string());
+    fn fetch(&self, _repo_root: &Path, remote: &NonBlankValue) -> Result<(), GitError> {
+        self.fetch_calls
+            .borrow_mut()
+            .push(remote.as_ref().to_string());
         self.call_log.borrow_mut().push("fetch".to_string());
         if let Some(err) = &self.fetch_error {
             return Err(err.clone());
@@ -475,19 +481,20 @@ impl GitRepository for FakeGit {
     fn is_branch_merged(
         &self,
         _repo_root: &Path,
-        branch: &str,
-        _into: &str,
+        branch: &BranchValue,
+        _into: &RefValue,
     ) -> Result<MergeCheck, GitError> {
+        let branch_str = branch.as_ref();
         if let Some((failing_branch, err)) = &self.merge_check_error_for {
-            if failing_branch == branch {
+            if failing_branch == branch_str {
                 return Err(err.clone());
             }
         }
-        if self.merged_branches.contains(branch) {
+        if self.merged_branches.contains(branch_str) {
             return Ok(MergeCheck::Merged);
         }
         if let Some((failing_branch, message)) = &self.verification_error_for {
-            if failing_branch == branch {
+            if failing_branch == branch_str {
                 return Ok(MergeCheck::NotMerged {
                     verification_error: Some(message.clone()),
                 });
@@ -498,27 +505,28 @@ impl GitRepository for FakeGit {
         })
     }
 
-    fn worktree_exists(&self, _repo_root: &Path, slug: &str) -> Result<bool, GitError> {
-        Ok(self.worktrees.borrow().contains(slug))
+    fn worktree_exists(&self, _repo_root: &Path, slug: &SlugValue) -> Result<bool, GitError> {
+        Ok(self.worktrees.borrow().contains(slug.as_ref()))
     }
 
     fn add_worktree(
         &self,
         _repo_root: &Path,
         _path: &Path,
-        branch: &str,
-        start_point: &str,
+        branch: &BranchValue,
+        start_point: &RefValue,
     ) -> Result<(), GitError> {
         if let Some(err) = &self.add_error {
             return Err(err.clone());
         }
         self.add_worktree_start_points
             .borrow_mut()
-            .push(start_point.to_string());
+            .push(start_point.as_ref().to_string());
         // Register by the branch's slug suffix (`heist/<slug>` -> `<slug>`).
-        let slug = branch.rsplit('/').next().unwrap_or(branch);
+        let branch_str = branch.as_ref();
+        let slug = branch_str.rsplit('/').next().unwrap_or(branch_str);
         self.worktrees.borrow_mut().insert(slug.to_string());
-        self.branches.borrow_mut().insert(branch.to_string());
+        self.branches.borrow_mut().insert(branch_str.to_string());
         Ok(())
     }
 
@@ -532,10 +540,10 @@ impl GitRepository for FakeGit {
         Ok(())
     }
 
-    fn delete_branch(&self, _repo_root: &Path, branch: &str) -> Result<(), GitError> {
+    fn delete_branch(&self, _repo_root: &Path, branch: &BranchValue) -> Result<(), GitError> {
         self.deleted_branch_names
             .borrow_mut()
-            .push(branch.to_string());
+            .push(branch.as_ref().to_string());
         if let Some(err) = &self.delete_error {
             return Err(err.clone());
         }
@@ -549,7 +557,7 @@ impl GitRepository for FakeGit {
     fn remote_default_resolves(
         &self,
         _repo_root: &Path,
-        _main_branch: &str,
+        _main_branch: &RefValue,
     ) -> Result<(), GitError> {
         if let Some(err) = &self.remote_default_resolve_error {
             return Err(err.clone());
@@ -557,9 +565,9 @@ impl GitRepository for FakeGit {
         Ok(())
     }
 
-    fn resolve_ref(&self, _repo_root: &Path, ref_spec: &str) -> Result<(), GitError> {
+    fn resolve_ref(&self, _repo_root: &Path, ref_spec: &RefValue) -> Result<(), GitError> {
         if let Some((ref_name, err)) = &self.resolve_ref_error_for {
-            if ref_name == ref_spec {
+            if ref_name == ref_spec.as_ref() {
                 return Err(err.clone());
             }
         }
@@ -569,8 +577,8 @@ impl GitRepository for FakeGit {
     fn changed_paths(
         &self,
         _repo_root: &Path,
-        _base_branch: &str,
-        _head_ref: &str,
+        _base_branch: &RefValue,
+        _head_ref: &RefValue,
     ) -> Result<Vec<PathBuf>, GitError> {
         if let Some(err) = &self.changed_paths_error {
             return Err(err.clone());
@@ -581,7 +589,7 @@ impl GitRepository for FakeGit {
     fn read_file_at(
         &self,
         _repo_root: &Path,
-        _rev: &str,
+        _rev: &RefValue,
         path: &Path,
     ) -> Result<Option<String>, GitError> {
         Ok(self.file_contents.get(path).cloned())
@@ -590,28 +598,33 @@ impl GitRepository for FakeGit {
     fn is_ancestor(
         &self,
         _repo_root: &Path,
-        ancestor_ref: &str,
-        descendant_ref: &str,
+        ancestor_ref: &RefValue,
+        descendant_ref: &RefValue,
     ) -> Result<bool, GitError> {
         *self.is_ancestor_calls.borrow_mut() += 1;
-        if ancestor_ref == descendant_ref {
+        if ancestor_ref.as_ref() == descendant_ref.as_ref() {
             return Ok(true);
         }
-        Ok(self
-            .ancestors
-            .contains(&(ancestor_ref.to_string(), descendant_ref.to_string())))
+        Ok(self.ancestors.contains(&(
+            ancestor_ref.as_ref().to_string(),
+            descendant_ref.as_ref().to_string(),
+        )))
     }
 
-    fn pr_state(&self, _repo_root: &Path, branch: &str) -> Result<PrState, GitError> {
+    fn pr_state(&self, _repo_root: &Path, base_ref: &RefValue) -> Result<PrState, GitError> {
         if let Some((failing_branch, err)) = &self.pr_state_error_for {
-            if failing_branch == branch {
+            if failing_branch == base_ref.as_ref() {
                 return Err(err.clone());
             }
         }
-        Ok(self.pr_states.get(branch).cloned().unwrap_or(PrState::None))
+        Ok(self
+            .pr_states
+            .get(base_ref.as_ref())
+            .cloned()
+            .unwrap_or(PrState::None))
     }
 
-    fn rebase(&self, _repo_root: &Path, onto: &str) -> Result<(), GitError> {
+    fn rebase(&self, _repo_root: &Path, onto: &RefValue) -> Result<(), GitError> {
         self.rebase_calls.borrow_mut().push(onto.to_string());
         self.call_log.borrow_mut().push("rebase".to_string());
         if let Some(err) = &self.failing_rebase {
@@ -620,7 +633,7 @@ impl GitRepository for FakeGit {
         Ok(())
     }
 
-    fn merge(&self, _repo_root: &Path, other_ref: &str) -> Result<(), GitError> {
+    fn merge(&self, _repo_root: &Path, other_ref: &RefValue) -> Result<(), GitError> {
         self.merge_calls.borrow_mut().push(other_ref.to_string());
         self.call_log.borrow_mut().push("merge".to_string());
         if let Some(err) = &self.failing_merge {

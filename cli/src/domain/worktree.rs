@@ -1,12 +1,12 @@
-use crate::domain::error::FieldError;
-use crate::domain::value::{NonBlankValue, SlugValue};
+use crate::domain::error::ValueError;
+use crate::domain::value::{BranchValue, SlugValue};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeistWorktree {
     pub slug: SlugValue,
     pub path: PathBuf,
-    pub branch: NonBlankValue,
+    pub branch: BranchValue,
 }
 
 impl HeistWorktree {
@@ -24,7 +24,7 @@ impl HeistWorktree {
         }
         let basename = path.file_name()?.to_str()?;
         let slug = SlugValue::parse(basename).ok()?;
-        let expected_branch = branch_name(slug.as_ref()).ok()?;
+        let expected_branch = branch_name(&slug).ok()?;
         if branch != Some(expected_branch.as_ref()) {
             return None;
         }
@@ -36,12 +36,12 @@ impl HeistWorktree {
     }
 }
 
-pub fn worktree_path(repo_root: &Path, slug: &str) -> PathBuf {
-    repo_root.join(".worktrees").join(slug)
+pub fn worktree_path(repo_root: &Path, slug: &SlugValue) -> PathBuf {
+    repo_root.join(".worktrees").join(slug.as_ref())
 }
 
-pub fn branch_name(slug: &str) -> Result<NonBlankValue, FieldError> {
-    NonBlankValue::parse("branch", &format!("heist/{}", slug))
+pub fn branch_name(slug: &SlugValue) -> Result<BranchValue, ValueError> {
+    BranchValue::try_from_raw("branch", &format!("heist/{}", slug))
 }
 
 #[cfg(test)]

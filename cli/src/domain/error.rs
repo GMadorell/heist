@@ -20,7 +20,7 @@ impl fmt::Display for StateError {
 }
 
 #[derive(Debug)]
-pub enum FieldError {
+pub enum ValueError {
     Unknown(String),
     InvalidStage(String),
     InvalidNumeric {
@@ -33,19 +33,23 @@ pub enum FieldError {
         expected: String,
     },
     NotIncrementable(String),
+    InvalidRef {
+        value: String,
+        reason: String,
+    },
 }
 
-impl fmt::Display for FieldError {
+impl fmt::Display for ValueError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FieldError::Unknown(field) => write!(f, "unknown field: {}", field),
-            FieldError::InvalidStage(value) => write!(f, "invalid stage: {}", value),
-            FieldError::InvalidNumeric { field, value } => write!(
+            ValueError::Unknown(field) => write!(f, "unknown field: {}", field),
+            ValueError::InvalidStage(value) => write!(f, "invalid stage: {}", value),
+            ValueError::InvalidNumeric { field, value } => write!(
                 f,
                 "invalid value for numeric field '{}': {} (expected an integer)",
                 field, value
             ),
-            FieldError::InvalidValue {
+            ValueError::InvalidValue {
                 field,
                 value,
                 expected,
@@ -54,8 +58,11 @@ impl fmt::Display for FieldError {
                 "invalid value for field '{}': {} (expected {})",
                 field, value, expected
             ),
-            FieldError::NotIncrementable(field) => {
+            ValueError::NotIncrementable(field) => {
                 write!(f, "field '{}' is not incrementable (not a number)", field)
+            }
+            ValueError::InvalidRef { value, reason } => {
+                write!(f, "invalid ref '{}': {}", value, reason)
             }
         }
     }
@@ -67,7 +74,7 @@ mod tests {
 
     #[test]
     fn not_incrementable_display_names_the_field() {
-        let err = FieldError::NotIncrementable("stage".to_string());
+        let err = ValueError::NotIncrementable("stage".to_string());
         assert_eq!(
             err.to_string(),
             "field 'stage' is not incrementable (not a number)"

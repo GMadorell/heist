@@ -1,3 +1,4 @@
+use crate::domain::value::{BranchValue, NonBlankValue, RefValue, SlugValue};
 use crate::ports::git::{GitError, GitRepository, MergeCheck, PrState, WorktreeInfo};
 use std::path::{Path, PathBuf};
 
@@ -44,10 +45,10 @@ impl GitRepository for RealGit {
         Ok(head.shorthand().ok().map(str::to_string))
     }
 
-    fn fetch(&self, repo_root: &Path, remote: &str) -> Result<(), GitError> {
+    fn fetch(&self, repo_root: &Path, remote: &NonBlankValue) -> Result<(), GitError> {
         let output = std::process::Command::new("git")
             .current_dir(repo_root)
-            .args(["fetch", remote])
+            .args(["fetch", remote.as_ref()])
             .output()
             .map_err(|e| GitError::CommandFailed {
                 command: "git fetch".to_string(),
@@ -67,13 +68,16 @@ impl GitRepository for RealGit {
     fn is_branch_merged(
         &self,
         repo_root: &Path,
-        branch: &str,
-        into: &str,
+        branch: &BranchValue,
+        into: &RefValue,
     ) -> Result<MergeCheck, GitError> {
+        let branch_str = branch.as_ref();
         let merged = || -> Result<bool, git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
-            let branch_oid = repo.revparse_single(branch)?.id();
-            let main_oid = repo.revparse_single(&format!("origin/{}", into))?.id();
+            let branch_oid = repo.revparse_single(branch_str)?.id();
+            let main_oid = repo
+                .revparse_single(&format!("origin/{}", into.as_ref()))?
+                .id();
 
             if branch_oid == main_oid {
                 return Ok(true);
@@ -86,7 +90,7 @@ impl GitRepository for RealGit {
             // new commit rather than reusing the branch's commits, so the
             // branch tip is never reachable from `into` even though the PR
             // landed. Ask the GitHub API as a fallback.
-            Ok(false) => Ok(match is_pr_merged_on_github(repo_root, branch) {
+            Ok(false) => Ok(match is_pr_merged_on_github(repo_root, branch_str) {
                 Ok(true) => MergeCheck::Merged,
                 Ok(false) => MergeCheck::NotMerged {
                     verification_error: None,
@@ -101,10 +105,11 @@ impl GitRepository for RealGit {
         }
     }
 
-    fn delete_branch(&self, repo_root: &Path, branch: &str) -> Result<(), GitError> {
+    fn delete_branch(&self, repo_root: &Path, branch: &BranchValue) -> Result<(), GitError> {
+        let branch_str = branch.as_ref();
         let output = std::process::Command::new("git")
             .current_dir(repo_root)
-            .args(["branch", "-d", branch])
+            .args(["branch", "-d", branch_str])
             .output()
             .map_err(|e| GitError::CommandFailed {
                 command: "git branch -d".to_string(),
@@ -118,16 +123,18 @@ impl GitRepository for RealGit {
         })
     }
 
-    fn branch_exists(&self, repo_root: &Path, branch: &str) -> Result<bool, GitError> {
+    fn branch_exists(&self, repo_root: &Path, branch: &BranchValue) -> Result<bool, GitError> {
         let repo = git2::Repository::open(repo_root).map_err(|e| GitError::CommandFailed {
             command: "git2::Repository::open".to_string(),
             message: e.message().to_string(),
         })?;
-        let found = repo.find_branch(branch, git2::BranchType::Local).is_ok();
+        let found = repo
+            .find_branch(branch.as_ref(), git2::BranchType::Local)
+            .is_ok();
         Ok(found)
     }
 
-    fn worktree_exists(&self, repo_root: &Path, slug: &str) -> Result<bool, GitError> {
+    fn worktree_exists(&self, repo_root: &Path, slug: &SlugValue) -> Result<bool, GitError> {
         let repo = git2::Repository::open(repo_root).map_err(|e| GitError::CommandFailed {
             command: "git2::Repository::open".to_string(),
             message: e.message().to_string(),
@@ -137,15 +144,19 @@ impl GitRepository for RealGit {
             message: e.message().to_string(),
         })?;
         // iter() yields Result<Option<&str>, _>; flatten twice to reach &str.
-        Ok(worktrees.iter().flatten().flatten().any(|name| name == slug))
+        Ok(worktrees
+            .iter()
+            .flatten()
+            .flatten()
+            .any(|name| name == slug.as_ref()))
     }
 
     fn add_worktree(
         &self,
         repo_root: &Path,
         path: &Path,
-        branch: &str,
-        start_point: &str,
+        branch: &BranchValue,
+        start_point: &RefValue,
     ) -> Result<(), GitError> {
         // `git worktree add` is a mutating porcelain command; git2's
         // worktree API is more manual and less battle-tested here, so
@@ -157,8 +168,8 @@ impl GitRepository for RealGit {
                 "add",
                 path.to_string_lossy().as_ref(),
                 "-b",
-                branch,
-                start_point,
+                branch.as_ref(),
+                start_point.as_ref(),
             ])
             .output()
             .map_err(|e| GitError::CommandFailed {
@@ -205,10 +216,14 @@ impl GitRepository for RealGit {
         })
     }
 
-    fn remote_default_resolves(&self, repo_root: &Path, main_branch: &str) -> Result<(), GitError> {
+    fn remote_default_resolves(
+        &self,
+        repo_root: &Path,
+        main_branch: &RefValue,
+    ) -> Result<(), GitError> {
         let resolve = || -> Result<(), git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
-            repo.revparse_single(&format!("origin/{}", main_branch))?;
+            repo.revparse_single(&format!("origin/{}", main_branch.as_ref()))?;
             Ok(())
         };
         resolve().map_err(|e| GitError::MergeCheck {
@@ -216,14 +231,15 @@ impl GitRepository for RealGit {
         })
     }
 
-    fn resolve_ref(&self, repo_root: &Path, ref_spec: &str) -> Result<(), GitError> {
+    fn resolve_ref(&self, repo_root: &Path, ref_spec: &RefValue) -> Result<(), GitError> {
+        let ref_spec_str = ref_spec.as_ref();
         let resolve = || -> Result<(), git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
-            repo.revparse_single(ref_spec)?;
+            repo.revparse_single(ref_spec_str)?;
             Ok(())
         };
         resolve().map_err(|e| GitError::RefResolve {
-            ref_spec: ref_spec.to_string(),
+            ref_spec: ref_spec_str.to_string(),
             message: e.message().to_string(),
         })
     }
@@ -257,15 +273,16 @@ impl GitRepository for RealGit {
     fn changed_paths(
         &self,
         repo_root: &Path,
-        base_branch: &str,
-        head_ref: &str,
+        base_branch: &RefValue,
+        head_ref: &RefValue,
     ) -> Result<Vec<PathBuf>, GitError> {
+        let head_ref_str = head_ref.as_ref();
         let diff_paths = || -> Result<Vec<PathBuf>, git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
             let base_oid = repo
-                .revparse_single(&format!("origin/{}", base_branch))?
+                .revparse_single(&format!("origin/{}", base_branch.as_ref()))?
                 .id();
-            let head_oid = repo.revparse_single(head_ref)?.id();
+            let head_oid = repo.revparse_single(head_ref_str)?.id();
             let merge_base_oid = repo.merge_base(base_oid, head_oid)?;
             let base_tree = repo.find_commit(merge_base_oid)?.tree()?;
             let head_tree = repo.find_commit(head_oid)?.tree()?;
@@ -297,12 +314,13 @@ impl GitRepository for RealGit {
     fn read_file_at(
         &self,
         repo_root: &Path,
-        rev: &str,
+        rev: &RefValue,
         path: &Path,
     ) -> Result<Option<String>, GitError> {
+        let rev_str = rev.as_ref();
         let read = || -> Result<Option<String>, git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
-            let commit_oid = repo.revparse_single(rev)?.id();
+            let commit_oid = repo.revparse_single(rev_str)?.id();
             let tree = repo.find_commit(commit_oid)?.tree()?;
             let Ok(entry) = tree.get_path(path) else {
                 return Ok(None);
@@ -320,13 +338,15 @@ impl GitRepository for RealGit {
     fn is_ancestor(
         &self,
         repo_root: &Path,
-        ancestor_ref: &str,
-        descendant_ref: &str,
+        ancestor_ref: &RefValue,
+        descendant_ref: &RefValue,
     ) -> Result<bool, GitError> {
+        let ancestor_ref_str = ancestor_ref.as_ref();
+        let descendant_ref_str = descendant_ref.as_ref();
         let check = || -> Result<bool, git2::Error> {
             let repo = git2::Repository::open(repo_root)?;
-            let ancestor_oid = repo.revparse_single(ancestor_ref)?.id();
-            let descendant_oid = repo.revparse_single(descendant_ref)?.id();
+            let ancestor_oid = repo.revparse_single(ancestor_ref_str)?.id();
+            let descendant_oid = repo.revparse_single(descendant_ref_str)?.id();
 
             if ancestor_oid == descendant_oid {
                 return Ok(true);
@@ -334,19 +354,20 @@ impl GitRepository for RealGit {
             repo.graph_descendant_of(descendant_oid, ancestor_oid)
         };
         check().map_err(|e| GitError::RefResolve {
-            ref_spec: ancestor_ref.to_string(),
+            ref_spec: ancestor_ref_str.to_string(),
             message: e.message().to_string(),
         })
     }
 
-    fn pr_state(&self, repo_root: &Path, branch: &str) -> Result<PrState, GitError> {
+    fn pr_state(&self, repo_root: &Path, base_ref: &RefValue) -> Result<PrState, GitError> {
+        let branch_str = base_ref.as_ref();
         let output = std::process::Command::new("gh")
             .current_dir(repo_root)
             .args([
                 "pr",
                 "list",
                 "--head",
-                branch,
+                branch_str,
                 "--state",
                 "all",
                 "--json",
@@ -409,14 +430,14 @@ impl GitRepository for RealGit {
             .unwrap_or(PrState::None))
     }
 
-    fn rebase(&self, repo_root: &Path, onto: &str) -> Result<(), GitError> {
+    fn rebase(&self, repo_root: &Path, onto: &RefValue) -> Result<(), GitError> {
         if rebase_in_progress(repo_root) {
             return continue_rebase(repo_root);
         }
 
         let output = std::process::Command::new("git")
             .current_dir(repo_root)
-            .args(["rebase", onto])
+            .args(["rebase", onto.as_ref()])
             .output()
             .map_err(|e| GitError::CommandFailed {
                 command: "git rebase".to_string(),
@@ -432,14 +453,14 @@ impl GitRepository for RealGit {
         })
     }
 
-    fn merge(&self, repo_root: &Path, other_ref: &str) -> Result<(), GitError> {
+    fn merge(&self, repo_root: &Path, other_ref: &RefValue) -> Result<(), GitError> {
         if merge_in_progress(repo_root) {
             return continue_merge(repo_root);
         }
 
         let output = std::process::Command::new("git")
             .current_dir(repo_root)
-            .args(["merge", "--no-edit", other_ref])
+            .args(["merge", "--no-edit", other_ref.as_ref()])
             .output()
             .map_err(|e| GitError::CommandFailed {
                 command: "git merge".to_string(),

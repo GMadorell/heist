@@ -10,6 +10,8 @@ use crate::adapters::real_tool_probe::RealToolProbe;
 use crate::adapters::system_clock::SystemClock;
 use crate::adapters::validation_fs::ValidationFs;
 use crate::app;
+use crate::domain::state::Mode;
+use crate::domain::value::{RefValue, ScoreWave, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::git::GitRepository;
 use crate::ports::heist_dir_repository::HeistDirRepository;
@@ -242,7 +244,11 @@ fn run_state(
 ) -> ExitCode {
     match command {
         StateCommands::Init { slug } => {
-            match app::state::init(heist_dir_repo, repo, clock, &slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
+                Ok(v) => v,
+                Err(code) => return code,
+            };
+            match app::state::init(heist_dir_repo, repo, clock, &slug_value) {
                 Ok(()) => ExitCode::Success,
                 Err(app::state::InitError::InvalidSlug(e)) => {
                     present::error(e);
@@ -254,41 +260,57 @@ fn run_state(
                 }
             }
         }
-        StateCommands::Get { slug, field } => match app::state::get(repo, &slug, &field) {
-            Ok(value) => {
-                present::line(value);
-                ExitCode::Success
+        StateCommands::Get { slug, field } => {
+            let slug_value = match parse_slug_or_exit(&slug) {
+                Ok(v) => v,
+                Err(code) => return code,
+            };
+            match app::state::get(repo, &slug_value, &field) {
+                Ok(value) => {
+                    present::line(value);
+                    ExitCode::Success
+                }
+                Err(app::state::GetError::Load(e)) => {
+                    present::state_load_failed(&slug, &e);
+                    ExitCode::from(&e)
+                }
+                Err(app::state::GetError::Field(e)) => {
+                    present::error(e);
+                    ExitCode::Precondition
+                }
             }
-            Err(app::state::GetError::Load(e)) => {
-                present::state_load_failed(&slug, &e);
-                ExitCode::from(&e)
-            }
-            Err(app::state::GetError::Field(e)) => {
-                present::error(e);
-                ExitCode::Precondition
-            }
-        },
+        }
         StateCommands::Set { slug, field, value } => {
-            match app::state::set(repo, clock, &slug, &field, &value) {
+            let slug_value = match parse_slug_or_exit(&slug) {
+                Ok(v) => v,
+                Err(code) => return code,
+            };
+            match app::state::set(repo, clock, &slug_value, &field, &value) {
                 Ok(()) => ExitCode::Success,
                 Err(e) => set_error_exit(&slug, e),
             }
         }
-        StateCommands::Incr { slug, field } => match app::state::incr(repo, clock, &slug, &field) {
-            Ok(()) => ExitCode::Success,
-            Err(app::state::IncrError::Field(e)) => {
-                present::error(e);
-                ExitCode::Precondition
+        StateCommands::Incr { slug, field } => {
+            let slug_value = match parse_slug_or_exit(&slug) {
+                Ok(v) => v,
+                Err(code) => return code,
+            };
+            match app::state::incr(repo, clock, &slug_value, &field) {
+                Ok(()) => ExitCode::Success,
+                Err(app::state::IncrError::Field(e)) => {
+                    present::error(e);
+                    ExitCode::Precondition
+                }
+                Err(app::state::IncrError::Load(e)) => {
+                    present::state_load_failed(&slug, &e);
+                    ExitCode::from(&e)
+                }
+                Err(app::state::IncrError::Save(e)) => {
+                    present::state_save_failed(&slug, &e);
+                    ExitCode::from(&e)
+                }
             }
-            Err(app::state::IncrError::Load(e)) => {
-                present::state_load_failed(&slug, &e);
-                ExitCode::from(&e)
-            }
-            Err(app::state::IncrError::Save(e)) => {
-                present::state_save_failed(&slug, &e);
-                ExitCode::from(&e)
-            }
-        },
+        }
         StateCommands::Schema => match app::state::schema() {
             Ok(output) => {
                 present::line(output);
@@ -317,14 +339,25 @@ fn run_worktree(
 ) -> ExitCode {
     match command {
         WorktreeCommands::Add { slug, base } => {
+            let slug_value = match parse_slug_or_exit(&slug) {
+                Ok(v) => v,
+                Err(code) => return code,
+            };
+            let base_ref = match base.as_deref().map(RefValue::try_from_raw).transpose() {
+                Ok(v) => v,
+                Err(e) => {
+                    present::error(e);
+                    return ExitCode::Precondition;
+                }
+            };
             match app::worktree::add(
                 repo_root,
                 state_repo,
                 git,
                 fs,
                 clock,
-                &slug,
-                base.as_deref(),
+                &slug_value,
+                base_ref.as_ref(),
             ) {
                 Ok(worktree_value) => {
                     present::line(worktree_value);
@@ -334,7 +367,11 @@ fn run_worktree(
             }
         }
         WorktreeCommands::Remove { slug } => {
-            match app::worktree::remove(repo_root, state_repo, git, clock, &slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
+                Ok(v) => v,
+                Err(code) => return code,
+            };
+            match app::worktree::remove(repo_root, state_repo, git, clock, &slug_value) {
                 Ok(()) => ExitCode::Success,
                 Err(app::worktree::RemoveError::NoState) => {
                     present::no_state_for_remove(&slug);
@@ -390,15 +427,16 @@ fn run_worktree(
                     present::error(&e);
                     ExitCode::from(&e)
                 }
+                Err(app::worktree::CleanupError::Naming(e)) => {
+                    present::error(e);
+                    ExitCode::Precondition
+                }
             }
         }
     }
 }
 
-fn run_validation(
-    command: ValidationCommands,
-    src: &dyn ValidationSource,
-) -> ExitCode {
+fn run_validation(command: ValidationCommands, src: &dyn ValidationSource) -> ExitCode {
     match command {
         ValidationCommands::Resolve { paths } => {
             if paths.is_empty() {
@@ -442,10 +480,22 @@ fn run_review(
 ) -> ExitCode {
     match command {
         ReviewCommands::Select { slug } => {
-            match app::review::select(repo_root, state_repo, git, &slug) {
+            let slug_value = match parse_slug_or_exit(&slug) {
+                Ok(v) => v,
+                Err(code) => return code,
+            };
+            match app::review::select(repo_root, state_repo, git, &slug_value) {
                 Ok(lanes) => {
                     present::lane_list(&lanes);
                     ExitCode::Success
+                }
+                Err(app::review::SelectError::InvalidStoredBranch(e)) => {
+                    present::error(e);
+                    ExitCode::Precondition
+                }
+                Err(app::review::SelectError::InvalidMainBranch(e)) => {
+                    present::error(e);
+                    ExitCode::Precondition
                 }
                 Err(app::review::SelectError::NoState) => {
                     present::no_state_for_review(&slug);
@@ -473,7 +523,11 @@ fn run_review(
 }
 
 fn run_resume(slug: &str, repo: &dyn StateRepository) -> ExitCode {
-    match app::resume::resume(repo, slug) {
+    let slug_value = match parse_slug_or_exit(slug) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    match app::resume::resume(repo, &slug_value) {
         Ok(state) => {
             present::resume_summary(&state);
             ExitCode::Success
@@ -518,9 +572,13 @@ fn run_base(
     state_repo: &dyn StateRepository,
     git: &dyn GitRepository,
 ) -> ExitCode {
+    let slug_value = match parse_slug_or_exit(slug) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
     let main_branch = git.default_branch(repo_root);
 
-    match app::base::resolve(repo_root, state_repo, git, slug) {
+    match app::base::resolve(repo_root, state_repo, git, &slug_value) {
         Ok(app::base::BaseResolution::Null) => {
             present::base_resolution("null", &format!("origin/{}", main_branch), &main_branch);
             ExitCode::Success
@@ -549,6 +607,10 @@ fn run_base(
             present::state_load_failed(slug, &e);
             ExitCode::from(&e)
         }
+        Err(app::base::ResolveError::InvalidStoredBase(e)) => {
+            present::error(e);
+            ExitCode::Precondition
+        }
         Err(app::base::ResolveError::RefMissingWithOpenPr { base_ref }) => {
             present::base_resolve_failed(&base_ref, "ref does not exist but PR is still open");
             ExitCode::Precondition
@@ -572,7 +634,11 @@ fn run_base(
 }
 
 fn run_sync(slug: &str, state_repo: &dyn StateRepository, git: &dyn GitRepository) -> ExitCode {
-    match app::sync::sync(state_repo, git, slug) {
+    let slug_value = match parse_slug_or_exit(slug) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    match app::sync::sync(state_repo, git, &slug_value) {
         Ok(action) => {
             present::sync_action(&action);
             ExitCode::Success
@@ -605,6 +671,10 @@ fn run_sync(slug: &str, state_repo: &dyn StateRepository, git: &dyn GitRepositor
             present::state_load_failed(slug, &e);
             ExitCode::from(&e)
         }
+        Err(app::sync::SyncError::Resolve(app::base::ResolveError::InvalidStoredBase(e))) => {
+            present::error(e);
+            ExitCode::Precondition
+        }
         Err(app::sync::SyncError::Resolve(app::base::ResolveError::RefMissingWithOpenPr {
             base_ref,
         })) => {
@@ -631,6 +701,10 @@ fn run_sync(slug: &str, state_repo: &dyn StateRepository, git: &dyn GitRepositor
             present::base_verification_failed(&base_ref, &message);
             ExitCode::Git
         }
+        Err(app::sync::SyncError::InvalidComposedRef(e)) => {
+            present::error(&e);
+            ExitCode::Precondition
+        }
     }
 }
 
@@ -646,6 +720,24 @@ fn run_begin(
     fs: &dyn WorktreeFs,
     clock: &dyn Clock,
 ) -> ExitCode {
+    let slug_value = match parse_slug_or_exit(slug) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let mode_value = match Mode::parse(mode) {
+        Ok(m) => m,
+        Err(e) => {
+            present::error(e);
+            return ExitCode::Precondition;
+        }
+    };
+    let base_ref = match base.map(RefValue::try_from_raw).transpose() {
+        Ok(v) => v,
+        Err(e) => {
+            present::error(e);
+            return ExitCode::Precondition;
+        }
+    };
     match app::begin::begin(
         repo_root,
         heist_dir_repo,
@@ -653,9 +745,9 @@ fn run_begin(
         git,
         fs,
         clock,
-        slug,
-        mode,
-        base,
+        &slug_value,
+        mode_value,
+        base_ref.as_ref(),
     ) {
         Ok(worktree_value) => {
             present::line(worktree_value);
@@ -695,8 +787,14 @@ fn run_begin(
     }
 }
 
-/// Shared `SetError` -> presented message / exit code mapping, used by both
-/// the standalone `state set` command and `begin`'s mode/stage-set steps.
+fn parse_slug_or_exit(slug: &str) -> Result<SlugValue, ExitCode> {
+    SlugValue::parse(slug).map_err(|e| {
+        present::error(e);
+        ExitCode::Precondition
+    })
+}
+
+/// Shared with `begin`'s mode/stage-set steps.
 fn set_error_exit(slug: &str, error: app::state::SetError) -> ExitCode {
     match error {
         app::state::SetError::Field(e) => {
@@ -714,8 +812,7 @@ fn set_error_exit(slug: &str, error: app::state::SetError) -> ExitCode {
     }
 }
 
-/// Shared `AddError` -> presented message / exit code mapping, used by both
-/// the standalone `worktree add` command and `begin`'s worktree-add step.
+/// Shared with `begin`'s worktree-add step.
 fn add_error_exit(slug: &str, error: app::worktree::AddError) -> ExitCode {
     match error {
         app::worktree::AddError::NoState => {
@@ -723,6 +820,10 @@ fn add_error_exit(slug: &str, error: app::worktree::AddError) -> ExitCode {
             ExitCode::Precondition
         }
         app::worktree::AddError::Naming(e) => {
+            present::error(e);
+            ExitCode::Precondition
+        }
+        app::worktree::AddError::InvalidComposedRef(e) => {
             present::error(e);
             ExitCode::Precondition
         }
@@ -759,80 +860,99 @@ fn run_score(
     clock: &dyn Clock,
 ) -> ExitCode {
     match command {
-        ScoreCommands::Check { slug } => match app::score::check(state_repo, score_repo, &slug) {
-            Ok(outcome) => {
-                present::score_check_ok(outcome.steps, outcome.waves);
-                ExitCode::Success
+        ScoreCommands::Check { slug } => {
+            let slug_value = match parse_slug_or_exit(&slug) {
+                Ok(v) => v,
+                Err(code) => return code,
+            };
+            match app::score::check(state_repo, score_repo, &slug_value) {
+                Ok(outcome) => {
+                    present::score_check_ok(outcome.steps, outcome.waves);
+                    ExitCode::Success
+                }
+                Err(app::score::CheckError::NoState) => {
+                    present::no_state_for_score(&slug);
+                    ExitCode::Precondition
+                }
+                Err(app::score::CheckError::NoScore) => {
+                    present::no_score_for_slug(&slug);
+                    ExitCode::Precondition
+                }
+                Err(app::score::CheckError::Io(e)) => {
+                    present::score_io_failed(&slug, &e);
+                    ExitCode::Internal
+                }
+                Err(app::score::CheckError::Findings(findings)) => {
+                    present::score_findings(&findings);
+                    ExitCode::Precondition
+                }
             }
-            Err(app::score::CheckError::NoState) => {
-                present::no_state_for_score(&slug);
-                ExitCode::Precondition
+        }
+        ScoreCommands::Record { slug } => {
+            let slug_value = match parse_slug_or_exit(&slug) {
+                Ok(v) => v,
+                Err(code) => return code,
+            };
+            match app::score::record(state_repo, score_repo, clock, &slug_value) {
+                Ok(outcome) => {
+                    present::score_record_ok(outcome.steps, outcome.waves);
+                    ExitCode::Success
+                }
+                Err(app::score::RecordError::NoState) => {
+                    present::no_state_for_score(&slug);
+                    ExitCode::Precondition
+                }
+                Err(app::score::RecordError::NoScore) => {
+                    present::no_score_for_slug(&slug);
+                    ExitCode::Precondition
+                }
+                Err(app::score::RecordError::Io(e)) => {
+                    present::score_io_failed(&slug, &e);
+                    ExitCode::Internal
+                }
+                Err(app::score::RecordError::Findings(findings)) => {
+                    present::score_findings(&findings);
+                    ExitCode::Precondition
+                }
+                Err(app::score::RecordError::Save(e)) => {
+                    present::state_save_failed(&slug, &e);
+                    ExitCode::from(&e)
+                }
             }
-            Err(app::score::CheckError::NoScore) => {
-                present::no_score_for_slug(&slug);
-                ExitCode::Precondition
+        }
+        ScoreCommands::Wave { slug, n } => {
+            let slug_value = match parse_slug_or_exit(&slug) {
+                Ok(v) => v,
+                Err(code) => return code,
+            };
+            let score_wave = ScoreWave::new(n);
+            match app::score::wave(state_repo, score_repo, &slug_value, score_wave) {
+                Ok(blocks) => {
+                    present::score_wave_blocks(&blocks);
+                    ExitCode::Success
+                }
+                Err(app::score::WaveError::NoState) => {
+                    present::no_state_for_score(&slug);
+                    ExitCode::Precondition
+                }
+                Err(app::score::WaveError::NoScore) => {
+                    present::no_score_for_slug(&slug);
+                    ExitCode::Precondition
+                }
+                Err(app::score::WaveError::Io(e)) => {
+                    present::score_io_failed(&slug, &e);
+                    ExitCode::Internal
+                }
+                Err(app::score::WaveError::Findings(findings)) => {
+                    present::score_findings(&findings);
+                    ExitCode::Precondition
+                }
+                Err(app::score::WaveError::NoSuchWave(n)) => {
+                    present::score_no_such_wave(&slug, n);
+                    ExitCode::Precondition
+                }
             }
-            Err(app::score::CheckError::Io(e)) => {
-                present::score_io_failed(&slug, &e);
-                ExitCode::Internal
-            }
-            Err(app::score::CheckError::Findings(findings)) => {
-                present::score_findings(&findings);
-                ExitCode::Precondition
-            }
-        },
-        ScoreCommands::Record { slug } => match app::score::record(state_repo, score_repo, clock, &slug) {
-            Ok(outcome) => {
-                present::score_record_ok(outcome.steps, outcome.waves);
-                ExitCode::Success
-            }
-            Err(app::score::RecordError::NoState) => {
-                present::no_state_for_score(&slug);
-                ExitCode::Precondition
-            }
-            Err(app::score::RecordError::NoScore) => {
-                present::no_score_for_slug(&slug);
-                ExitCode::Precondition
-            }
-            Err(app::score::RecordError::Io(e)) => {
-                present::score_io_failed(&slug, &e);
-                ExitCode::Internal
-            }
-            Err(app::score::RecordError::Findings(findings)) => {
-                present::score_findings(&findings);
-                ExitCode::Precondition
-            }
-            Err(app::score::RecordError::Save(e)) => {
-                present::state_save_failed(&slug, &e);
-                ExitCode::from(&e)
-            }
-        },
-        ScoreCommands::Wave { slug, n } => match app::score::wave(state_repo, score_repo, &slug, n) {
-            Ok(blocks) => {
-                present::score_wave_blocks(&blocks);
-                ExitCode::Success
-            }
-            Err(app::score::WaveError::NoState) => {
-                present::no_state_for_score(&slug);
-                ExitCode::Precondition
-            }
-            Err(app::score::WaveError::NoScore) => {
-                present::no_score_for_slug(&slug);
-                ExitCode::Precondition
-            }
-            Err(app::score::WaveError::Io(e)) => {
-                present::score_io_failed(&slug, &e);
-                ExitCode::Internal
-            }
-            Err(app::score::WaveError::Findings(findings)) => {
-                present::score_findings(&findings);
-                ExitCode::Precondition
-            }
-            Err(app::score::WaveError::NoSuchWave(n)) => {
-                present::score_no_such_wave(&slug, n);
-                ExitCode::Precondition
-            }
-        },
+        }
     }
 }
 
@@ -843,12 +963,13 @@ mod tests {
         FakeGit, FakeWorktreeFs, FixedClock, InMemoryHeistDirRepository, InMemoryStateRepository,
     };
     use crate::domain::state::{Stage, State};
-    use crate::domain::value::{DateValue, NonBlankValue, ScoreWave};
+    use crate::domain::testing::valid;
+    use crate::domain::value::DateValue;
     use crate::ports::git::{GitError, PrState};
     use tempfile::TempDir;
 
     fn fixed_date() -> DateValue {
-        DateValue::parse("today", "2026-01-01").expect("valid date")
+        valid::date("2026-01-01")
     }
 
     fn fixed_clock() -> FixedClock {
@@ -875,8 +996,10 @@ mod tests {
     #[test]
     fn state_init_rejects_existing_slug() {
         let heist_dir_repo = InMemoryHeistDirRepository::new().with_dir("foo");
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+        );
         let code = run_state(
             StateCommands::Init { slug: "foo".into() },
             &heist_dir_repo,
@@ -906,8 +1029,10 @@ mod tests {
     #[test]
     fn state_set_persists_valid_field() {
         let heist_dir_repo = InMemoryHeistDirRepository::new();
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+        );
         let code = run_state(
             StateCommands::Set {
                 slug: "foo".into(),
@@ -928,8 +1053,10 @@ mod tests {
     #[test]
     fn state_set_invalid_numeric_is_precondition_and_leaves_state() {
         let heist_dir_repo = InMemoryHeistDirRepository::new();
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+        );
         let code = run_state(
             StateCommands::Set {
                 slug: "foo".into(),
@@ -969,10 +1096,37 @@ mod tests {
     }
 
     #[test]
+    fn worktree_add_rejects_invalid_base_ref_at_boundary() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+        );
+        let git = FakeGit::new();
+
+        let code = run_worktree(
+            WorktreeCommands::Add {
+                slug: "foo".into(),
+                base: Some("bad\tref".into()),
+            },
+            temp_dir.path(),
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Precondition);
+        assert!(repo.get("foo").unwrap().worktree.is_none());
+    }
+
+    #[test]
     fn worktree_add_fails_when_origin_unreachable() {
         let temp_dir = TempDir::new().expect("failed to create temp directory");
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+        );
         let git = FakeGit::new().failing_add(GitError::WorktreeAdd {
             subtype: "origin-unreachable".into(),
             message: "cannot find remote ref".into(),
@@ -1014,8 +1168,10 @@ mod tests {
 
     #[test]
     fn worktree_remove_refuses_when_branch_not_merged() {
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+        );
         // No merged branch configured, so heist/foo is treated as unmerged.
         let git = FakeGit::new().with_default_branch("main");
 
@@ -1038,8 +1194,10 @@ mod tests {
 
     #[test]
     fn worktree_remove_surfaces_worktree_removal_failure() {
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+        );
         let git = FakeGit::new()
             .with_merged_branch("heist/foo")
             .failing_remove(GitError::WorktreeRemove {
@@ -1065,8 +1223,10 @@ mod tests {
 
     #[test]
     fn worktree_remove_surfaces_branch_deletion_failure() {
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+        );
         let git = FakeGit::new()
             .with_merged_branch("heist/foo")
             .failing_delete(GitError::BranchDelete {
@@ -1091,8 +1251,10 @@ mod tests {
 
     #[test]
     fn worktree_remove_marks_done_when_merged() {
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+        );
         let git = FakeGit::new()
             .with_default_branch("main")
             .with_merged_branch("heist/foo");
@@ -1176,8 +1338,8 @@ mod tests {
 
     #[test]
     fn base_command_reports_abandoned_as_precondition_exit_code() {
-        let mut state = State::new("foo", fixed_date()).expect("valid slug");
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = State::new(&valid::slug("foo"), fixed_date()).expect("valid slug");
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new().with_pr_state("heist/piece-01", PrState::ClosedUnmerged);
@@ -1189,10 +1351,10 @@ mod tests {
 
     #[test]
     fn sync_command_refuses_abandoned_base_with_abandoned_exit_code() {
-        let mut state = State::new("foo", fixed_date()).expect("valid slug");
-        state.worktree = Some(NonBlankValue::parse("worktree", "/tmp/wt").expect("valid worktree"));
-        state.branch = Some(NonBlankValue::parse("branch", "heist/foo").expect("valid branch"));
-        state.base = Some(NonBlankValue::parse("base", "heist/piece-01").expect("valid base"));
+        let mut state = State::new(&valid::slug("foo"), fixed_date()).expect("valid slug");
+        state.worktree = Some(valid::worktree("/tmp/wt"));
+        state.branch = Some(valid::branch("heist/foo"));
+        state.base = Some(valid::base("heist/piece-01"));
 
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let git = FakeGit::new()
@@ -1232,8 +1394,10 @@ mod tests {
     fn begin_collision_returns_precondition_exit_code() {
         let temp_dir = TempDir::new().expect("failed to create temp directory");
         let heist_dir_repo = InMemoryHeistDirRepository::new();
-        let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"));
+        let repo = InMemoryStateRepository::new().with_state(
+            "foo",
+            State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+        );
         let git = FakeGit::new().with_default_branch("main");
 
         let code = run_begin(
@@ -1252,6 +1416,52 @@ mod tests {
     }
 
     #[test]
+    fn begin_rejects_invalid_slug_at_boundary_before_touching_state_or_git() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new().with_default_branch("main");
+
+        let code = run_begin(
+            "Not A Slug",
+            "heavy",
+            None,
+            temp_dir.path(),
+            &heist_dir_repo,
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Precondition);
+        assert!(!heist_dir_repo.exists("Not A Slug"));
+    }
+
+    #[test]
+    fn begin_rejects_invalid_mode_at_boundary_before_touching_state_or_git() {
+        let temp_dir = TempDir::new().expect("failed to create temp directory");
+        let heist_dir_repo = InMemoryHeistDirRepository::new();
+        let repo = InMemoryStateRepository::new();
+        let git = FakeGit::new().with_default_branch("main");
+
+        let code = run_begin(
+            "foo",
+            "bogus-mode",
+            None,
+            temp_dir.path(),
+            &heist_dir_repo,
+            &repo,
+            &git,
+            &FakeWorktreeFs,
+            &fixed_clock(),
+        );
+
+        assert_eq!(code, ExitCode::Precondition);
+        assert!(!repo.exists(&valid::slug("foo")));
+    }
+
+    #[test]
     fn score_check_reports_findings_as_precondition_exit_code() {
         let malformed_score = "\
 ## Wave 1
@@ -1263,7 +1473,10 @@ mod tests {
 - Depends on: none
 ";
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_state(
+                "foo",
+                State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+            )
             .with_score("foo", malformed_score);
 
         let code = run_score(
@@ -1289,7 +1502,10 @@ mod tests {
 - Depends on: none
 ";
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_state(
+                "foo",
+                State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+            )
             .with_score("foo", valid_score);
 
         let code = run_score(
@@ -1318,7 +1534,10 @@ mod tests {
 - Depends on: none
 ";
         let repo = InMemoryStateRepository::new()
-            .with_state("foo", State::new("foo", fixed_date()).expect("valid slug"))
+            .with_state(
+                "foo",
+                State::new(&valid::slug("foo"), fixed_date()).expect("valid slug"),
+            )
             .with_score("foo", valid_score);
 
         let ok_code = run_score(

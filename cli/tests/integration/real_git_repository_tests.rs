@@ -1,3 +1,4 @@
+use crate::common::valid::{branch, ref_value, slug};
 use heist_cli::adapters::real_git::RealGit;
 use heist_cli::ports::git::{GitError, GitRepository, MergeCheck};
 use std::fs;
@@ -84,7 +85,7 @@ fn resolve_ref_errors_with_ref_resolve_on_missing_ref() {
     let repo_root = temp_dir.path();
     init_repo_with_commit(repo_root);
 
-    let result = RealGit.resolve_ref(repo_root, "does-not-exist");
+    let result = RealGit.resolve_ref(repo_root, &ref_value("does-not-exist"));
 
     match result {
         Err(GitError::RefResolve { ref_spec, .. }) => {
@@ -119,7 +120,7 @@ fn reports_branch_merged_when_equal_to_origin_main() {
 
     assert_eq!(
         RealGit
-            .is_branch_merged(repo_dir.path(), "feature", "main")
+            .is_branch_merged(repo_dir.path(), &branch("feature"), &ref_value("main"))
             .expect("merge check should succeed"),
         MergeCheck::Merged
     );
@@ -155,7 +156,7 @@ fn reports_branch_merged_when_ancestor_of_origin_main() {
 
     assert_eq!(
         RealGit
-            .is_branch_merged(repo_dir.path(), "feature", "main")
+            .is_branch_merged(repo_dir.path(), &branch("feature"), &ref_value("main"))
             .expect("merge check should succeed"),
         MergeCheck::Merged
     );
@@ -187,7 +188,7 @@ fn reports_branch_unmerged_when_not_ancestor_of_origin_main() {
 
     assert!(matches!(
         RealGit
-            .is_branch_merged(repo_dir.path(), "feature", "main")
+            .is_branch_merged(repo_dir.path(), &branch("feature"), &ref_value("main"))
             .expect("merge check should succeed"),
         MergeCheck::NotMerged { .. }
     ));
@@ -198,7 +199,11 @@ fn is_branch_merged_errors_on_bad_ref() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     init_repo_with_commit(temp_dir.path());
 
-    let result = RealGit.is_branch_merged(temp_dir.path(), "no-such-branch", "main");
+    let result = RealGit.is_branch_merged(
+        temp_dir.path(),
+        &branch("no-such-branch"),
+        &ref_value("main"),
+    );
     assert!(result.is_err());
 }
 
@@ -209,7 +214,7 @@ fn delete_branch_succeeds_when_merged() {
     run_git(temp_dir.path(), &["branch", "feature"]);
 
     RealGit
-        .delete_branch(temp_dir.path(), "feature")
+        .delete_branch(temp_dir.path(), &branch("feature"))
         .expect("delete should succeed");
 }
 
@@ -221,7 +226,7 @@ fn delete_branch_fails_when_unmerged() {
     commit_file(temp_dir.path(), "feature.txt", "unmerged");
     run_git(temp_dir.path(), &["checkout", "-q", "main"]);
 
-    let result = RealGit.delete_branch(temp_dir.path(), "feature");
+    let result = RealGit.delete_branch(temp_dir.path(), &branch("feature"));
     assert!(result.is_err());
 }
 
@@ -231,14 +236,25 @@ fn worktree_exists_reflects_added_worktrees() {
     init_repo_with_commit(temp_dir.path());
     let worktree_path = temp_dir.path().join("worktrees").join("foo");
 
-    assert!(!RealGit.worktree_exists(temp_dir.path(), "foo").unwrap());
+    assert!(!RealGit
+        .worktree_exists(temp_dir.path(), &slug("foo"))
+        .unwrap());
 
     RealGit
-        .add_worktree(temp_dir.path(), &worktree_path, "heist/foo", "main")
+        .add_worktree(
+            temp_dir.path(),
+            &worktree_path,
+            &branch("heist/foo"),
+            &ref_value("main"),
+        )
         .expect("add should succeed");
 
-    assert!(RealGit.worktree_exists(temp_dir.path(), "foo").unwrap());
-    assert!(!RealGit.worktree_exists(temp_dir.path(), "bar").unwrap());
+    assert!(RealGit
+        .worktree_exists(temp_dir.path(), &slug("foo"))
+        .unwrap());
+    assert!(!RealGit
+        .worktree_exists(temp_dir.path(), &slug("bar"))
+        .unwrap());
 }
 
 #[test]
@@ -249,7 +265,12 @@ fn add_worktree_fails_when_path_already_exists() {
     fs::create_dir_all(&worktree_path).expect("failed to create directory");
     fs::write(worktree_path.join("occupied"), "x").expect("failed to write file");
 
-    let result = RealGit.add_worktree(temp_dir.path(), &worktree_path, "heist/foo", "main");
+    let result = RealGit.add_worktree(
+        temp_dir.path(),
+        &worktree_path,
+        &branch("heist/foo"),
+        &ref_value("main"),
+    );
 
     match result {
         Err(GitError::WorktreeAdd { subtype, .. }) => assert_eq!(subtype, "already-exists"),
@@ -263,14 +284,21 @@ fn remove_worktree_removes_added_worktree() {
     init_repo_with_commit(temp_dir.path());
     let worktree_path = temp_dir.path().join("worktrees").join("foo");
     RealGit
-        .add_worktree(temp_dir.path(), &worktree_path, "heist/foo", "main")
+        .add_worktree(
+            temp_dir.path(),
+            &worktree_path,
+            &branch("heist/foo"),
+            &ref_value("main"),
+        )
         .expect("add should succeed");
 
     RealGit
         .remove_worktree(temp_dir.path(), &worktree_path)
         .expect("remove should succeed");
 
-    assert!(!RealGit.worktree_exists(temp_dir.path(), "foo").unwrap());
+    assert!(!RealGit
+        .worktree_exists(temp_dir.path(), &slug("foo"))
+        .unwrap());
 }
 
 #[test]
@@ -289,7 +317,12 @@ fn list_worktrees_reports_path_and_branch() {
     init_repo_with_commit(temp_dir.path());
     let worktree_path = temp_dir.path().join("worktrees").join("foo");
     RealGit
-        .add_worktree(temp_dir.path(), &worktree_path, "heist/foo", "main")
+        .add_worktree(
+            temp_dir.path(),
+            &worktree_path,
+            &branch("heist/foo"),
+            &ref_value("main"),
+        )
         .expect("add should succeed");
 
     let infos = RealGit
@@ -332,7 +365,7 @@ fn changed_paths_lists_files_changed_since_merge_base() {
     commit_file(repo_dir.path(), "README.md", "hello\nmore");
 
     let paths = RealGit
-        .changed_paths(repo_dir.path(), "main", "feature")
+        .changed_paths(repo_dir.path(), &ref_value("main"), &ref_value("feature"))
         .expect("changed_paths should succeed");
 
     assert_eq!(
@@ -346,7 +379,11 @@ fn changed_paths_errors_on_unresolvable_base() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     init_repo_with_commit(temp_dir.path());
 
-    let result = RealGit.changed_paths(temp_dir.path(), "no-such-remote-branch", "HEAD");
+    let result = RealGit.changed_paths(
+        temp_dir.path(),
+        &ref_value("no-such-remote-branch"),
+        &ref_value("HEAD"),
+    );
     assert!(result.is_err());
 }
 
@@ -377,7 +414,7 @@ fn changed_paths_includes_deleted_files_via_old_file_path() {
     run_git(repo_dir.path(), &["commit", "-q", "-m", "remove doomed.rs"]);
 
     let paths = RealGit
-        .changed_paths(repo_dir.path(), "main", "feature")
+        .changed_paths(repo_dir.path(), &ref_value("main"), &ref_value("feature"))
         .expect("changed_paths should succeed");
 
     assert_eq!(paths, vec![PathBuf::from("doomed.rs")]);
@@ -388,7 +425,7 @@ fn resolve_ref_errors_on_missing_ref() {
     let temp_dir = TempDir::new().expect("failed to create temp directory");
     init_repo_with_commit(temp_dir.path());
 
-    let result = RealGit.resolve_ref(temp_dir.path(), "no-such-ref");
+    let result = RealGit.resolve_ref(temp_dir.path(), &ref_value("no-such-ref"));
     assert!(result.is_err());
 }
 
@@ -398,7 +435,7 @@ fn resolve_ref_succeeds_for_existing_branch() {
     init_repo_with_commit(temp_dir.path());
     run_git(temp_dir.path(), &["branch", "feature"]);
 
-    let result = RealGit.resolve_ref(temp_dir.path(), "feature");
+    let result = RealGit.resolve_ref(temp_dir.path(), &ref_value("feature"));
     assert!(result.is_ok());
 }
 
@@ -427,7 +464,7 @@ fn is_ancestor_false_when_not_reachable() {
     commit_file(repo_dir.path(), "feature.txt", "unmerged");
 
     assert!(!RealGit
-        .is_ancestor(repo_dir.path(), "feature", "main")
+        .is_ancestor(repo_dir.path(), &ref_value("feature"), &ref_value("main"))
         .expect("is_ancestor should succeed"));
 }
 
@@ -496,7 +533,7 @@ fn build_stacked_squash_scenario() -> (TempDir, TempDir) {
 fn rebase_conflicts_on_multi_commit_squashed_base() {
     let (_origin_dir, repo_dir) = build_stacked_squash_scenario();
 
-    let result = RealGit.rebase(repo_dir.path(), "origin/main");
+    let result = RealGit.rebase(repo_dir.path(), &ref_value("origin/main"));
     assert!(result.is_err());
 }
 
@@ -504,7 +541,7 @@ fn rebase_conflicts_on_multi_commit_squashed_base() {
 fn merge_succeeds_on_multi_commit_squashed_base_where_rebase_would_conflict() {
     let (_origin_dir, repo_dir) = build_stacked_squash_scenario();
 
-    let result = RealGit.merge(repo_dir.path(), "origin/main");
+    let result = RealGit.merge(repo_dir.path(), &ref_value("origin/main"));
     assert!(result.is_ok());
 
     assert!(repo_dir.path().join("a.txt").exists());
@@ -535,8 +572,12 @@ fn branch_exists_true_for_existing_branch_false_otherwise() {
     init_repo_with_commit(repo_root);
     run_git(repo_root, &["branch", "heist/foo"]);
 
-    assert!(RealGit.branch_exists(repo_root, "heist/foo").unwrap());
-    assert!(!RealGit.branch_exists(repo_root, "heist/does-not-exist").unwrap());
+    assert!(RealGit
+        .branch_exists(repo_root, &branch("heist/foo"))
+        .unwrap());
+    assert!(!RealGit
+        .branch_exists(repo_root, &branch("heist/does-not-exist"))
+        .unwrap());
 }
 
 /// Builds a scenario where a direct three-way `git merge` (not a rebase)
@@ -577,7 +618,7 @@ fn build_merge_conflict_scenario() -> (TempDir, TempDir) {
 fn rebase_resumes_in_progress_rebase_instead_of_starting_fresh() {
     let (_origin_dir, repo_dir) = build_stacked_squash_scenario();
 
-    let first = RealGit.rebase(repo_dir.path(), "origin/main");
+    let first = RealGit.rebase(repo_dir.path(), &ref_value("origin/main"));
     assert!(first.is_err(), "expected the rebase to conflict first");
 
     // Resolve the conflict as a human/Cleaner would: take the upstream
@@ -588,7 +629,7 @@ fn rebase_resumes_in_progress_rebase_instead_of_starting_fresh() {
     // Re-running `rebase` mid-conflict must *resume* (`git rebase
     // --continue`), not attempt a fresh `git rebase origin/main`, which
     // would fail with "rebase-merge directory already exists".
-    let second = RealGit.rebase(repo_dir.path(), "origin/main");
+    let second = RealGit.rebase(repo_dir.path(), &ref_value("origin/main"));
     assert!(
         second.is_ok(),
         "expected resumed rebase to succeed, got: {:?}",
@@ -603,12 +644,12 @@ fn rebase_resumes_in_progress_rebase_instead_of_starting_fresh() {
 fn rebase_resume_with_unresolved_conflicts_fails_with_bounded_diagnostic() {
     let (_origin_dir, repo_dir) = build_stacked_squash_scenario();
 
-    let first = RealGit.rebase(repo_dir.path(), "origin/main");
+    let first = RealGit.rebase(repo_dir.path(), &ref_value("origin/main"));
     assert!(first.is_err(), "expected the rebase to conflict first");
 
     // Re-run without resolving anything: this must fail loudly rather than
     // loop forever or silently start a new rebase.
-    let second = RealGit.rebase(repo_dir.path(), "origin/main");
+    let second = RealGit.rebase(repo_dir.path(), &ref_value("origin/main"));
     assert!(
         second.is_err(),
         "expected resume with unresolved conflicts to fail"
@@ -619,7 +660,7 @@ fn rebase_resume_with_unresolved_conflicts_fails_with_bounded_diagnostic() {
 fn merge_resumes_in_progress_merge_instead_of_starting_fresh() {
     let (_origin_dir, repo_dir) = build_merge_conflict_scenario();
 
-    let first = RealGit.merge(repo_dir.path(), "origin/main");
+    let first = RealGit.merge(repo_dir.path(), &ref_value("origin/main"));
     assert!(first.is_err(), "expected the merge to conflict first");
     assert!(repo_dir.path().join(".git").join("MERGE_HEAD").exists());
 
@@ -630,7 +671,7 @@ fn merge_resumes_in_progress_merge_instead_of_starting_fresh() {
     // Re-running `merge` mid-conflict must *resume* (`git commit
     // --no-edit`), not attempt a fresh `git merge origin/main`, which
     // would fail with "fatal: MERGE_HEAD exists".
-    let second = RealGit.merge(repo_dir.path(), "origin/main");
+    let second = RealGit.merge(repo_dir.path(), &ref_value("origin/main"));
     assert!(
         second.is_ok(),
         "expected resumed merge to succeed, got: {:?}",
@@ -648,12 +689,12 @@ fn merge_resumes_in_progress_merge_instead_of_starting_fresh() {
 fn merge_resume_with_unresolved_conflicts_fails_with_bounded_diagnostic() {
     let (_origin_dir, repo_dir) = build_merge_conflict_scenario();
 
-    let first = RealGit.merge(repo_dir.path(), "origin/main");
+    let first = RealGit.merge(repo_dir.path(), &ref_value("origin/main"));
     assert!(first.is_err(), "expected the merge to conflict first");
 
     // Re-run without resolving anything: this must fail loudly rather than
     // loop forever or silently start a new merge.
-    let second = RealGit.merge(repo_dir.path(), "origin/main");
+    let second = RealGit.merge(repo_dir.path(), &ref_value("origin/main"));
     assert!(
         second.is_err(),
         "expected resume with unresolved conflicts to fail"

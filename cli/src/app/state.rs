@@ -1,12 +1,12 @@
-use crate::domain::error::{FieldError, StateError};
+use crate::domain::error::{StateError, ValueError};
 use crate::domain::state::State;
-use crate::domain::value::DateValue;
+use crate::domain::value::{DateValue, SlugValue};
 use crate::ports::clock::Clock;
 use crate::ports::heist_dir_repository::HeistDirRepository;
 use crate::ports::state_repository::StateRepository;
 
 pub enum InitError {
-    InvalidSlug(FieldError),
+    InvalidSlug(ValueError),
     Init(StateError),
 }
 
@@ -14,7 +14,7 @@ pub fn init(
     heist_dir_repo: &dyn HeistDirRepository,
     repo: &dyn StateRepository,
     clock: &dyn Clock,
-    slug: &str,
+    slug: &SlugValue,
 ) -> Result<(), InitError> {
     let state = State::new(slug, clock.today()).map_err(InitError::InvalidSlug)?;
     heist_dir_repo.create(slug).map_err(InitError::Init)?;
@@ -23,16 +23,16 @@ pub fn init(
 
 pub enum GetError {
     Load(StateError),
-    Field(FieldError),
+    Field(ValueError),
 }
 
-pub fn get(repo: &dyn StateRepository, slug: &str, field: &str) -> Result<String, GetError> {
+pub fn get(repo: &dyn StateRepository, slug: &SlugValue, field: &str) -> Result<String, GetError> {
     let state = repo.load(slug).map_err(GetError::Load)?;
     state.get_field(field).map_err(GetError::Field)
 }
 
 pub enum SetError {
-    Field(FieldError),
+    Field(ValueError),
     Load(StateError),
     Save(StateError),
 }
@@ -40,7 +40,7 @@ pub enum SetError {
 pub fn set(
     repo: &dyn StateRepository,
     clock: &dyn Clock,
-    slug: &str,
+    slug: &SlugValue,
     field: &str,
     value: &str,
 ) -> Result<(), SetError> {
@@ -51,7 +51,7 @@ pub fn set(
 }
 
 pub enum SchemaError {
-    InvalidExample(FieldError),
+    InvalidExample(ValueError),
     Serialize(serde_json::Error),
 }
 
@@ -71,7 +71,11 @@ updated: string";
 
 pub fn schema() -> Result<String, SchemaError> {
     let example_date = DateValue::parse("created", "2026-01-01").expect("constant date is valid");
-    let example = State::new("example", example_date).map_err(SchemaError::InvalidExample)?;
+    let example = State::new(
+        &SlugValue::parse("example").expect("constant slug is valid"),
+        example_date,
+    )
+    .map_err(SchemaError::InvalidExample)?;
     let json = serde_json::to_string_pretty(&example).map_err(SchemaError::Serialize)?;
     Ok(format!("{}\n\n{}", FIELD_LIST, json))
 }
@@ -79,23 +83,23 @@ pub fn schema() -> Result<String, SchemaError> {
 #[derive(Debug)]
 pub enum IncrError {
     Load(StateError),
-    Field(FieldError),
+    Field(ValueError),
     Save(StateError),
 }
 
 pub fn incr(
     repo: &dyn StateRepository,
     clock: &dyn Clock,
-    slug: &str,
+    slug: &SlugValue,
     field: &str,
 ) -> Result<(), IncrError> {
     let mut state = repo.load(slug).map_err(IncrError::Load)?;
     let current = state.get_field(field).map_err(IncrError::Field)?;
     let parsed: u32 = current
         .parse()
-        .map_err(|_| IncrError::Field(FieldError::NotIncrementable(field.to_string())))?;
+        .map_err(|_| IncrError::Field(ValueError::NotIncrementable(field.to_string())))?;
     let incremented = parsed.checked_add(1).ok_or_else(|| {
-        IncrError::Field(FieldError::InvalidNumeric {
+        IncrError::Field(ValueError::InvalidNumeric {
             field: field.to_string(),
             value: current.clone(),
         })
@@ -112,25 +116,31 @@ mod tests {
     use super::*;
     use crate::adapters::testing::{FixedClock, InMemoryStateRepository};
     use crate::domain::state::State;
+    use crate::domain::testing::valid;
     use crate::domain::value::ScoreWave;
 
     fn created_date() -> DateValue {
-        DateValue::parse("today", "2026-01-01").expect("valid date")
+        valid::date("2026-01-01")
     }
 
     fn today_date() -> DateValue {
-        DateValue::parse("today", "2026-01-02").expect("valid date")
+        valid::date("2026-01-02")
+    }
+
+    fn test_slug() -> SlugValue {
+        valid::slug("foo")
     }
 
     #[test]
     fn incr_increments_numeric_field_and_bumps_updated() {
+        let slug = test_slug();
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new("foo", created_date()).expect("valid slug"),
+            State::new(&slug, created_date()).expect("valid slug"),
         );
         let clock = FixedClock(today_date());
 
-        incr(&repo, &clock, "foo", "score_wave").expect("incr should succeed");
+        incr(&repo, &clock, &slug, "score_wave").expect("incr should succeed");
 
         let state = repo.get("foo").expect("state should exist");
         assert_eq!(state.score_wave, ScoreWave::new(1));
@@ -139,48 +149,51 @@ mod tests {
 
     #[test]
     fn incr_rejects_non_numeric_field() {
+        let slug = test_slug();
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new("foo", created_date()).expect("valid slug"),
+            State::new(&slug, created_date()).expect("valid slug"),
         );
         let clock = FixedClock(today_date());
 
-        let err = incr(&repo, &clock, "foo", "stage").expect_err("should reject non-numeric field");
+        let err = incr(&repo, &clock, &slug, "stage").expect_err("should reject non-numeric field");
         match err {
-            IncrError::Field(FieldError::NotIncrementable(field)) => assert_eq!(field, "stage"),
+            IncrError::Field(ValueError::NotIncrementable(field)) => assert_eq!(field, "stage"),
             _ => panic!("expected IncrError::Field(NotIncrementable), got a different variant"),
         }
     }
 
     #[test]
     fn incr_rejects_unknown_field() {
+        let slug = test_slug();
         let repo = InMemoryStateRepository::new().with_state(
             "foo",
-            State::new("foo", created_date()).expect("valid slug"),
+            State::new(&slug, created_date()).expect("valid slug"),
         );
         let clock = FixedClock(today_date());
 
         let err =
-            incr(&repo, &clock, "foo", "bogus_field").expect_err("should reject unknown field");
+            incr(&repo, &clock, &slug, "bogus_field").expect_err("should reject unknown field");
         match err {
-            IncrError::Field(FieldError::Unknown(field)) => assert_eq!(field, "bogus_field"),
+            IncrError::Field(ValueError::Unknown(field)) => assert_eq!(field, "bogus_field"),
             _ => panic!("expected IncrError::Field(Unknown), got a different variant"),
         }
     }
 
     #[test]
     fn incr_rejects_overflow_at_u32_max() {
-        let mut state = State::new("foo", created_date()).expect("valid slug");
+        let slug = test_slug();
+        let mut state = State::new(&slug, created_date()).expect("valid slug");
         state
             .set_field("score_wave", &u32::MAX.to_string())
             .expect("u32::MAX is a valid score_wave value");
         let repo = InMemoryStateRepository::new().with_state("foo", state);
         let clock = FixedClock(today_date());
 
-        let err = incr(&repo, &clock, "foo", "score_wave")
+        let err = incr(&repo, &clock, &slug, "score_wave")
             .expect_err("should reject increment past u32::MAX");
         match err {
-            IncrError::Field(FieldError::InvalidNumeric { field, value }) => {
+            IncrError::Field(ValueError::InvalidNumeric { field, value }) => {
                 assert_eq!(field, "score_wave");
                 assert_eq!(value, u32::MAX.to_string());
             }

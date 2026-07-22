@@ -1,4 +1,4 @@
-use crate::domain::error::FieldError;
+use crate::domain::error::ValueError;
 use nutype::nutype;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -12,8 +12,8 @@ use time::Date;
 pub struct SlugValue(String);
 
 impl SlugValue {
-    pub fn parse(value: &str) -> Result<Self, FieldError> {
-        Self::try_new(value.to_string()).map_err(|_| FieldError::InvalidValue {
+    pub fn parse(value: &str) -> Result<Self, ValueError> {
+        Self::try_new(value.to_string()).map_err(|_| ValueError::InvalidValue {
             field: "slug".to_string(),
             value: value.to_string(),
             expected: "kebab-case: lowercase letters, digits, single hyphens".to_string(),
@@ -37,12 +37,82 @@ impl SlugValue {
 pub struct NonBlankValue(String);
 
 impl NonBlankValue {
-    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
-        Self::try_new(value.to_string()).map_err(|_| FieldError::InvalidValue {
+    pub fn parse(field: &str, value: &str) -> Result<Self, ValueError> {
+        Self::try_new(value.to_string()).map_err(|_| ValueError::InvalidValue {
             field: field.to_string(),
             value: value.to_string(),
             expected: "a non-blank string".to_string(),
         })
+    }
+}
+
+#[nutype(
+    validate(predicate = BranchValue::is_valid_branch),
+    derive(Debug, Clone, PartialEq, Eq, AsRef, Serialize, Deserialize, Display)
+)]
+pub struct BranchValue(String);
+
+impl BranchValue {
+    pub fn try_from_raw(field: &str, value: &str) -> Result<Self, ValueError> {
+        Self::try_new(value.to_string()).map_err(|_| ValueError::InvalidValue {
+            field: field.to_string(),
+            value: value.to_string(),
+            expected: "a valid git branch name".to_string(),
+        })
+    }
+
+    fn is_valid_branch(s: &str) -> bool {
+        if s.is_empty() {
+            return false;
+        }
+        if s.chars().any(|c| c.is_whitespace() || c.is_control()) {
+            return false;
+        }
+        if s.contains("..") || s.starts_with('-') || s.contains("@{") {
+            return false;
+        }
+        if s.ends_with('/') || s.ends_with(".lock") {
+            return false;
+        }
+        if s.contains("//") {
+            return false;
+        }
+        true
+    }
+}
+
+#[nutype(
+    validate(predicate = RefValue::is_valid_ref),
+    new_unchecked,
+    derive(Debug, Clone, PartialEq, Eq, AsRef, Serialize, Deserialize, Display, TryFrom)
+)]
+pub struct RefValue(String);
+
+impl RefValue {
+    pub fn try_from_raw(value: &str) -> Result<Self, ValueError> {
+        Self::try_new(value.to_string()).map_err(|_| ValueError::InvalidRef {
+            value: value.to_string(),
+            reason: "non-blank, no whitespace or control chars".to_string(),
+        })
+    }
+
+    fn is_valid_ref(s: &str) -> bool {
+        if s.trim().is_empty() {
+            return false;
+        }
+        if s.chars().any(|c| c.is_whitespace() || c.is_control()) {
+            return false;
+        }
+        true
+    }
+}
+
+impl From<BranchValue> for RefValue {
+    fn from(b: BranchValue) -> Self {
+        // Safety: BranchValue's validation predicate is strictly stronger than
+        // RefValue's, so any valid BranchValue is guaranteed to satisfy RefValue's
+        // (weaker) predicate without re-running it.
+        unsafe { RefValue::new_unchecked(b.into_inner()) }
     }
 }
 
@@ -53,8 +123,8 @@ impl NonBlankValue {
 pub struct DateValue(String);
 
 impl DateValue {
-    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
-        Self::try_new(value.to_string()).map_err(|_| FieldError::InvalidValue {
+    pub fn parse(field: &str, value: &str) -> Result<Self, ValueError> {
+        Self::try_new(value.to_string()).map_err(|_| ValueError::InvalidValue {
             field: field.to_string(),
             value: value.to_string(),
             expected: "an ISO 8601 date (YYYY-MM-DD)".to_string(),
@@ -82,7 +152,7 @@ impl DateValue {
 pub struct ScoreStepsTotal(u32);
 
 impl ScoreStepsTotal {
-    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
+    pub fn parse(field: &str, value: &str) -> Result<Self, ValueError> {
         parse_numeric(field, value, Self::new)
     }
 }
@@ -103,7 +173,7 @@ impl ScoreStepsTotal {
 pub struct ScoreWave(u32);
 
 impl ScoreWave {
-    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
+    pub fn parse(field: &str, value: &str) -> Result<Self, ValueError> {
         parse_numeric(field, value, Self::new)
     }
 }
@@ -124,7 +194,7 @@ impl ScoreWave {
 pub struct ScoreWavesTotal(u32);
 
 impl ScoreWavesTotal {
-    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
+    pub fn parse(field: &str, value: &str) -> Result<Self, ValueError> {
         parse_numeric(field, value, Self::new)
     }
 }
@@ -145,7 +215,7 @@ impl ScoreWavesTotal {
 pub struct FenceRounds(u32);
 
 impl FenceRounds {
-    pub fn parse(field: &str, value: &str) -> Result<Self, FieldError> {
+    pub fn parse(field: &str, value: &str) -> Result<Self, ValueError> {
         parse_numeric(field, value, Self::new)
     }
 }
@@ -159,12 +229,12 @@ pub enum SchemaVersion {
 impl SchemaVersion {
     pub const CURRENT: SchemaVersion = SchemaVersion::V1;
 
-    pub fn parse(value: &str) -> Result<Self, FieldError> {
-        let raw: u32 = value.parse().map_err(|_| FieldError::InvalidNumeric {
+    pub fn parse(value: &str) -> Result<Self, ValueError> {
+        let raw: u32 = value.parse().map_err(|_| ValueError::InvalidNumeric {
             field: "schema_version".to_string(),
             value: value.to_string(),
         })?;
-        SchemaVersion::try_from(raw).map_err(|_| FieldError::InvalidValue {
+        SchemaVersion::try_from(raw).map_err(|_| ValueError::InvalidValue {
             field: "schema_version".to_string(),
             value: value.to_string(),
             expected: format!(
@@ -222,12 +292,127 @@ fn parse_numeric<T>(
     field: &str,
     value: &str,
     ctor: impl FnOnce(u32) -> T,
-) -> Result<T, FieldError> {
+) -> Result<T, ValueError> {
     value
         .parse::<u32>()
         .map(ctor)
-        .map_err(|_| FieldError::InvalidNumeric {
+        .map_err(|_| ValueError::InvalidNumeric {
             field: field.to_string(),
             value: value.to_string(),
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn branch_value_accepts_slug_derived_branch() {
+        let result = BranchValue::try_from_raw("branch", "heist/foo");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn branch_value_rejects_empty() {
+        let result = BranchValue::try_from_raw("branch", "");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_leading_dash() {
+        let result = BranchValue::try_from_raw("branch", "-foo");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_double_dot() {
+        let result = BranchValue::try_from_raw("branch", "foo..bar");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_at_brace() {
+        let result = BranchValue::try_from_raw("branch", "foo@{bar");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_trailing_slash() {
+        let result = BranchValue::try_from_raw("branch", "foo/");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_trailing_dot_lock() {
+        let result = BranchValue::try_from_raw("branch", "foo.lock");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_double_slash() {
+        let result = BranchValue::try_from_raw("branch", "foo//bar");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_rejects_whitespace() {
+        let result = BranchValue::try_from_raw("branch", "foo bar");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn ref_value_permissive_accepts_head_tilde_three() {
+        let result = RefValue::try_from("HEAD~3".to_string());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ref_value_permissive_accepts_caret_commit_syntax() {
+        let result = RefValue::try_from("abc123^".to_string());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ref_value_permissive_accepts_tag_caret_brace() {
+        let result = RefValue::try_from("v1.0.0^{commit}".to_string());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ref_value_permissive_accepts_origin_main() {
+        let result = RefValue::try_from("origin/main".to_string());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ref_value_permissive_accepts_bare_head() {
+        let result = RefValue::try_from("HEAD".to_string());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ref_value_rejects_blank() {
+        assert!(RefValue::try_from("".to_string()).is_err());
+        assert!(RefValue::try_from("   ".to_string()).is_err());
+    }
+
+    #[test]
+    fn ref_value_rejects_embedded_whitespace() {
+        let result = RefValue::try_from("foo bar".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn ref_value_rejects_control_char() {
+        let result = RefValue::try_from("foo\u{0007}bar".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn branch_value_converts_to_ref_value_infallibly() {
+        let branch = BranchValue::try_from_raw("branch", "heist/foo").unwrap();
+        let ref_from_branch = RefValue::from(branch);
+        let ref_direct = RefValue::try_from("heist/foo".to_string()).unwrap();
+        assert_eq!(ref_from_branch, ref_direct);
+    }
 }

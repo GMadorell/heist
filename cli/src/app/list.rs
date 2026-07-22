@@ -1,5 +1,5 @@
 use crate::domain::error::StateError;
-use crate::domain::state::{Mode, Routing, Stage, State, route};
+use crate::domain::state::{route, Mode, Routing, Stage, State};
 use crate::domain::value::{NonBlankValue, SlugValue};
 use crate::ports::state_repository::StateRepository;
 
@@ -33,7 +33,7 @@ pub fn list(repo: &dyn StateRepository) -> Result<Vec<ListRow>, ListError> {
 
     let mut rows = Vec::with_capacity(slugs.len());
     for slug in slugs {
-        let state = repo.load(slug.as_ref()).map_err(|error| ListError::Load {
+        let state = repo.load(&slug).map_err(|error| ListError::Load {
             slug: slug.clone(),
             error,
         })?;
